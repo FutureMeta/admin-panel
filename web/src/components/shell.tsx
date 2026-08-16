@@ -14,11 +14,12 @@ const NAV: Array<{ module: ModuleKey; label: string; to: string; group: string }
   { module: 'utenti', label: 'Utenti', to: '/utenti', group: 'Accessi' },
   { module: 'ruoli', label: 'Ruoli e permessi', to: '/ruoli', group: 'Accessi' },
   { module: 'inviti', label: 'Inviti', to: '/inviti', group: 'Accessi' },
-  { module: 'sessioni', label: 'Sessioni', to: '/sessioni', group: 'Accessi' },
   { module: 'audit', label: 'Registro attività', to: '/registro', group: 'Controllo' },
-  { module: 'impostazioni', label: 'Impostazioni', to: '/impostazioni', group: 'Sistema' },
-  // `statistiche` e `server` esistono nel modello dei permessi ma non hanno
-  // ancora una schermata: sono fase 2, e finche' non ce l'hanno non compaiono.
+  // Le voci elencate qui sono SOLO quelle con una schermata vera. Il modello
+  // dei permessi conosce anche `sessioni`, `impostazioni`, `statistiche` e
+  // `server`, ma un link che porta a un 404 e' peggio di un link assente: dice
+  // che qualcosa esiste e non la trova. Le sessioni si gestiscono dal dettaglio
+  // utente; le altre tre sono fase 2.
 ];
 
 function Logo({ compact = false }: { compact?: boolean }) {

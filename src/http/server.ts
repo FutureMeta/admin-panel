@@ -17,6 +17,7 @@ import { registerHealthRoutes } from './routes/health.ts';
 import { registerInviteRoutes } from './routes/invites.ts';
 import { registerOnboardingRoutes } from './routes/invites-onboarding.ts';
 import { registerRoleRoutes } from './routes/roles.ts';
+import { registerTwoFactorResetRoutes } from './routes/two-factor-reset.ts';
 import { registerUserRoutes } from './routes/users.ts';
 import { registerWebhookRoutes } from './routes/webhooks.ts';
 
@@ -184,6 +185,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   await registerOnboardingRoutes(app, ctx);
   await registerUserRoutes(app, ctx);
   await registerRoleRoutes(app, ctx);
+  await registerTwoFactorResetRoutes(app, ctx);
   await registerAuditRoutes(app, ctx);
   await registerWebhookRoutes(app, ctx);
 

@@ -28,7 +28,11 @@
     "build:web": "vite build",
     "dev:web": "vite",
     "email:preview": "email dev --dir src/email/templates",
-    "lint:identifiers": "node scripts/check-identifiers.ts"
+    "lint:identifiers": "node scripts/check-identifiers.ts",
+    "job:anchor": "node scripts/maintenance.ts anchor",
+    "job:partitions": "node scripts/maintenance.ts partitions",
+    "job:cleanup": "node scripts/maintenance.ts cleanup",
+    "job:verify": "node scripts/maintenance.ts verify"
   },
   "dependencies": {
     "@better-auth/redis-storage": "1.6.29",

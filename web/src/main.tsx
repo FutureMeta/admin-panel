@@ -21,6 +21,7 @@ import { ApiError, api, type Me } from './lib/api.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
+import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { ForbiddenPage, NotFoundPage, UnauthorizedPage } from './routes/states.tsx';
 import { RolesPage, UsersPage } from './routes/users.tsx';
@@ -284,6 +285,13 @@ function RolesRoute() {
   return <RolesPage me={me.data} onNeedStepUp={requestStepUp} />;
 }
 
+function InvitesRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!me.data.modules.includes('inviti')) return <ForbiddenPage />;
+  return <InvitesPage me={me.data} onNeedStepUp={requestStepUp} />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -302,6 +310,11 @@ const shellRoute = createRoute({ getParentRoute: () => rootRoute, id: 'shell', c
 const homeRoute = createRoute({ getParentRoute: () => shellRoute, path: '/', component: HomePage });
 const usersRoute = createRoute({ getParentRoute: () => shellRoute, path: '/utenti', component: UsersRoute });
 const rolesRoute = createRoute({ getParentRoute: () => shellRoute, path: '/ruoli', component: RolesRoute });
+const invitesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/inviti',
+  component: InvitesRoute,
+});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -311,7 +324,7 @@ const auditRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   acceptRoute,
-  shellRoute.addChildren([homeRoute, usersRoute, rolesRoute, auditRoute]),
+  shellRoute.addChildren([homeRoute, usersRoute, rolesRoute, invitesRoute, auditRoute]),
 ]);
 
 const router = createRouter({ routeTree, defaultPreload: false });

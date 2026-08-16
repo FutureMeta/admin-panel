@@ -1,0 +1,144 @@
+/* MetaMC Console — design token, estratti dal prototipo "MetaMC Admin - standalone.html".
+   Fonte di verità per colori, spacing, raggi, elevazioni e motion.
+   Non ridefinire questi valori nei componenti: consumali sempre come var(--nome). */
+
+:root {
+  /* Superfici — 4 livelli. La profondità viene dai bordi hairline, non dalle ombre. */
+  --s-base: #0A161D;
+  --s-surface: #0E1F28;
+  --s-elevated: #132833;
+  --s-overlay: #17313E;
+  --s-inset: #071219;
+
+  /* Bordi */
+  --bd-subtle: rgba(255, 255, 255, 0.07);
+  --bd-strong: rgba(255, 255, 255, 0.15);
+  --bd-focus: #DB6E19;
+
+  /* Testo */
+  --tx-primary: #E9F1F5;
+  --tx-secondary: #A9BEC9;
+  --tx-muted: #718996;
+  --tx-disabled: #4B5F6B;
+
+  /* Accento brand — riservato ad azione primaria, stato attivo, serie dati principale, focus */
+  --ac: #DB6E19;
+  --ac-hover: #EE7F2A;
+  --ac-pressed: #B85A12;
+  --ac-soft: rgba(219, 110, 25, 0.12);
+  --ac-text: #F0913F; /* variante testo: 7.09:1 su --s-surface */
+
+  /* Blu brand */
+  --blu: #2478A1;
+  --blu-viz: #3FA3D4;
+  --blu-soft: rgba(63, 163, 212, 0.12);
+
+  /* Semantici */
+  --ok: #22C55E;
+  --ok-soft: rgba(34, 197, 94, 0.12);
+  --warn: #E0A32E;
+  --warn-soft: rgba(224, 163, 46, 0.12);
+  --err: #DB3434;
+  --err-soft: rgba(219, 52, 52, 0.12);
+  --info: #3FA3D4;
+  --info-soft: rgba(63, 163, 212, 0.12);
+
+  --grid: rgba(255, 255, 255, 0.05);
+
+  /* Spacing — base 4px */
+  --sp1: 4px;
+  --sp2: 8px;
+  --sp3: 12px;
+  --sp4: 16px;
+  --sp5: 20px;
+  --sp6: 24px;
+  --sp8: 32px;
+  --sp10: 40px;
+  --sp12: 48px;
+  --sp16: 64px;
+
+  /* Raggi */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 16px;
+  --r-full: 999px;
+
+  /* Elevazioni */
+  --e1: 0 1px 2px rgba(0, 0, 0, 0.45);
+  --e2: 0 4px 14px rgba(0, 0, 0, 0.38);
+  --e3: 0 18px 44px rgba(0, 0, 0, 0.55);
+
+  /* Motion */
+  --ease: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-chart: 400ms;
+
+  /* Tipografia */
+  --font-ui: 'Inter', system-ui, sans-serif;        /* corpo, tabelle, UI densa */
+  --font-display: 'Montserrat', system-ui, sans-serif; /* titoli, KPI, lockup */
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace; /* ID, UUID, IP, comandi */
+}
+
+[data-theme="light"] {
+  --s-base: #F4F6F7;
+  --s-surface: #FFFFFF;
+  --s-elevated: #FFFFFF;
+  --s-overlay: #FFFFFF;
+  --s-inset: #EDF1F3;
+
+  --bd-subtle: rgba(14, 34, 45, 0.10);
+  --bd-strong: rgba(14, 34, 45, 0.20);
+
+  --tx-primary: #0E222D;
+  --tx-secondary: #41606E;
+  --tx-muted: #6C8593;
+  --tx-disabled: #A3B4BD;
+
+  --ac: #C25E10;
+  --ac-hover: #A94F09;
+  --ac-pressed: #8C4207;
+  --ac-soft: rgba(194, 94, 16, 0.10);
+  --ac-text: #A94F09;
+
+  --blu: #1F6E95;
+  --blu-viz: #1F6E95;
+  --blu-soft: rgba(31, 110, 149, 0.10);
+
+  --ok: #15803D;
+  --ok-soft: rgba(21, 128, 61, 0.10);
+  --warn: #9A6700;
+  --warn-soft: rgba(154, 103, 0, 0.10);
+  --err: #B91C1C;
+  --err-soft: rgba(185, 28, 28, 0.10);
+  --info: #1F6E95;
+  --info-soft: rgba(31, 110, 149, 0.10);
+
+  --grid: rgba(14, 34, 45, 0.07);
+
+  --e1: 0 1px 2px rgba(14, 34, 45, 0.08);
+  --e2: 0 4px 14px rgba(14, 34, 45, 0.10);
+  --e3: 0 18px 44px rgba(14, 34, 45, 0.16);
+}
+
+/* Scala tipografica — Montserrat display / Inter UI / JetBrains Mono dati tecnici.
+   Ogni elemento che mostra numeri usa font-variant-numeric: tabular-nums. */
+.t-display { font: 700 34px/40px var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.t-h1      { font: 700 24px/32px var(--font-display); letter-spacing: -0.01em; }
+.t-h2      { font: 600 18px/26px var(--font-display); }
+.t-h3      { font: 600 15px/22px var(--font-ui); }
+.t-body    { font: 400 14px/22px var(--font-ui); }
+.t-sm      { font: 400 13px/20px var(--font-ui); }
+.t-micro   { font: 600 11px/14px var(--font-ui); letter-spacing: 0.10em; text-transform: uppercase; }
+.t-mono    { font: 400 12px/18px var(--font-mono); }
+
+/* Palette data-viz — un colore per modalità, identico in tutta l'app.
+   Ogni serie ha anche una forma di marker dedicata perché il colore non basta. */
+:root {
+  --viz-vanilla-war: #E8822B; /* marker: cerchio   */
+  --viz-survival:    #1F6E95; /* marker: quadrato  */
+  --viz-towny:       #F2CC7B; /* marker: triangolo */
+  --viz-oasis:       #57B8A6; /* marker: rombo     */
+}

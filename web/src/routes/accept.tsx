@@ -10,7 +10,7 @@
 
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
-import { Badge, Banner, Button, Field } from '../components/ui.tsx';
+import { Pill as Badge, Notice as Banner, Button, Field } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
 type Onboarding = { email: string; roleName: string | null };
@@ -105,15 +105,15 @@ export function AcceptPage() {
     >
       <div className="surface" style={{ width: 'min(560px, 100%)', padding: 'var(--sp8)' }}>
         {step === 'caricamento' ? (
-          <p className="t-sm" style={{ color: 'var(--tx-muted)', margin: 0 }}>
+          <p className="t-lead" style={{ color: 'var(--tx-muted)', margin: 0 }}>
             Verifica dell'invito…
           </p>
         ) : step === 'scaduto' ? (
           <>
-            <h1 className="t-h1" style={{ margin: '0 0 var(--sp3)' }}>
+            <h1 className="t-title" style={{ margin: '0 0 var(--sp3)' }}>
               Invito non più valido
             </h1>
-            <p className="t-body" style={{ color: 'var(--tx-secondary)', margin: '0 0 var(--sp6)' }}>
+            <p className="t-lead" style={{ color: 'var(--tx-secondary)', margin: '0 0 var(--sp6)' }}>
               Il link non è utilizzabile. Può essere scaduto, già usato o revocato: chiedi a chi ti ha
               invitato di emetterne uno nuovo.
             </p>
@@ -124,10 +124,10 @@ export function AcceptPage() {
         ) : step === 'password' ? (
           <>
             <header style={{ marginBottom: 'var(--sp6)' }}>
-              <h1 className="t-h1" style={{ margin: '0 0 var(--sp2)' }}>
+              <h1 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
                 Benvenuto in MetaMC Admin
               </h1>
-              <p className="t-sm" style={{ margin: 0, color: 'var(--tx-muted)' }}>
+              <p className="t-lead" style={{ margin: 0, color: 'var(--tx-muted)' }}>
                 {invite?.email}
               </p>
               {invite?.roleName ? (
@@ -178,10 +178,10 @@ export function AcceptPage() {
           </>
         ) : step === 'totp' ? (
           <>
-            <h1 className="t-h1" style={{ margin: '0 0 var(--sp2)' }}>
+            <h1 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
               Attiva la verifica in due passaggi
             </h1>
-            <p className="t-sm" style={{ margin: '0 0 var(--sp6)', color: 'var(--tx-muted)' }}>
+            <p className="t-lead" style={{ margin: '0 0 var(--sp6)', color: 'var(--tx-muted)' }}>
               È obbligatoria: senza, l'accesso al pannello non si apre.
             </p>
 
@@ -191,7 +191,7 @@ export function AcceptPage() {
               </div>
             ) : null}
 
-            <ol className="t-body" style={{ margin: '0 0 var(--sp5)', paddingLeft: 'var(--sp5)' }}>
+            <ol className="t-lead" style={{ margin: '0 0 var(--sp5)', paddingLeft: 'var(--sp5)' }}>
               <li>Apri la tua app di autenticazione (Aegis, 1Password, Bitwarden…).</li>
               <li>Aggiungi un account inserendo a mano la chiave qui sotto.</li>
               <li>Digita il codice a sei cifre che l'app mostra.</li>
@@ -217,7 +217,7 @@ export function AcceptPage() {
             <form onSubmit={submitTotp} style={{ display: 'grid', gap: 'var(--sp4)' }}>
               <Field
                 label="Codice a sei cifre"
-                className="input-otp"
+                className="input input-mono"
                 inputMode="numeric"
                 pattern="[0-9]{6}"
                 maxLength={6}
@@ -233,10 +233,10 @@ export function AcceptPage() {
           </>
         ) : (
           <>
-            <h1 className="t-h1" style={{ margin: '0 0 var(--sp2)' }}>
+            <h1 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
               Salva i codici di recupero
             </h1>
-            <p className="t-body" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-secondary)' }}>
+            <p className="t-lead" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-secondary)' }}>
               Sono l'unico modo di rientrare se perdi il telefono. Vengono mostrati{' '}
               <strong>ora e mai più</strong>: senza, l'unica via è una procedura che richiede due owner e
               ventiquattro ore.
@@ -263,7 +263,7 @@ export function AcceptPage() {
             </div>
 
             <label
-              className="t-sm"
+              className="t-lead"
               style={{
                 display: 'flex',
                 gap: 'var(--sp3)',

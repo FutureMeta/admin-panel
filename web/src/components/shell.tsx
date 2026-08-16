@@ -1,121 +1,136 @@
-// App shell: sidebar, topbar, command palette.
+// App shell: sidebar, topbar, command palette. Metriche del prototipo.
 //
 // La sidebar mostra SOLO i moduli a cui l'utente ha accesso. Nessuna voce
-// disabilitata, nessun lucchetto: l'elenco stesso dei moduli e' informazione,
-// e mostrarlo a chi non ci entra e' ricognizione gratuita.
+// disabilitata, nessun lucchetto: l'elenco stesso dei moduli è informazione,
+// e mostrarlo a chi non ci entra è ricognizione gratuita.
 
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Me, ModuleKey } from '../lib/api.ts';
-import { Badge } from './ui.tsx';
+import { Avatar, ICONS, Icon, Pill } from './ui.tsx';
 
-/** Voci di navigazione, per modulo. Un modulo assente = voce assente. */
-const NAV: Array<{ module: ModuleKey; label: string; to: string; group: string }> = [
-  { module: 'utenti', label: 'Utenti', to: '/utenti', group: 'Accessi' },
-  { module: 'ruoli', label: 'Ruoli e permessi', to: '/ruoli', group: 'Accessi' },
-  { module: 'inviti', label: 'Inviti', to: '/inviti', group: 'Accessi' },
-  { module: 'audit', label: 'Registro attività', to: '/registro', group: 'Controllo' },
-  // Le voci elencate qui sono SOLO quelle con una schermata vera. Il modello
-  // dei permessi conosce anche `sessioni`, `impostazioni`, `statistiche` e
-  // `server`, ma un link che porta a un 404 e' peggio di un link assente: dice
-  // che qualcosa esiste e non la trova. Le sessioni si gestiscono dal dettaglio
-  // utente; le altre tre sono fase 2.
+/** Voci di navigazione. Solo quelle con una schermata vera: un link che porta
+ *  a un 404 è peggio di un link assente, perché dice che qualcosa esiste. */
+const NAV: Array<{ module: ModuleKey; label: string; to: string; area: string; icon: string }> = [
+  { module: 'utenti', label: 'Utenti', to: '/utenti', area: 'Accessi', icon: ICONS.users },
+  { module: 'ruoli', label: 'Ruoli e permessi', to: '/ruoli', area: 'Accessi', icon: ICONS.shield },
+  { module: 'inviti', label: 'Inviti', to: '/inviti', area: 'Accessi', icon: ICONS.mail },
+  { module: 'audit', label: 'Registro attività', to: '/registro', area: 'Controllo', icon: ICONS.log },
 ];
 
-function Logo({ compact = false }: { compact?: boolean }) {
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp2)' }}>
-      <svg width="24" height="27" viewBox="0 0 56 64" aria-hidden="true">
-        <path d="M28 1 54 16v32L28 63 2 48V16z" fill="var(--s-inset)" stroke="var(--bd-strong)" />
-        <path d="M17 42V22h9l2 4-2 4" fill="none" stroke="var(--blu)" strokeWidth="5" />
-        <path d="M28 30l3-8h8v20" fill="none" stroke="var(--ac)" strokeWidth="5" />
-      </svg>
-      {compact ? null : (
-        <span style={{ font: '700 16px/22px var(--font-display)' }}>
-          <span style={{ color: 'var(--ac)' }}>Meta</span>
-          <span style={{ color: 'var(--blu-viz)' }}>MC</span>
-          <span style={{ color: 'var(--tx-muted)', fontWeight: 500 }}> Admin</span>
-        </span>
-      )}
-    </span>
-  );
-}
-
-export function Sidebar({ me, collapsed }: { me: Me; collapsed: boolean }) {
+export function Sidebar({
+  me,
+  collapsed,
+  onOpenPalette,
+}: {
+  me: Me;
+  collapsed: boolean;
+  onOpenPalette: () => void;
+}) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // Solo i moduli concessi, nell'ordine dichiarato. `me.modules` arriva dal
-  // server: il client non decide chi vede cosa, lo disegna e basta.
-  const visible = useMemo(() => NAV.filter((n) => me.modules.includes(n.module)), [me.modules]);
+  // `me.modules` arriva già filtrato dal server: il client non decide chi vede
+  // cosa, lo disegna e basta.
   const groups = useMemo(() => {
+    const visible = NAV.filter((n) => me.modules.includes(n.module));
     const map = new Map<string, typeof visible>();
     for (const item of visible) {
-      const list = map.get(item.group) ?? [];
+      const list = map.get(item.area) ?? [];
       list.push(item);
-      map.set(item.group, list);
+      map.set(item.area, list);
     }
     return [...map.entries()];
-  }, [visible]);
+  }, [me.modules]);
 
   return (
-    <nav
+    <aside
       aria-label="Moduli"
       style={{
         width: collapsed ? 64 : 232,
-        flexShrink: 0,
+        flex: 'none',
+        alignSelf: 'stretch',
         background: 'var(--s-surface)',
         borderRight: '1px solid var(--bd-subtle)',
-        padding: 'var(--sp4) var(--sp3)',
+        padding: '16px 12px',
         display: 'flex',
         flexDirection: 'column',
-        gap: 'var(--sp6)',
+        gap: 22,
         transition: 'width var(--dur) var(--ease)',
         overflow: 'hidden',
       }}
     >
-      <div style={{ paddingLeft: 'var(--sp2)' }}>
-        <Logo compact={collapsed} />
-      </div>
-
-      {groups.map(([group, items]) => (
-        <div key={group} style={{ display: 'grid', gap: 'var(--sp1)' }}>
-          {collapsed ? null : (
-            <p className="t-micro" style={{ margin: '0 0 var(--sp1) var(--sp3)', color: 'var(--tx-muted)' }}>
-              {group}
-            </p>
-          )}
-          {items.map((item) => (
-            <Link
-              key={item.to}
-              to={item.to}
-              className="nav-item"
-              data-active={pathname.startsWith(item.to)}
-              title={collapsed ? item.label : undefined}
-            >
-              <span
-                aria-hidden="true"
-                style={{
-                  width: 6,
-                  height: 6,
-                  borderRadius: 3,
-                  background: pathname.startsWith(item.to) ? 'var(--ac)' : 'var(--tx-disabled)',
-                  flexShrink: 0,
-                }}
-              />
-              {collapsed ? null : item.label}
-            </Link>
-          ))}
-        </div>
-      ))}
-
-      <div style={{ marginTop: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0 4px' }}>
+        <img
+          src="/assets/logo.png"
+          alt=""
+          width={28}
+          height={28}
+          style={{ objectFit: 'contain', flex: 'none' }}
+        />
         {collapsed ? null : (
-          <p className="t-sm" style={{ color: 'var(--tx-muted)', margin: 0, paddingLeft: 'var(--sp3)' }}>
-            {me.modules.length} moduli
-          </p>
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 700,
+                fontSize: 13,
+                letterSpacing: '.12em',
+                textTransform: 'uppercase',
+              }}
+            >
+              MetaMC
+            </div>
+            <div
+              style={{
+                fontSize: 10.5,
+                color: 'var(--tx-muted)',
+                letterSpacing: '.08em',
+                textTransform: 'uppercase',
+                marginTop: 1,
+              }}
+            >
+              Console
+            </div>
+          </div>
         )}
       </div>
-    </nav>
+
+      <button type="button" className="search-trigger" onClick={onOpenPalette}>
+        <Icon path={ICONS.search} size={15} />
+        {collapsed ? null : (
+          <>
+            <span>Cerca moduli</span>
+            <span className="kbd" style={{ marginLeft: 'auto' }}>
+              ⌘K
+            </span>
+          </>
+        )}
+      </button>
+
+      {groups.map(([area, items]) => (
+        <div key={area}>
+          {collapsed ? null : (
+            <div className="t-group" style={{ padding: '0 8px', marginBottom: 8 }}>
+              {area}
+            </div>
+          )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {items.map((item) => (
+              <Link
+                key={item.to}
+                to={item.to}
+                className="nav-item"
+                data-active={pathname.startsWith(item.to)}
+                title={collapsed ? item.label : undefined}
+              >
+                <Icon path={item.icon} />
+                {collapsed ? null : <span className="nav-label">{item.label}</span>}
+              </Link>
+            ))}
+          </div>
+        </div>
+      ))}
+    </aside>
   );
 }
 
@@ -123,12 +138,6 @@ export function Sidebar({ me, collapsed }: { me: Me; collapsed: boolean }) {
 
 export type Command = { id: string; label: string; hint?: string; run: () => void };
 
-/**
- * Command palette (⌘K).
- *
- * Elenca solo comandi che l'utente puo' davvero eseguire: la lista arriva
- * gia' filtrata da chi la costruisce, con la stessa regola della sidebar.
- */
 export function CommandPalette({
   open,
   onClose,
@@ -156,21 +165,26 @@ export function CommandPalette({
     }
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
     <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Comandi"
+      role="presentation"
       onClick={onClose}
-      onKeyDown={(e) => {
-        if (e.key === 'Escape') onClose();
-      }}
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(7, 18, 25, 0.7)',
+        background: 'rgba(7,18,25,.72)',
+        backdropFilter: 'blur(2px)',
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
@@ -179,50 +193,65 @@ export function CommandPalette({
       }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Comandi"
         className="elevated"
         onClick={(e) => e.stopPropagation()}
         style={{ width: 'min(560px, 92vw)', overflow: 'hidden' }}
       >
-        <input
-          ref={inputRef}
-          className="input"
-          placeholder="Cerca un comando…"
-          value={query}
-          onChange={(e) => {
-            setQuery(e.target.value);
-            setIndex(0);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown') {
-              e.preventDefault();
-              setIndex((i) => Math.min(i + 1, filtered.length - 1));
-            } else if (e.key === 'ArrowUp') {
-              e.preventDefault();
-              setIndex((i) => Math.max(i - 1, 0));
-            } else if (e.key === 'Enter') {
-              e.preventDefault();
-              const chosen = filtered[index];
-              if (chosen) {
-                chosen.run();
-                onClose();
-              }
-            } else if (e.key === 'Escape') {
-              onClose();
-            }
-          }}
-          style={{ border: 0, borderBottom: '1px solid var(--bd-subtle)', borderRadius: 0, height: 52 }}
-        />
-        <ul
+        <div
           style={{
-            listStyle: 'none',
-            margin: 0,
-            padding: 'var(--sp2)',
-            maxHeight: '48vh',
-            overflowY: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '0 14px',
+            height: 48,
+            borderBottom: '1px solid var(--bd-subtle)',
+            color: 'var(--tx-muted)',
           }}
         >
+          <Icon path={ICONS.search} size={16} />
+          <input
+            ref={inputRef}
+            placeholder="Cerca un comando…"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setIndex((i) => Math.min(i + 1, filtered.length - 1));
+              } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setIndex((i) => Math.max(i - 1, 0));
+              } else if (e.key === 'Enter') {
+                e.preventDefault();
+                const chosen = filtered[index];
+                if (chosen) {
+                  chosen.run();
+                  onClose();
+                }
+              }
+            }}
+            style={{
+              flex: 1,
+              border: 0,
+              background: 'transparent',
+              color: 'var(--tx-primary)',
+              fontFamily: 'var(--font-ui)',
+              fontSize: 14,
+              outline: 'none',
+            }}
+          />
+          <span className="kbd">esc</span>
+        </div>
+
+        <ul style={{ listStyle: 'none', margin: 0, padding: 8, maxHeight: '48vh', overflowY: 'auto' }}>
           {filtered.length === 0 ? (
-            <li className="t-sm" style={{ padding: 'var(--sp4)', color: 'var(--tx-muted)' }}>
+            <li className="t-lead" style={{ padding: 16 }}>
               Nessun comando corrisponde.
             </li>
           ) : (
@@ -239,23 +268,21 @@ export function CommandPalette({
                     width: '100%',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    gap: 'var(--sp4)',
-                    padding: 'var(--sp3)',
+                    gap: 16,
+                    padding: '9px 10px',
                     border: 0,
-                    borderRadius: 'var(--r-md)',
+                    borderRadius: 'var(--r-sm)',
                     background: i === index ? 'var(--ac-soft)' : 'transparent',
                     color: i === index ? 'var(--ac-text)' : 'var(--tx-primary)',
-                    font: '500 14px/20px var(--font-ui)',
+                    fontFamily: 'var(--font-ui)',
+                    fontSize: 13,
+                    fontWeight: 500,
                     textAlign: 'left',
                     cursor: 'pointer',
                   }}
                 >
                   <span>{c.label}</span>
-                  {c.hint ? (
-                    <span className="t-sm" style={{ color: 'var(--tx-muted)' }}>
-                      {c.hint}
-                    </span>
-                  ) : null}
+                  {c.hint ? <span style={{ fontSize: 12, color: 'var(--tx-muted)' }}>{c.hint}</span> : null}
                 </button>
               </li>
             ))
@@ -270,62 +297,182 @@ export function CommandPalette({
 
 export function Topbar({
   me,
+  breadcrumb,
   onToggleSidebar,
-  onOpenPalette,
   onLogout,
   feedDisconnected,
 }: {
   me: Me;
+  breadcrumb: string;
   onToggleSidebar: () => void;
-  onOpenPalette: () => void;
   onLogout: () => void;
   feedDisconnected: boolean;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
     <header
       style={{
-        height: 56,
-        flexShrink: 0,
+        position: 'sticky',
+        top: 0,
+        zIndex: 20,
         display: 'flex',
         alignItems: 'center',
-        gap: 'var(--sp3)',
-        padding: '0 var(--sp5)',
+        gap: 14,
+        height: 56,
+        padding: '0 20px',
+        background: 'rgba(14,31,40,.9)',
+        backdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--bd-subtle)',
-        background: 'var(--s-surface)',
       }}
     >
       <button
         type="button"
         className="btn btn-ghost btn-sm"
         onClick={onToggleSidebar}
-        aria-label="Comprimi menu"
+        aria-label="Comprimi il menu"
+        style={{ padding: '0 6px' }}
       >
-        ☰
+        <Icon path="M4 7h16M4 12h16M4 17h16" size={16} />
       </button>
 
-      <button
-        type="button"
-        className="btn btn-ghost btn-sm"
-        onClick={onOpenPalette}
-        style={{ color: 'var(--tx-muted)', gap: 'var(--sp3)' }}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          fontSize: 13,
+          color: 'var(--tx-muted)',
+          minWidth: 0,
+        }}
       >
-        Cerca…
-        <kbd className="mono" style={{ padding: '2px 6px', background: 'var(--s-inset)', borderRadius: 4 }}>
-          ⌘K
-        </kbd>
-      </button>
+        <span>Console</span>
+        <Icon path={ICONS.chevron} size={13} />
+        <span style={{ color: 'var(--tx-primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+          {breadcrumb}
+        </span>
+      </div>
 
-      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--sp4)' }}>
-        {feedDisconnected ? <Badge tone="warn">feed disconnesso</Badge> : <Badge tone="ok">operativo</Badge>}
-        <div style={{ textAlign: 'right' }}>
-          <p style={{ margin: 0, font: '600 13px/16px var(--font-ui)' }}>{me.name}</p>
-          <p className="t-sm" style={{ margin: 0, color: 'var(--tx-muted)' }}>
-            {me.email}
-          </p>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+        {feedDisconnected ? (
+          <Pill tone="warn" dot>
+            Feed disconnesso
+          </Pill>
+        ) : (
+          <Pill tone="ok" dot>
+            Operativo
+          </Pill>
+        )}
+
+        <div style={{ position: 'relative' }}>
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-expanded={menuOpen}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              height: 32,
+              padding: '2px 10px 2px 2px',
+              border: '1px solid var(--bd-subtle)',
+              borderRadius: 'var(--r-full)',
+              background: 'var(--s-inset)',
+              color: 'var(--tx-primary)',
+              fontFamily: 'var(--font-ui)',
+              cursor: 'pointer',
+            }}
+          >
+            <Avatar name={me.name} />
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>{me.name}</span>
+            <Icon path={ICONS.chevron} size={13} />
+          </button>
+
+          {menuOpen ? (
+            <div
+              className="elevated"
+              style={{ position: 'absolute', top: 40, right: 0, zIndex: 50, width: 280, overflow: 'hidden' }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: 16,
+                  borderBottom: '1px solid var(--bd-subtle)',
+                }}
+              >
+                <Avatar name={me.name} size={40} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: 14, fontWeight: 600 }}>
+                    {me.name}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: 'var(--tx-muted)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {me.email}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                style={{
+                  padding: '14px 16px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 9,
+                  borderBottom: '1px solid var(--bd-subtle)',
+                  fontSize: 12.5,
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--tx-muted)' }}>Moduli</span>
+                  <span>{me.modules.length}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--tx-muted)' }}>2FA</span>
+                  <span style={{ color: 'var(--ok)' }}>Attiva</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--tx-muted)' }}>Ri-autenticazione</span>
+                  <span className="mono">
+                    {me.stepUpValidForSeconds > 0
+                      ? `${Math.ceil(me.stepUpValidForSeconds / 60)} min`
+                      : 'scaduta'}
+                  </span>
+                </div>
+              </div>
+
+              <div style={{ padding: 8 }}>
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  style={{
+                    width: '100%',
+                    textAlign: 'left',
+                    padding: '9px 10px',
+                    border: 0,
+                    borderRadius: 'var(--r-sm)',
+                    background: 'transparent',
+                    color: 'var(--err)',
+                    fontFamily: 'var(--font-ui)',
+                    fontSize: 13,
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                  }}
+                >
+                  Esci da tutti i dispositivi
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={onLogout}>
-          Esci
-        </button>
       </div>
     </header>
   );

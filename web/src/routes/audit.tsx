@@ -201,7 +201,7 @@ export function AuditPage_({ canVerify }: { canVerify: boolean }) {
                   Carica altre 50
                 </Button>
               ) : (
-                <p className="t-sm" style={{ color: 'var(--tx-muted)', margin: 0 }}>
+                <p className="t-lead" style={{ color: 'var(--tx-muted)', margin: 0 }}>
                   Fine del registro con questi filtri.
                 </p>
               )}
@@ -260,7 +260,7 @@ function AuditRow({
           </span>
           {entry.target.label ? (
             <span
-              className="t-sm"
+              className="t-lead"
               style={{
                 display: 'block',
                 color: 'var(--tx-muted)',
@@ -276,7 +276,7 @@ function AuditRow({
 
         <span style={{ minWidth: 0 }}>
           <span
-            className="t-sm"
+            className="t-lead"
             style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
           >
             {entry.actor.name ?? '—'}
@@ -299,7 +299,7 @@ function AuditRow({
       {expanded ? (
         <div style={{ marginTop: 'var(--sp3)', display: 'grid', gap: 'var(--sp3)' }}>
           <dl
-            className="t-sm"
+            className="t-lead"
             style={{
               display: 'grid',
               gridTemplateColumns: 'auto 1fr',
@@ -345,7 +345,7 @@ function JsonBlock({ title, value }: { title: string; value: unknown }) {
   if (value === null || value === undefined) return null;
   return (
     <div>
-      <p className="t-micro" style={{ margin: '0 0 var(--sp1)', color: 'var(--tx-muted)' }}>
+      <p className="t-group" style={{ margin: '0 0 var(--sp1)', color: 'var(--tx-muted)' }}>
         {title}
       </p>
       <pre

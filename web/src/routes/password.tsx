@@ -10,7 +10,7 @@
 
 import { useNavigate } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
-import { Banner, Button, Field } from '../components/ui.tsx';
+import { Notice as Banner, Button, Field } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
 function Frame({ title, children }: { title: string; children: React.ReactNode }) {
@@ -25,7 +25,7 @@ function Frame({ title, children }: { title: string; children: React.ReactNode }
       }}
     >
       <div style={{ width: 'min(400px, 100%)' }}>
-        <h1 className="t-h1" style={{ margin: '0 0 var(--sp6)' }}>
+        <h1 className="t-title" style={{ margin: '0 0 var(--sp6)' }}>
           {title}
         </h1>
         {children}
@@ -59,7 +59,7 @@ export function ForgotPasswordPage() {
 
   return (
     <Frame title="Password dimenticata">
-      <p className="t-sm" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-muted)' }}>
+      <p className="t-lead" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-muted)' }}>
         Ti mandiamo un link per reimpostarla. Dopo dovrai comunque accedere con il tuo secondo fattore.
       </p>
 
@@ -147,7 +147,7 @@ export function ResetPasswordPage() {
   if (!token) {
     return (
       <Frame title="Link non valido">
-        <p className="t-body" style={{ color: 'var(--tx-secondary)', margin: '0 0 var(--sp5)' }}>
+        <p className="t-lead" style={{ color: 'var(--tx-secondary)', margin: '0 0 var(--sp5)' }}>
           Il link è scaduto, è già stato usato, oppure non è mai esistito. Chiedine uno nuovo dal login.
         </p>
         <Button variant="secondary" onClick={() => void navigate({ to: '/login' })}>

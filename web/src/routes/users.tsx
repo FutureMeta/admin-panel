@@ -97,14 +97,14 @@ export function UsersPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => vo
                   <tr key={u.id}>
                     <td>
                       <p style={{ margin: 0, font: '600 14px/20px var(--font-ui)' }}>{u.name}</p>
-                      <p className="t-sm" style={{ margin: 0, color: 'var(--tx-muted)' }}>
+                      <p className="t-lead" style={{ margin: 0, color: 'var(--tx-muted)' }}>
                         {u.email}
                       </p>
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: 'var(--sp2)', flexWrap: 'wrap' }}>
                         {u.roles.length === 0 ? (
-                          <span className="t-sm" style={{ color: 'var(--tx-muted)' }}>
+                          <span className="t-lead" style={{ color: 'var(--tx-muted)' }}>
                             nessuno
                           </span>
                         ) : (
@@ -194,7 +194,7 @@ function Drawer({
         }}
       >
         <header style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--sp5)' }}>
-          <h2 className="t-h2" style={{ margin: 0 }}>
+          <h2 className="t-title" style={{ margin: 0 }}>
             {title}
           </h2>
           <Button variant="ghost" size="sm" onClick={onClose} aria-label="Chiudi">
@@ -279,7 +279,7 @@ function UserDrawer({
         {error ? <Banner tone="err" title={error} /> : null}
 
         <div>
-          <p className="t-sm" style={{ margin: 0, color: 'var(--tx-muted)' }}>
+          <p className="t-lead" style={{ margin: 0, color: 'var(--tx-muted)' }}>
             {user.email}
           </p>
           <div style={{ display: 'flex', gap: 'var(--sp2)', marginTop: 'var(--sp3)', flexWrap: 'wrap' }}>
@@ -296,14 +296,14 @@ function UserDrawer({
             ))}
           </div>
           {user.banned && user.banReason ? (
-            <p className="t-sm" style={{ margin: 'var(--sp3) 0 0', color: 'var(--tx-secondary)' }}>
+            <p className="t-lead" style={{ margin: 'var(--sp3) 0 0', color: 'var(--tx-secondary)' }}>
               Motivo: {user.banReason}
             </p>
           ) : null}
         </div>
 
         <section>
-          <h3 className="t-h3" style={{ margin: '0 0 var(--sp3)' }}>
+          <h3 className="t-group" style={{ margin: '0 0 var(--sp3)' }}>
             Permessi effettivi
           </h3>
           <table className="table">
@@ -325,11 +325,11 @@ function UserDrawer({
         </section>
 
         <section>
-          <h3 className="t-h3" style={{ margin: '0 0 var(--sp3)' }}>
+          <h3 className="t-group" style={{ margin: '0 0 var(--sp3)' }}>
             Sessioni attive ({sessions.length})
           </h3>
           {sessions.length === 0 ? (
-            <p className="t-sm" style={{ color: 'var(--tx-muted)', margin: 0 }}>
+            <p className="t-lead" style={{ color: 'var(--tx-muted)', margin: 0 }}>
               Nessuna sessione aperta.
             </p>
           ) : (
@@ -343,7 +343,7 @@ function UserDrawer({
                         {s.ipAddress ?? '—'}
                       </p>
                     </td>
-                    <td className="t-sm" style={{ color: 'var(--tx-muted)', maxWidth: 220 }}>
+                    <td className="t-lead" style={{ color: 'var(--tx-muted)', maxWidth: 220 }}>
                       {s.userAgent ?? '—'}
                     </td>
                   </tr>
@@ -355,7 +355,7 @@ function UserDrawer({
 
         {canManageUsers || canManageSessions ? (
           <section style={{ display: 'grid', gap: 'var(--sp3)' }}>
-            <h3 className="t-h3" style={{ margin: 0 }}>
+            <h3 className="t-group" style={{ margin: 0 }}>
               Azioni
             </h3>
             {canManageSessions ? (
@@ -583,11 +583,11 @@ export function RolesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => vo
                 <th key={r.id} style={{ textAlign: 'center', minWidth: 132 }}>
                   {r.name}
                   {r.isSystem ? (
-                    <p className="t-sm" style={{ margin: 0, textTransform: 'none', letterSpacing: 0 }}>
+                    <p className="t-lead" style={{ margin: 0, textTransform: 'none', letterSpacing: 0 }}>
                       non modificabile
                     </p>
                   ) : (
-                    <p className="t-sm" style={{ margin: 0, textTransform: 'none', letterSpacing: 0 }}>
+                    <p className="t-lead" style={{ margin: 0, textTransform: 'none', letterSpacing: 0 }}>
                       {r.members} {r.members === 1 ? 'persona' : 'persone'}
                     </p>
                   )}

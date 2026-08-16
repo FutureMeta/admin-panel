@@ -97,13 +97,13 @@ export function InvitesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => 
                     <td>
                       <Badge tone="neutral">{invite.roleName}</Badge>
                     </td>
-                    <td className="t-sm" style={{ color: 'var(--tx-muted)' }}>
+                    <td className="t-lead" style={{ color: 'var(--tx-muted)' }}>
                       {invite.invitedByName ?? '—'}
                     </td>
                     <td>
                       <DateTime value={invite.expiresAt} />{' '}
                       <span
-                        className="t-sm"
+                        className="t-lead"
                         style={{ color: expiringSoon ? 'var(--warn)' : 'var(--tx-muted)' }}
                       >
                         (<RelativeTime value={invite.expiresAt} />)

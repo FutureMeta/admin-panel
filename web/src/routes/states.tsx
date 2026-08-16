@@ -7,7 +7,7 @@
 
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { Banner, Button } from '../components/ui.tsx';
+import { Notice as Banner, Button } from '../components/ui.tsx';
 
 function SystemState({
   code,
@@ -32,15 +32,23 @@ function SystemState({
     >
       <div style={{ maxWidth: 460, textAlign: 'center' }}>
         <p
-          className="t-display tabular"
-          style={{ margin: 0, color: 'var(--ac)', fontSize: 56, lineHeight: '60px' }}
+          className="tabular"
+          style={{
+            margin: 0,
+            color: 'var(--ac)',
+            fontFamily: 'var(--font-display)',
+            fontWeight: 700,
+            fontSize: 56,
+            lineHeight: '60px',
+            letterSpacing: '-.02em',
+          }}
         >
           {code}
         </p>
-        <h1 className="t-h1" style={{ margin: 'var(--sp4) 0 var(--sp3)' }}>
+        <h1 className="t-title" style={{ margin: 'var(--sp4) 0 var(--sp3)' }}>
           {title}
         </h1>
-        <p className="t-body" style={{ margin: '0 0 var(--sp6)', color: 'var(--tx-secondary)' }}>
+        <p className="t-lead" style={{ margin: '0 0 var(--sp6)', color: 'var(--tx-secondary)' }}>
           {description}
         </p>
         {action}

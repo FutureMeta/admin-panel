@@ -12,11 +12,12 @@ import {
   Outlet,
   RouterProvider,
   useNavigate,
+  useRouterState,
 } from '@tanstack/react-router';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { type Command, CommandPalette, Sidebar, Topbar } from './components/shell.tsx';
-import { Banner, Button, Card, Field, SkeletonRows } from './components/ui.tsx';
+import { Button, Card, Field, Notice, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
@@ -81,17 +82,17 @@ function StepUpDialog({ open, onClose }: { open: boolean; onClose: (ok: boolean)
       }}
     >
       <div className="elevated" style={{ width: 'min(420px, 92vw)', padding: 'var(--sp6)' }}>
-        <h2 className="t-h2" style={{ margin: '0 0 var(--sp2)' }}>
+        <h2 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
           Conferma la tua identità
         </h2>
-        <p className="t-sm" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-muted)' }}>
+        <p className="t-lead" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-muted)' }}>
           Questa operazione tocca privilegi. Serve un codice fresco della tua app: vale per i dieci minuti
           successivi.
         </p>
 
         {error ? (
           <div style={{ marginBottom: 'var(--sp4)' }}>
-            <Banner tone="err" title={error} />
+            <Notice tone="err" title={error} />
           </div>
         ) : null}
 
@@ -113,7 +114,7 @@ function StepUpDialog({ open, onClose }: { open: boolean; onClose: (ok: boolean)
         >
           <Field
             label="Codice a sei cifre"
-            className="input-otp"
+            className="input input-mono"
             inputMode="numeric"
             maxLength={6}
             autoFocus
@@ -147,6 +148,7 @@ function AppShell() {
   const [collapsed, setCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [stepUpOpen, setStepUpOpen] = useState(false);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
 
@@ -203,14 +205,25 @@ function AppShell() {
     },
   ];
 
+  // Il titolo della pagina corrente, per il breadcrumb della topbar.
+  const breadcrumb = pathname.startsWith('/utenti')
+    ? 'Utenti'
+    : pathname.startsWith('/ruoli')
+      ? 'Ruoli e permessi'
+      : pathname.startsWith('/inviti')
+        ? 'Inviti'
+        : pathname.startsWith('/registro')
+          ? 'Registro attività'
+          : 'Panoramica';
+
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
-      <Sidebar me={data} collapsed={collapsed} />
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
+      <Sidebar me={data} collapsed={collapsed} onOpenPalette={() => setPaletteOpen(true)} />
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
         <Topbar
           me={data}
+          breadcrumb={breadcrumb}
           onToggleSidebar={() => setCollapsed((c) => !c)}
-          onOpenPalette={() => setPaletteOpen(true)}
           onLogout={() => {
             void api('/api/session/logout-all', { method: 'POST' }).finally(() =>
               window.location.assign('/login'),
@@ -218,8 +231,10 @@ function AppShell() {
           }}
           feedDisconnected={false}
         />
-        <main style={{ flex: 1, overflowY: 'auto', padding: 'var(--sp6)' }}>
-          <Outlet />
+        <main style={{ flex: 1, overflowY: 'auto', padding: '24px 24px 64px' }}>
+          <div style={{ maxWidth: 1440, margin: '0 auto', display: 'grid', gap: 20 }}>
+            <Outlet />
+          </div>
         </main>
       </div>
 
@@ -264,7 +279,7 @@ function HomePage() {
       title={`Ciao, ${me.data.name}`}
       subtitle="Fase 1: accessi, ruoli e registro. Le statistiche arrivano dopo."
     >
-      <p className="t-body" style={{ color: 'var(--tx-secondary)', margin: 0 }}>
+      <p className="t-lead" style={{ color: 'var(--tx-secondary)', margin: 0 }}>
         Hai accesso a {me.data.modules.length} moduli. Li trovi nel menu a sinistra: compaiono solo quelli che
         puoi davvero aprire.
       </p>

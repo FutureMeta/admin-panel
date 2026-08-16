@@ -1,10 +1,13 @@
 /* Stile dell'applicazione.
  *
- * I token di design/tokens.css sono la FONTE DI VERITA' visiva: qui non si
- * ridefinisce un colore, lo si consuma come var(--nome). Tailwind e' mappato
- * su quegli stessi token con @theme inline, cosi' una utility come `bg-surface`
- * e una regola scritta a mano puntano allo stesso valore e non possono
- * divergere.
+ * Le metriche NON sono inventate: sono quelle del prototipo
+ * "MetaMC Admin - standalone.html", estratte dal suo markup. Input alti 38px e
+ * non 40, raggio `r-sm` e non `r-md`, voci di menu da 13px con una barra da
+ * 2px a sinistra, topbar con backdrop-filter. Sono differenze piccole una per
+ * una, e tutte insieme sono la differenza fra "somiglia" e "è".
+ *
+ * I token di design/tokens.css restano la fonte di verità dei valori: qui non
+ * si ridefinisce un colore, lo si consuma come var(--nome).
  */
 
 @import 'tailwindcss';
@@ -16,43 +19,35 @@
   --color-elevated: var(--s-elevated);
   --color-overlay: var(--s-overlay);
   --color-inset: var(--s-inset);
-
   --color-tx: var(--tx-primary);
   --color-tx-secondary: var(--tx-secondary);
   --color-tx-muted: var(--tx-muted);
-  --color-tx-disabled: var(--tx-disabled);
-
   --color-ac: var(--ac);
-  --color-ac-hover: var(--ac-hover);
-  --color-ac-pressed: var(--ac-pressed);
-  --color-ac-soft: var(--ac-soft);
-  --color-ac-text: var(--ac-text);
   --color-blu: var(--blu);
-  --color-blu-viz: var(--blu-viz);
-
   --color-ok: var(--ok);
   --color-warn: var(--warn);
   --color-err: var(--err);
   --color-info: var(--info);
-
   --radius-xs: var(--r-xs);
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);
-  --radius-xl: var(--r-xl);
-
   --font-ui: var(--font-ui);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
+}
+
+/* Il testo sul fondo arancio è il nero caldo del logo, non il fondo della
+ * pagina: è il valore che usa il prototipo su ogni bottone primario. */
+:root {
+  --on-ac: #160a02;
 }
 
 /* --------------------------------------------------------------------------
  * Base
  * ------------------------------------------------------------------------ */
 
-*,
-*::before,
-*::after {
+* {
   box-sizing: border-box;
 }
 
@@ -66,28 +61,51 @@ body {
   margin: 0;
   background: var(--s-base);
   color: var(--tx-primary);
-  font: 400 14px/22px var(--font-ui);
+  font-family: var(--font-ui);
+  font-size: 13.5px;
   -webkit-font-smoothing: antialiased;
 }
 
-/* La profondita' viene dai bordi hairline, non dalle ombre. */
-hr {
-  border: 0;
-  border-top: 1px solid var(--bd-subtle);
+a {
+  color: var(--ac-text);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--ac-hover);
 }
 
-/* Il focus e' sempre visibile e sempre dello stesso colore: l'arancio del
- * brand e' riservato ad azione primaria, stato attivo e focus. */
 :where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--bd-focus);
   outline-offset: 2px;
   border-radius: var(--r-xs);
 }
 
-/* Ogni elemento che mostra numeri usa cifre tabulari: senza, una colonna di
- * importi balla a ogni aggiornamento. */
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+@keyframes mmShimmer {
+  0% {
+    background-position: -320px 0;
+  }
+  100% {
+    background-position: 320px 0;
+  }
+}
+@keyframes mmRise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes mmSpin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -100,21 +118,54 @@ hr {
 }
 
 /* --------------------------------------------------------------------------
- * Componenti ricorrenti
+ * Componenti
  * ------------------------------------------------------------------------ */
 
 @layer components {
+  /* --- tipografia --------------------------------------------------------- */
+  .t-eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ac-text);
+  }
+  .t-title {
+    font-family: var(--font-display);
+    font-size: 24px;
+    line-height: 32px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .t-lead {
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--tx-muted);
+  }
+  .t-group {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tx-muted);
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --- superfici ---------------------------------------------------------- */
   .surface {
     background: var(--s-surface);
     border: 1px solid var(--bd-subtle);
     border-radius: var(--r-lg);
   }
-
   .elevated {
-    background: var(--s-elevated);
-    border: 1px solid var(--bd-subtle);
-    border-radius: var(--r-lg);
-    box-shadow: var(--e2);
+    background: var(--s-overlay);
+    border: 1px solid var(--bd-strong);
+    border-radius: var(--r-md);
+    box-shadow: var(--e3);
   }
 
   /* --- bottoni ------------------------------------------------------------ */
@@ -122,18 +173,20 @@ hr {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    gap: var(--sp2);
-    height: 36px;
-    padding: 0 var(--sp4);
+    gap: 8px;
+    height: 34px;
+    padding: 0 14px;
     border: 1px solid transparent;
-    border-radius: var(--r-md);
-    font: 600 14px/20px var(--font-ui);
+    border-radius: var(--r-sm);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    transition:
-      background var(--dur-fast) var(--ease),
-      border-color var(--dur-fast) var(--ease),
-      color var(--dur-fast) var(--ease);
     white-space: nowrap;
+    transition:
+      background var(--dur) var(--ease),
+      border-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
   }
   .btn:disabled {
     cursor: not-allowed;
@@ -142,18 +195,20 @@ hr {
     border-color: var(--bd-subtle);
   }
   .btn-sm {
-    height: 30px;
-    padding: 0 var(--sp3);
-    font-size: 13px;
+    height: 28px;
+    padding: 0 11px;
+    font-size: 12px;
+    font-weight: 500;
   }
   .btn-lg {
-    height: 44px;
-    padding: 0 var(--sp6);
+    height: 40px;
+    padding: 0 18px;
+    font-size: 14px;
   }
 
   .btn-primary {
     background: var(--ac);
-    color: #0a161d;
+    color: var(--on-ac);
   }
   .btn-primary:hover:not(:disabled) {
     background: var(--ac-hover);
@@ -164,11 +219,12 @@ hr {
 
   .btn-secondary {
     background: var(--s-elevated);
-    border-color: var(--bd-strong);
-    color: var(--tx-primary);
+    border-color: var(--bd-subtle);
+    color: var(--tx-secondary);
   }
   .btn-secondary:hover:not(:disabled) {
     background: var(--s-overlay);
+    color: var(--tx-primary);
   }
 
   .btn-ghost {
@@ -190,23 +246,26 @@ hr {
 
   /* --- campi -------------------------------------------------------------- */
   .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--sp2);
+    display: block;
   }
   .label {
-    font: 600 13px/18px var(--font-ui);
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
     color: var(--tx-secondary);
+    margin-bottom: 7px;
   }
   .input {
-    height: 40px;
-    padding: 0 var(--sp3);
-    background: var(--s-inset);
-    border: 1px solid var(--bd-subtle);
-    border-radius: var(--r-md);
-    color: var(--tx-primary);
-    font: 400 14px/22px var(--font-ui);
     width: 100%;
+    height: 38px;
+    padding: 0 12px;
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-sm);
+    background: var(--s-inset);
+    color: var(--tx-primary);
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    transition: border-color var(--dur-fast) var(--ease);
   }
   .input::placeholder {
     color: var(--tx-disabled);
@@ -214,60 +273,220 @@ hr {
   .input:hover {
     border-color: var(--bd-strong);
   }
+  .input:focus {
+    border-color: var(--ac);
+  }
   .input[aria-invalid='true'] {
     border-color: var(--err);
   }
-  .input-otp {
-    font: 400 22px/28px var(--font-mono);
-    letter-spacing: 0.5em;
-    text-align: center;
-    padding-left: 0.5em;
+  .input-mono {
+    font-family: var(--font-mono);
+  }
+  select.input {
+    padding-right: 8px;
   }
   .hint {
-    font: 400 12px/18px var(--font-ui);
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 18px;
     color: var(--tx-muted);
   }
   .error-text {
-    font: 400 13px/20px var(--font-ui);
+    display: block;
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 18px;
     color: var(--err);
   }
 
-  /* --- badge -------------------------------------------------------------- */
-  .badge {
+  /* Le sei celle del codice: il prototipo le tiene separate, non un campo
+   * unico con letter-spacing. */
+  .otp-row {
+    display: flex;
+    gap: 8px;
+  }
+  .otp-cell {
+    flex: 1;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-sm);
+    background: var(--s-inset);
+    font-family: var(--font-mono);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--tx-primary);
+  }
+  .otp-cell[data-filled='true'] {
+    border-color: var(--bd-strong);
+  }
+  .otp-cell[data-active='true'] {
+    border-color: var(--ac);
+    box-shadow: 0 0 0 3px var(--ac-soft);
+  }
+
+  /* --- pill e badge ------------------------------------------------------- */
+  .pill {
     display: inline-flex;
     align-items: center;
-    gap: var(--sp1);
-    height: 22px;
-    padding: 0 var(--sp2);
+    gap: 7px;
+    height: 24px;
+    padding: 0 10px;
     border-radius: var(--r-full);
-    font: 600 11px/14px var(--font-ui);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+    font-size: 11px;
+    font-weight: 600;
     white-space: nowrap;
   }
-  .badge-ok {
+  .pill-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: currentColor;
+    flex: none;
+  }
+  .pill-ok {
     background: var(--ok-soft);
     color: var(--ok);
   }
-  .badge-warn {
+  .pill-warn {
     background: var(--warn-soft);
     color: var(--warn);
   }
-  .badge-err {
+  .pill-err {
     background: var(--err-soft);
     color: var(--err);
   }
-  .badge-info {
+  .pill-info {
     background: var(--info-soft);
     color: var(--info);
   }
-  .badge-neutral {
+  .pill-ac {
+    background: var(--ac-soft);
+    color: var(--ac-text);
+  }
+  .pill-neutral {
     background: var(--s-inset);
     color: var(--tx-secondary);
   }
-  .badge-ac {
+
+  /* --- avviso in linea ---------------------------------------------------- */
+  .notice {
+    display: flex;
+    gap: 10px;
+    padding: 12px 14px;
+    border-radius: var(--r-sm);
+  }
+  .notice-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-top: 7px;
+    flex: none;
+    background: currentColor;
+  }
+  .notice-title {
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .notice-body {
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--tx-secondary);
+    margin-top: 3px;
+  }
+  .notice-err {
+    border: 1px solid rgba(219, 52, 52, 0.35);
+    background: var(--err-soft);
+    color: var(--err);
+  }
+  .notice-warn {
+    border: 1px solid rgba(224, 163, 46, 0.35);
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+  .notice-info {
+    border: 1px solid rgba(63, 163, 212, 0.35);
+    background: var(--info-soft);
+    color: var(--info);
+  }
+
+  /* --- navigazione -------------------------------------------------------- */
+  .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    height: 36px;
+    padding: 0 9px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--tx-secondary);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    text-align: left;
+    text-decoration: none;
+    transition: background var(--dur) var(--ease);
+  }
+  .nav-item:hover {
+    background: var(--s-elevated);
+    color: var(--tx-primary);
+  }
+  .nav-item[data-active='true'] {
     background: var(--ac-soft);
     color: var(--ac-text);
+  }
+  /* La barra a sinistra è l'indicatore di stato attivo del prototipo: 2px,
+   * rientrata di 8px sopra e sotto. */
+  .nav-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    border-radius: 2px;
+    background: transparent;
+  }
+  .nav-item[data-active='true']::before {
+    background: var(--ac);
+  }
+  .nav-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .search-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 32px;
+    padding: 0 9px;
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-sm);
+    background: var(--s-inset);
+    color: var(--tx-muted);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    cursor: pointer;
+    text-align: left;
+  }
+  .search-trigger:hover {
+    border-color: var(--bd-strong);
+  }
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-xs);
+    padding: 1px 5px;
   }
 
   /* --- tabelle ------------------------------------------------------------ */
@@ -275,6 +494,7 @@ hr {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
+    font-size: 13px;
   }
   .table th {
     position: sticky;
@@ -282,16 +502,17 @@ hr {
     z-index: 1;
     background: var(--s-surface);
     border-bottom: 1px solid var(--bd-subtle);
-    padding: var(--sp3) var(--sp4);
+    padding: 10px 14px;
     text-align: left;
-    font: 600 11px/14px var(--font-ui);
-    letter-spacing: 0.1em;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--tx-muted);
     white-space: nowrap;
   }
   .table td {
-    padding: var(--sp3) var(--sp4);
+    padding: 11px 14px;
     border-bottom: 1px solid var(--bd-subtle);
     vertical-align: middle;
   }
@@ -302,70 +523,23 @@ hr {
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
-  .mono {
-    font: 400 12px/18px var(--font-mono);
-    color: var(--tx-secondary);
-  }
-
-  /* --- sidebar ------------------------------------------------------------ */
-  .nav-item {
-    display: flex;
-    align-items: center;
-    gap: var(--sp3);
-    height: 36px;
-    padding: 0 var(--sp3);
-    border-radius: var(--r-md);
-    color: var(--tx-secondary);
-    font: 500 14px/20px var(--font-ui);
-    text-decoration: none;
-    transition: background var(--dur-fast) var(--ease);
-  }
-  .nav-item:hover {
-    background: var(--s-elevated);
-    color: var(--tx-primary);
-  }
-  .nav-item[data-active='true'] {
-    background: var(--ac-soft);
-    color: var(--ac-text);
-  }
 
   /* --- skeleton ----------------------------------------------------------- */
   .skeleton {
     background: linear-gradient(90deg, var(--s-inset) 25%, var(--s-elevated) 50%, var(--s-inset) 75%);
-    background-size: 200% 100%;
-    animation: skeleton 1.4s var(--ease) infinite;
-    border-radius: var(--r-sm);
-  }
-  @keyframes skeleton {
-    from {
-      background-position: 200% 0;
-    }
-    to {
-      background-position: -200% 0;
-    }
+    background-size: 320px 100%;
+    animation: mmShimmer 1.4s linear infinite;
+    border-radius: var(--r-xs);
   }
 
-  /* --- motivo esagonale del brand ----------------------------------------- */
-  .hex-panel {
-    background:
-      radial-gradient(120% 100% at 20% 0%, rgba(219, 110, 25, 0.1), transparent 60%),
-      radial-gradient(90% 80% at 90% 100%, rgba(36, 120, 161, 0.12), transparent 60%),
-      var(--s-inset);
-    position: relative;
-    overflow: hidden;
-  }
-  .hex-panel::before {
-    content: '';
-    position: absolute;
-    inset: -10%;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='64' viewBox='0 0 56 64'%3E%3Cpath d='M28 1 54 16v32L28 63 2 48V16z' fill='none' stroke='rgba(255,255,255,0.04)' stroke-width='1'/%3E%3C/svg%3E");
-    background-size: 56px 64px;
-    pointer-events: none;
+  /* --- avatar ------------------------------------------------------------- */
+  .avatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-full);
+    font-family: var(--font-mono);
+    color: rgba(255, 255, 255, 0.92);
+    flex: none;
   }
 }
-
-/* Nota: questo file è escluso dal check di Biome (biome.json).
- * Biome 2.5.8 non sa parsare la sintassi di Tailwind v4 — `@theme inline` in
- * particolare — e segnalerebbe un errore di parsing su un foglio di stile
- * valido. L'esclusione è mirata a questo file soltanto: il resto del CSS
- * dell'applicazione passa dal linter come tutto il resto. */

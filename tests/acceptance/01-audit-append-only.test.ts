@@ -82,6 +82,7 @@ describe('SEC-47 — audit log append-only', () => {
        WHERE n.nspname = 'audit' AND c.relname LIKE 'audit_log_%' ORDER BY 1 LIMIT 1`,
     );
     const name = part.rows[0]?.relname;
+    expect(name).toBeDefined();
     await expect(owner.query(`DELETE FROM audit.${name}`)).rejects.toThrow(/append-only/i);
   });
 
@@ -96,6 +97,6 @@ describe('SEC-47 — audit log append-only', () => {
       `SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
        WHERE n.nspname = 'stats' AND c.relkind IN ('r','p','m','v')`,
     );
-    expect(res.rows[0].n).toBe(0);
+    expect(res.rows[0]?.n).toBe(0);
   });
 });

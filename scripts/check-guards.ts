@@ -117,9 +117,14 @@ function main(): void {
   const files: string[] = [];
   for (const d of SCANNED_DIRS) walk(join(ROOT, d), files);
 
+  // Questo file CONTIENE i pattern vietati: e' la loro definizione. Escluderlo
+  // e' l'unica esenzione globale, ed e' esplicita.
+  const SELF = join('scripts', 'check-guards.ts');
+
   const violations: Violation[] = [];
   for (const file of files) {
     const rel = relative(ROOT, file);
+    if (rel === SELF) continue;
     const lines = readFileSync(file, 'utf8').split(/\r?\n/);
     for (const rule of RULES) {
       if (rule.exempt(rel)) continue;

@@ -30,6 +30,11 @@
     "isolatedModules": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "spikes/**/*.ts"],
-  "exclude": ["node_modules", "dist", "web"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+  // `spikes/` e' escluso: sono diagnostiche gia' eseguite, conservate come
+  // prova riproducibile degli esiti del §15. Girano sotto il type stripping
+  // di Node, non sono codice di produzione, e sottoporle a `strict` +
+  // `exactOptionalPropertyTypes` produrrebbe rumore su file che non
+  // cambieranno piu'.
+  "exclude": ["node_modules", "dist", "web", "spikes"]
 }

@@ -10,8 +10,8 @@
 // spezzata non si "ripara" in modo credibile, e riusare il database fra
 // scenari renderebbe l'esito del secondo dipendente dal primo.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 const PART = new Date().toISOString().slice(0, 7).replace('-', ''); // YYYYMM
@@ -83,7 +83,9 @@ async function chainTailId(f: Fixture): Promise<string> {
 }
 
 async function idOf(f: Fixture, action: string): Promise<string> {
-  const res = await f.owner.query<{ id: string }>('SELECT id FROM audit.audit_log WHERE action = $1', [action]);
+  const res = await f.owner.query<{ id: string }>('SELECT id FROM audit.audit_log WHERE action = $1', [
+    action,
+  ]);
   const id = res.rows[0]?.id;
   if (!id) throw new Error(`nessuna riga con action=${action}`);
   return id;

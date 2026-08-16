@@ -13,7 +13,12 @@
 // limiter degrada su uno store in memoria, NON apre il login.
 
 import type { Redis } from 'ioredis';
-import { RateLimiterMemory, RateLimiterRedis, type RateLimiterAbstract, RateLimiterRes } from 'rate-limiter-flexible';
+import {
+  type RateLimiterAbstract,
+  RateLimiterMemory,
+  RateLimiterRedis,
+  RateLimiterRes,
+} from 'rate-limiter-flexible';
 
 export type LimitSpec = {
   /** Tentativi consentiti nella finestra. */

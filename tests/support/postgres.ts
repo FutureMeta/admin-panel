@@ -9,15 +9,24 @@
 // 18.6; in locale, in assenza di un container runtime, va bene un cluster
 // effimero creato con `initdb -A trust` su una porta dedicata.
 
-import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { runMigrations } from '#scripts/migrate.ts';
 
-export const ADMIN_URL =
-  process.env.TEST_PG_ADMIN_URL ?? 'postgres://postgres@127.0.0.1:55432/postgres';
+export const ADMIN_URL = process.env.TEST_PG_ADMIN_URL ?? 'postgres://postgres@127.0.0.1:55432/postgres';
 
-/** Password dei ruoli di test: casuale per run, mai committata, mai riusata. */
-const ROLE_PASSWORD = randomBytes(18).toString('base64url');
+/**
+ * Password dei ruoli di test.
+ *
+ * DEVE essere identica in tutti i worker di vitest: i ruoli sono oggetti di
+ * CLUSTER, non di database, e una password diversa per processo significa che
+ * l'ultimo `ALTER ROLE` rompe le connessioni di tutti gli altri. Con una
+ * randomizzazione per processo il sintomo era `tuple concurrently updated` su
+ * pg_authid, che e' il modo in cui Postgres dice "vi state pestando i piedi".
+ *
+ * Non e' un segreto: vale su un cluster effimero, creato e distrutto dalla
+ * suite. In CI la si sovrascrive con TEST_PG_ROLE_PASSWORD.
+ */
+const ROLE_PASSWORD = process.env.TEST_PG_ROLE_PASSWORD ?? 'metamc-test-role-password';
 
 export type TestDatabase = {
   name: string;
@@ -60,15 +69,23 @@ let rolesReady: Promise<void> | undefined;
  */
 function ensureRoles(): Promise<void> {
   rolesReady ??= withAdmin(async (c) => {
-    for (const role of ['metamc_migrate', 'metamc_app']) {
-      await c.query(`
-        DO $$
-        BEGIN
-          IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}') THEN
-            CREATE ROLE ${role} LOGIN;
-          END IF;
-        END $$;`);
-      await c.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${ROLE_PASSWORD}'`);
+    // Lock advisory a livello di cluster: i worker di vitest sono processi
+    // distinti e arrivano qui insieme. Senza, due CREATE/ALTER ROLE
+    // simultanei collidono sulla stessa tupla di pg_authid.
+    await c.query('SELECT pg_advisory_lock(812026082)');
+    try {
+      for (const role of ['metamc_migrate', 'metamc_app']) {
+        await c.query(`
+          DO $$
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${role}') THEN
+              CREATE ROLE ${role} LOGIN;
+            END IF;
+          END $$;`);
+        await c.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${ROLE_PASSWORD}'`);
+      }
+    } finally {
+      await c.query('SELECT pg_advisory_unlock(812026082)').catch(() => undefined);
     }
   });
   return rolesReady;

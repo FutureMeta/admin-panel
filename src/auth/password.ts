@@ -64,9 +64,7 @@ export function needsRehash(phc: string, userPepperVersion: number, currentPeppe
   const p = phcParams(phc);
   if (!p) return true;
   return (
-    p.m !== ARGON2_PARAMS.memoryCost ||
-    p.t !== ARGON2_PARAMS.timeCost ||
-    p.p !== ARGON2_PARAMS.parallelism
+    p.m !== ARGON2_PARAMS.memoryCost || p.t !== ARGON2_PARAMS.timeCost || p.p !== ARGON2_PARAMS.parallelism
   );
 }
 

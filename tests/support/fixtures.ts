@@ -4,8 +4,8 @@
 // verificherebbero un sistema che non esiste.
 
 import { randomBytes } from 'node:crypto';
-import type { Database } from '#src/db/pool.ts';
 import type { ModuleKey } from '#src/authz/modules.ts';
+import type { Database } from '#src/db/pool.ts';
 
 export async function createUser(
   db: Database,

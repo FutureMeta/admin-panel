@@ -53,9 +53,18 @@ const EnvSchema = z.object({
   MAIL_FROM: z.string().default('MetaMC Admin <no-reply@metamc.it>'),
 
   // --- sessione -------------------------------------------------------------
-  SESSION_ABSOLUTE_SECONDS: z.coerce.number().int().default(8 * 60 * 60),
-  SESSION_IDLE_SECONDS: z.coerce.number().int().default(30 * 60),
-  STEP_UP_SECONDS: z.coerce.number().int().default(10 * 60),
+  SESSION_ABSOLUTE_SECONDS: z.coerce
+    .number()
+    .int()
+    .default(8 * 60 * 60),
+  SESSION_IDLE_SECONDS: z.coerce
+    .number()
+    .int()
+    .default(30 * 60),
+  STEP_UP_SECONDS: z.coerce
+    .number()
+    .int()
+    .default(10 * 60),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });

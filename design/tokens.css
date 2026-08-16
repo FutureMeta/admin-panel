@@ -4,43 +4,43 @@
 
 :root {
   /* Superfici — 4 livelli. La profondità viene dai bordi hairline, non dalle ombre. */
-  --s-base: #0A161D;
-  --s-surface: #0E1F28;
+  --s-base: #0a161d;
+  --s-surface: #0e1f28;
   --s-elevated: #132833;
-  --s-overlay: #17313E;
+  --s-overlay: #17313e;
   --s-inset: #071219;
 
   /* Bordi */
   --bd-subtle: rgba(255, 255, 255, 0.07);
   --bd-strong: rgba(255, 255, 255, 0.15);
-  --bd-focus: #DB6E19;
+  --bd-focus: #db6e19;
 
   /* Testo */
-  --tx-primary: #E9F1F5;
-  --tx-secondary: #A9BEC9;
+  --tx-primary: #e9f1f5;
+  --tx-secondary: #a9bec9;
   --tx-muted: #718996;
-  --tx-disabled: #4B5F6B;
+  --tx-disabled: #4b5f6b;
 
   /* Accento brand — riservato ad azione primaria, stato attivo, serie dati principale, focus */
-  --ac: #DB6E19;
-  --ac-hover: #EE7F2A;
-  --ac-pressed: #B85A12;
+  --ac: #db6e19;
+  --ac-hover: #ee7f2a;
+  --ac-pressed: #b85a12;
   --ac-soft: rgba(219, 110, 25, 0.12);
-  --ac-text: #F0913F; /* variante testo: 7.09:1 su --s-surface */
+  --ac-text: #f0913f; /* variante testo: 7.09:1 su --s-surface */
 
   /* Blu brand */
-  --blu: #2478A1;
-  --blu-viz: #3FA3D4;
+  --blu: #2478a1;
+  --blu-viz: #3fa3d4;
   --blu-soft: rgba(63, 163, 212, 0.12);
 
   /* Semantici */
-  --ok: #22C55E;
+  --ok: #22c55e;
   --ok-soft: rgba(34, 197, 94, 0.12);
-  --warn: #E0A32E;
+  --warn: #e0a32e;
   --warn-soft: rgba(224, 163, 46, 0.12);
-  --err: #DB3434;
+  --err: #db3434;
   --err-soft: rgba(219, 52, 52, 0.12);
-  --info: #3FA3D4;
+  --info: #3fa3d4;
   --info-soft: rgba(63, 163, 212, 0.12);
 
   --grid: rgba(255, 255, 255, 0.05);
@@ -77,68 +77,89 @@
   --dur-chart: 400ms;
 
   /* Tipografia */
-  --font-ui: 'Inter', system-ui, sans-serif;        /* corpo, tabelle, UI densa */
-  --font-display: 'Montserrat', system-ui, sans-serif; /* titoli, KPI, lockup */
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace; /* ID, UUID, IP, comandi */
+  --font-ui: "Inter", system-ui, sans-serif; /* corpo, tabelle, UI densa */
+  --font-display: "Montserrat", system-ui, sans-serif; /* titoli, KPI, lockup */
+  --font-mono: "JetBrains Mono", ui-monospace, monospace; /* ID, UUID, IP, comandi */
 }
 
 [data-theme="light"] {
-  --s-base: #F4F6F7;
-  --s-surface: #FFFFFF;
-  --s-elevated: #FFFFFF;
-  --s-overlay: #FFFFFF;
-  --s-inset: #EDF1F3;
+  --s-base: #f4f6f7;
+  --s-surface: #ffffff;
+  --s-elevated: #ffffff;
+  --s-overlay: #ffffff;
+  --s-inset: #edf1f3;
 
-  --bd-subtle: rgba(14, 34, 45, 0.10);
-  --bd-strong: rgba(14, 34, 45, 0.20);
+  --bd-subtle: rgba(14, 34, 45, 0.1);
+  --bd-strong: rgba(14, 34, 45, 0.2);
 
-  --tx-primary: #0E222D;
-  --tx-secondary: #41606E;
-  --tx-muted: #6C8593;
-  --tx-disabled: #A3B4BD;
+  --tx-primary: #0e222d;
+  --tx-secondary: #41606e;
+  --tx-muted: #6c8593;
+  --tx-disabled: #a3b4bd;
 
-  --ac: #C25E10;
-  --ac-hover: #A94F09;
-  --ac-pressed: #8C4207;
-  --ac-soft: rgba(194, 94, 16, 0.10);
-  --ac-text: #A94F09;
+  --ac: #c25e10;
+  --ac-hover: #a94f09;
+  --ac-pressed: #8c4207;
+  --ac-soft: rgba(194, 94, 16, 0.1);
+  --ac-text: #a94f09;
 
-  --blu: #1F6E95;
-  --blu-viz: #1F6E95;
-  --blu-soft: rgba(31, 110, 149, 0.10);
+  --blu: #1f6e95;
+  --blu-viz: #1f6e95;
+  --blu-soft: rgba(31, 110, 149, 0.1);
 
-  --ok: #15803D;
-  --ok-soft: rgba(21, 128, 61, 0.10);
-  --warn: #9A6700;
-  --warn-soft: rgba(154, 103, 0, 0.10);
-  --err: #B91C1C;
-  --err-soft: rgba(185, 28, 28, 0.10);
-  --info: #1F6E95;
-  --info-soft: rgba(31, 110, 149, 0.10);
+  --ok: #15803d;
+  --ok-soft: rgba(21, 128, 61, 0.1);
+  --warn: #9a6700;
+  --warn-soft: rgba(154, 103, 0, 0.1);
+  --err: #b91c1c;
+  --err-soft: rgba(185, 28, 28, 0.1);
+  --info: #1f6e95;
+  --info-soft: rgba(31, 110, 149, 0.1);
 
   --grid: rgba(14, 34, 45, 0.07);
 
   --e1: 0 1px 2px rgba(14, 34, 45, 0.08);
-  --e2: 0 4px 14px rgba(14, 34, 45, 0.10);
+  --e2: 0 4px 14px rgba(14, 34, 45, 0.1);
   --e3: 0 18px 44px rgba(14, 34, 45, 0.16);
 }
 
 /* Scala tipografica — Montserrat display / Inter UI / JetBrains Mono dati tecnici.
    Ogni elemento che mostra numeri usa font-variant-numeric: tabular-nums. */
-.t-display { font: 700 34px/40px var(--font-display); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.t-h1      { font: 700 24px/32px var(--font-display); letter-spacing: -0.01em; }
-.t-h2      { font: 600 18px/26px var(--font-display); }
-.t-h3      { font: 600 15px/22px var(--font-ui); }
-.t-body    { font: 400 14px/22px var(--font-ui); }
-.t-sm      { font: 400 13px/20px var(--font-ui); }
-.t-micro   { font: 600 11px/14px var(--font-ui); letter-spacing: 0.10em; text-transform: uppercase; }
-.t-mono    { font: 400 12px/18px var(--font-mono); }
+.t-display {
+  font: 700 34px / 40px var(--font-display);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.t-h1 {
+  font: 700 24px / 32px var(--font-display);
+  letter-spacing: -0.01em;
+}
+.t-h2 {
+  font: 600 18px / 26px var(--font-display);
+}
+.t-h3 {
+  font: 600 15px / 22px var(--font-ui);
+}
+.t-body {
+  font: 400 14px / 22px var(--font-ui);
+}
+.t-sm {
+  font: 400 13px / 20px var(--font-ui);
+}
+.t-micro {
+  font: 600 11px / 14px var(--font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.t-mono {
+  font: 400 12px / 18px var(--font-mono);
+}
 
 /* Palette data-viz — un colore per modalità, identico in tutta l'app.
    Ogni serie ha anche una forma di marker dedicata perché il colore non basta. */
 :root {
-  --viz-vanilla-war: #E8822B; /* marker: cerchio   */
-  --viz-survival:    #1F6E95; /* marker: quadrato  */
-  --viz-towny:       #F2CC7B; /* marker: triangolo */
-  --viz-oasis:       #57B8A6; /* marker: rombo     */
+  --viz-vanilla-war: #e8822b; /* marker: cerchio   */
+  --viz-survival: #1f6e95; /* marker: quadrato  */
+  --viz-towny: #f2cc7b; /* marker: triangolo */
+  --viz-oasis: #57b8a6; /* marker: rombo     */
 }

@@ -2,7 +2,14 @@
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
   "files": {
-    "includes": ["**", "!**/node_modules/**", "!**/dist/**", "!**/pnpm-lock.yaml", "!MetaMC Admin - standalone.html"]
+    "includes": [
+      "**",
+      "!node_modules",
+      "!dist",
+      "!**/pnpm-lock.yaml",
+      "!MetaMC Admin - standalone.html",
+      "!spikes"
+    ]
   },
   "formatter": {
     "enabled": true,

@@ -15,7 +15,7 @@ import type { Redis } from 'ioredis';
 import type { Database } from '#src/db/pool.ts';
 import { KEYS } from '#src/redis/client.ts';
 import type { AuthzSnapshot } from './context.ts';
-import { MODULES, type Level, type ModuleKey } from './modules.ts';
+import { type Level, MODULES, type ModuleKey } from './modules.ts';
 
 export type PermissionMap = Record<ModuleKey, Level>;
 

@@ -4,8 +4,8 @@
 // fase 2 si aggiunge `statsPool` (max 8-10, statement_timeout 10s, ruolo di
 // sola lettura) senza toccare una riga del codice di fase 1.
 
-import pg from 'pg';
 import { Kysely, PostgresDialect } from 'kysely';
+import pg from 'pg';
 import type { DB } from './types.ts';
 
 export type PoolOptions = {

@@ -103,7 +103,11 @@ export async function buildAnchors(db: Database, key: Buffer, now = new Date()):
   });
 }
 
-export async function markAnchored(db: Database, partitionKeys: readonly string[], now = new Date()): Promise<void> {
+export async function markAnchored(
+  db: Database,
+  partitionKeys: readonly string[],
+  now = new Date(),
+): Promise<void> {
   if (partitionKeys.length === 0) return;
   await db
     .updateTable('audit.chain_head')

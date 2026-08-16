@@ -7,8 +7,8 @@
 //   livello 2 — trigger: difende dall'errore umano, anche di chi ha i privilegi
 //   livello 3 — catena hash: verificata nel test 2
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 let db: TestDatabase;
@@ -40,7 +40,9 @@ describe('SEC-47 — audit log append-only', () => {
   });
 
   it('livello 1 — DELETE dal ruolo metamc_app e` negato dai privilegi', async () => {
-    await expect(app.query('DELETE FROM audit.audit_log')).rejects.toThrow(/permission denied|permesso negato/i);
+    await expect(app.query('DELETE FROM audit.audit_log')).rejects.toThrow(
+      /permission denied|permesso negato/i,
+    );
   });
 
   it('livello 1 — UPDATE dal ruolo metamc_app e` negato dai privilegi', async () => {
@@ -50,7 +52,9 @@ describe('SEC-47 — audit log append-only', () => {
   });
 
   it('livello 1 — TRUNCATE dal ruolo metamc_app e` negato', async () => {
-    await expect(app.query('TRUNCATE audit.audit_log')).rejects.toThrow(/permission denied|permesso negato|must be owner|deve essere il proprietario/i);
+    await expect(app.query('TRUNCATE audit.audit_log')).rejects.toThrow(
+      /permission denied|permesso negato|must be owner|deve essere il proprietario/i,
+    );
   });
 
   it('livello 1 — DELETE che nomina DIRETTAMENTE la partizione e` comunque negato', async () => {
@@ -63,7 +67,9 @@ describe('SEC-47 — audit log append-only', () => {
     );
     const name = part.rows[0]?.relname;
     expect(name).toBeDefined();
-    await expect(app.query(`DELETE FROM audit.${name}`)).rejects.toThrow(/permission denied|permesso negato/i);
+    await expect(app.query(`DELETE FROM audit.${name}`)).rejects.toThrow(
+      /permission denied|permesso negato/i,
+    );
   });
 
   it('livello 2 — il trigger blocca il DELETE anche per chi POSSIEDE la tabella', async () => {
@@ -73,7 +79,9 @@ describe('SEC-47 — audit log append-only', () => {
   });
 
   it('livello 2 — il trigger blocca l`UPDATE anche per il proprietario', async () => {
-    await expect(owner.query("UPDATE audit.audit_log SET outcome = 'success'")).rejects.toThrow(/append-only/i);
+    await expect(owner.query("UPDATE audit.audit_log SET outcome = 'success'")).rejects.toThrow(
+      /append-only/i,
+    );
   });
 
   it('livello 2 — il trigger e` presente anche sulle partizioni, non solo sul padre', async () => {

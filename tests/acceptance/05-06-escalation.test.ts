@@ -8,12 +8,11 @@
 // Qui le proprieta' sono verificate al livello in cui vivono: le due query del
 // §7 e i trigger di invalidazione. Il livello HTTP le riverifica sulle rotte.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type pg from 'pg';
-import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { canGrantLevel, canGrantRole, dominates, grantableRoles } from '#src/authz/dominance.ts';
 import { readPermissions } from '#src/authz/store.ts';
-import { createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
+import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import {
   createUser,
   grantOverride,
@@ -24,6 +23,7 @@ import {
   roleIdByKey,
   userWithRole,
 } from '#tests/support/fixtures.ts';
+import { createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 let testDb: TestDatabase;
 let pool: pg.Pool;
@@ -246,11 +246,7 @@ describe('test 4 — permissions_version cambia a ogni modifica che tocca l`auto
   it('bannare alza la versione (il ban passa dallo stesso contatore)', async () => {
     const u = await userWithRole(db, 'moderatore');
     const before = await permissionsVersion(db, u);
-    await db
-      .updateTable('auth.user')
-      .set({ banned: true, ban_reason: 'test' })
-      .where('id', '=', u)
-      .execute();
+    await db.updateTable('auth.user').set({ banned: true, ban_reason: 'test' }).where('id', '=', u).execute();
     expect(await permissionsVersion(db, u)).toBeGreaterThan(before);
   });
 

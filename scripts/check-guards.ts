@@ -41,7 +41,8 @@ type Rule = {
 
 const isInAuthz = (rel: string) => rel.startsWith(AUTHZ_DIR + sep) || rel === AUTHZ_DIR;
 const isAllowlisted = (rel: string) => AUTHZ_ALLOWLIST.includes(rel);
-const isAuthzTest = (rel: string) => rel.startsWith(join('tests', '')) && /authz|rbac|dominan|grantab/i.test(rel);
+const isAuthzTest = (rel: string) =>
+  rel.startsWith(join('tests', '')) && /authz|rbac|dominan|grantab/i.test(rel);
 
 const RULES: Rule[] = [
   {
@@ -132,7 +133,13 @@ function main(): void {
         const line = stripCommentsAndStrings(raw);
         if (!line) return;
         if (rule.pattern.test(line)) {
-          violations.push({ file: rel, line: i + 1, text: raw.trim().slice(0, 120), rule: rule.id, why: rule.why });
+          violations.push({
+            file: rel,
+            line: i + 1,
+            text: raw.trim().slice(0, 120),
+            rule: rule.id,
+            why: rule.why,
+          });
         }
       });
     }

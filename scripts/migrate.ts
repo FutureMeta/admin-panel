@@ -17,7 +17,7 @@
 // Connessione: DATABASE_MIGRATE_URL (ruolo metamc_migrate), MAI metamc_app.
 
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';

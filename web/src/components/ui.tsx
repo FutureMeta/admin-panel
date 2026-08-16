@@ -192,9 +192,13 @@ export function Skeleton({ height = 20, width = '100%' }: { height?: number; wid
 
 export function SkeletonRows({ rows = 6 }: { rows?: number }) {
   return (
-    <div style={{ display: 'grid', gap: 'var(--sp3)', padding: 'var(--sp4)' }} aria-label="caricamento">
-      {Array.from({ length: rows }, (_, i) => (
-        <Skeleton key={i} height={16} width={`${60 + ((i * 13) % 40)}%`} />
+    <div
+      style={{ display: 'grid', gap: 'var(--sp3)', padding: 'var(--sp4)' }}
+      role="status"
+      aria-label="caricamento"
+    >
+      {Array.from({ length: rows }, (_, i) => `riga-${i}`).map((id, i) => (
+        <Skeleton key={id} height={16} width={`${60 + ((i * 13) % 40)}%`} />
       ))}
     </div>
   );

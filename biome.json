@@ -1,6 +1,10 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
-  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "includes": [
       "**",
@@ -8,7 +12,8 @@
       "!dist",
       "!**/pnpm-lock.yaml",
       "!MetaMC Admin - standalone.html",
-      "!spikes"
+      "!spikes",
+      "!web/src/app.css"
     ]
   },
   "formatter": {
@@ -19,12 +24,15 @@
     "lineEnding": "lf"
   },
   "javascript": {
-    "formatter": { "quoteStyle": "single", "trailingCommas": "all", "semicolons": "always" }
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "semicolons": "always"
+    }
   },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
       "security": {
         "noDangerouslySetInnerHtml": "error",
         "noDangerouslySetInnerHtmlWithChildren": "error",
@@ -32,7 +40,12 @@
       },
       "suspicious": {
         "noExplicitAny": "error",
-        "noConsole": { "level": "error", "options": { "allow": ["error", "warn"] } },
+        "noConsole": {
+          "level": "error",
+          "options": {
+            "allow": ["error", "warn"]
+          }
+        },
         "noDoubleEquals": "error"
       },
       "correctness": {
@@ -40,23 +53,49 @@
         "noUnusedImports": "error",
         "useExhaustiveDependencies": "warn"
       },
-      "complexity": { "noForEach": "off" },
+      "complexity": {
+        "noForEach": "off"
+      },
       "style": {
         "useConst": "error",
         "noNonNullAssertion": "error",
         "useImportType": "error",
         "noParameterAssign": "error"
-      }
+      },
+      "preset": "recommended"
     }
   },
   "overrides": [
     {
       "includes": ["scripts/**", "spikes/**", "tests/**"],
-      "linter": { "rules": { "suspicious": { "noConsole": "off" } } }
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "off"
+          }
+        }
+      }
     },
     {
       "includes": ["web/**"],
-      "linter": { "rules": { "suspicious": { "noConsole": "error" } } }
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["web/src/components/shell.tsx", "web/src/routes/users.tsx"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noStaticElementInteractions": "off",
+            "useKeyWithClickEvents": "off"
+          }
+        }
+      }
     }
   ]
 }

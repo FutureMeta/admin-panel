@@ -19,7 +19,7 @@
 import type { Redis } from 'ioredis';
 import type { Auth } from '#src/auth/auth.ts';
 import type { AuthzContext, AuthzSnapshot } from '#src/authz/context.ts';
-import { type AuthzStore, emptyPermissions, readPermissions } from '#src/authz/store.ts';
+import { type AuthzStore, readPermissions } from '#src/authz/store.ts';
 import type { Database } from '#src/db/pool.ts';
 import { KEYS } from '#src/redis/client.ts';
 

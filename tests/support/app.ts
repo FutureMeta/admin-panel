@@ -5,7 +5,7 @@
 // `fetch` verso HIBP, perche' una suite non deve chiamare un servizio terzo, e
 // il mailer, perche' non deve spedire email.
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { type AppContext, buildContext } from '#src/app-context.ts';
 import { parseEnv } from '#src/config/env.ts';
@@ -76,7 +76,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     PEPPER_VERSION: '1',
     UV_THREADPOOL_SIZE: '8',
     MAIL_FROM: 'MetaMC Admin <no-reply@metamc.it>',
-    RESEND_WEBHOOK_SECRET: 'whsec_' + Buffer.from('segreto-webhook-di-test-0123456789').toString('base64'),
+    RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from('segreto-webhook-di-test-0123456789').toString('base64')}`,
     SESSION_ABSOLUTE_SECONDS: '28800',
     SESSION_IDLE_SECONDS: String(opts.idleSeconds ?? 1800),
     STEP_UP_SECONDS: String(opts.stepUpSeconds ?? 600),

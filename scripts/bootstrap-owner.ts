@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   // la proprieta', e metamc_app non ce l'ha ne' deve averla.
   const url = process.env.DATABASE_MIGRATE_URL ?? process.env.DATABASE_URL;
 
-  if (!email || !email.includes('@')) {
+  if (!email?.includes('@')) {
     console.error('uso: node scripts/bootstrap-owner.ts <email> ["Nome Cognome"]');
     process.exit(2);
   }

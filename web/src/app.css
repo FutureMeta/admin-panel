@@ -363,3 +363,9 @@ hr {
     pointer-events: none;
   }
 }
+
+/* Nota: questo file è escluso dal check di Biome (biome.json).
+ * Biome 2.5.8 non sa parsare la sintassi di Tailwind v4 — `@theme inline` in
+ * particolare — e segnalerebbe un errore di parsing su un foglio di stile
+ * valido. L'esclusione è mirata a questo file soltanto: il resto del CSS
+ * dell'applicazione passa dal linter come tutto il resto. */

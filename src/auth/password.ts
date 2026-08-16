@@ -102,7 +102,21 @@ export class PasswordService {
     );
   }
 
+  /**
+   * SEC-30 — verifica a costo COSTANTE.
+   *
+   * Se la PHC string non e' una delle nostre (utente inesistente, segnaposto
+   * della libreria, riga corrotta) si verifica comunque contro l'hash-esca,
+   * con parametri identici. Cosi' il costo del percorso non dipende
+   * dall'esistenza dell'account, e la garanzia e' NOSTRA: non eredita il
+   * comportamento di better-auth, che potrebbe cambiare in una minor.
+   */
   async verify(phc: string, password: string): Promise<boolean> {
+    const nostro = phc.startsWith('$argon2id$') && this.#parametriCorrenti(phc);
+    if (!nostro) {
+      await this.verifyDecoy(password);
+      return false;
+    }
     return this.#semaphore.run(async () => {
       try {
         return await verify(phc, normalizePassword(password), { secret: this.#pepper });
@@ -112,6 +126,11 @@ export class PasswordService {
         return false;
       }
     });
+  }
+
+  #parametriCorrenti(phc: string): boolean {
+    const p = phcParams(phc);
+    return p !== undefined && p.m === ARGON2_PARAMS.memoryCost && p.t === ARGON2_PARAMS.timeCost;
   }
 
   /**

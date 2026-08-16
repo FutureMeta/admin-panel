@@ -55,8 +55,20 @@ export class HashSemaphore {
     return this.#inFlight >= this.#limit;
   }
 
+  readonly #waiting: Array<() => void> = [];
   /**
-   * Esegue `fn` occupando uno slot. Lancia `Overloaded` se non ce ne sono.
+   * Attesa massima per uno slot. Non e' una coda vera: e' il cuscinetto che
+   * assorbe la corsa fra il controllo di saturazione fatto alla porta (il
+   * ponte HTTP) e il momento in cui l'hash parte davvero. Senza, una raffica
+   * produce eccezioni dentro l'handler di better-auth, che le trasforma in
+   * 500 — e il 503 con Retry-After che SEC-28 prescrive non arriva mai al
+   * client.
+   */
+  readonly #maxWaitMs = 2_000;
+
+  /**
+   * Esegue `fn` occupando uno slot. Attende brevemente se non ce ne sono, e
+   * lancia `Overloaded` solo se l'attesa scade.
    *
    * Va usato ANCHE sul percorso hash-esca (utente inesistente): se l'esca
    * girasse senza semaforo, un attaccante saprebbe di aver trovato un'email
@@ -65,8 +77,11 @@ export class HashSemaphore {
    */
   async run<T>(fn: () => Promise<T>): Promise<T> {
     if (this.#inFlight >= this.#limit) {
-      this.#rejected += 1;
-      throw new Overloaded(1);
+      const entrato = await this.#attendiSlot();
+      if (!entrato) {
+        this.#rejected += 1;
+        throw new Overloaded(1);
+      }
     }
     this.#inFlight += 1;
     this.#total += 1;
@@ -75,6 +90,28 @@ export class HashSemaphore {
       return await fn();
     } finally {
       this.#inFlight -= 1;
+      this.#waiting.shift()?.();
     }
+  }
+
+  #attendiSlot(): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      let risolto = false;
+      const timer = setTimeout(() => {
+        if (risolto) return;
+        risolto = true;
+        const i = this.#waiting.indexOf(sveglia);
+        if (i >= 0) this.#waiting.splice(i, 1);
+        resolve(false);
+      }, this.#maxWaitMs);
+
+      const sveglia = () => {
+        if (risolto) return;
+        risolto = true;
+        clearTimeout(timer);
+        resolve(true);
+      };
+      this.#waiting.push(sveglia);
+    });
   }
 }

@@ -26,6 +26,18 @@ declare module 'fastify' {
     /** Nonce CSP della richiesta. */
     cspNonce?: string;
   }
+  interface FastifyInstance {
+    /**
+     * Inventario delle rotte registrate, con il path COMPLETO.
+     *
+     * Serve al test 9, che e' parametrico su tutte le rotte con `:id`:
+     * enumerarle a mano significherebbe dimenticarne una il giorno in cui se
+     * ne aggiunge un'altra, ed e' esattamente il giorno in cui l'oracolo
+     * 403-vs-404 rientrerebbe. `printRoutes()` non serve allo scopo: disegna
+     * un albero in cui i prefissi stanno su righe separate.
+     */
+    registeredRoutes: Array<{ method: string; url: string }>;
+  }
 }
 
 /**
@@ -86,6 +98,13 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
       err.statusCode = 400;
       done(err, undefined);
     }
+  });
+
+  const registeredRoutes: Array<{ method: string; url: string }> = [];
+  app.decorate('registeredRoutes', registeredRoutes);
+  app.addHook('onRoute', (route) => {
+    const methods = Array.isArray(route.method) ? route.method : [route.method];
+    for (const method of methods) registeredRoutes.push({ method, url: route.url });
   });
 
   await app.register(fastifyCookie);

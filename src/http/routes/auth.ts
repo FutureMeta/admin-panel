@@ -23,6 +23,14 @@ import { actorOf, auditContextOf, rateLimitIpKey, requestIps } from '../request-
 
 /** Rotte better-auth su cui si consuma il rate limit di login (SEC-25). */
 const LOGIN_PATHS = new Set(['/sign-in/email', '/forget-password', '/reset-password']);
+/** Rotte che finiscono in un hash o in una verifica Argon2 (SEC-28). */
+const HASHING_PATHS = new Set([
+  '/sign-in/email',
+  '/reset-password',
+  '/change-password',
+  '/two-factor/enable',
+  '/two-factor/disable',
+]);
 const TOTP_VERIFY_PATH = '/two-factor/verify-totp';
 
 function headersFrom(request: FastifyRequest): Headers {
@@ -58,6 +66,20 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // Il tetto globale per rotta e' l'unica difesa contro IP falsificati o
       // una botnet distribuita, dove i limiti per-IP non mordono mai.
       // ---------------------------------------------------------------------
+      // ---------------------------------------------------------------------
+      // SEC-28 — porta del semaforo Argon2.
+      //
+      // Il controllo sta QUI e non solo dentro PasswordService perche'
+      // un'eccezione lanciata dentro l'handler di better-auth viene catturata
+      // dalla libreria e diventa un 500: il 503 con Retry-After che SEC-28
+      // prescrive non arriverebbe mai al client, e nessun proxy saprebbe
+      // rallentare. Alla porta invece la risposta e' esatta.
+      // ---------------------------------------------------------------------
+      if (HASHING_PATHS.has(subPath) && ctx.semaphore.saturated) {
+        reply.header('Retry-After', '1');
+        return reply.code(503).send({ error: 'overloaded' });
+      }
+
       if (LOGIN_PATHS.has(subPath)) {
         const account = accountKeyOf(request.body);
         await ctx.rateLimit.consume('loginGlobal', 'rotta');

@@ -8,7 +8,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import type { ModuleKey, RequiredLevel } from '#src/authz/modules.ts';
-import { CSRF_COOKIE, CSRF_COOKIE_OPTIONS, csrfToken } from './csrf.ts';
+import { issueCsrfCookie } from './csrf.ts';
 import { StepUpRequired, Unauthorized } from './errors.ts';
 import { actorOf, setAuthz } from './request-context.ts';
 
@@ -41,11 +41,7 @@ export function requireAuth(ctx: AppContext): PreHandler {
     // SEC-17 — il cookie CSRF viene (ri)emesso a ogni richiesta autenticata:
     // e' derivato dall'id di sessione, quindi cambia quando la sessione
     // ruota, e il client non deve preoccuparsi di aggiornarlo.
-    reply.setCookie(CSRF_COOKIE, csrfToken(ctx.keys.csrf, outcome.context.sessionId), {
-      ...CSRF_COOKIE_OPTIONS,
-      // Vedi invites-onboarding.ts: il prefisso __Host- richiede Secure, sempre.
-      secure: true,
-    });
+    issueCsrfCookie(reply, ctx.keys.csrf, outcome.context.sessionId);
   };
 }
 

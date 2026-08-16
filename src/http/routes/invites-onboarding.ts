@@ -21,6 +21,7 @@ import {
   hashInviteToken,
   ONBOARDING_TTL_SECONDS,
 } from '#src/invites/service.ts';
+import { issueCsrfCookie } from '../csrf.ts';
 import { BadRequest, Conflict, Unauthorized } from '../errors.ts';
 import { auditContextOf, rateLimitIpKey, requestIps } from '../request-context.ts';
 
@@ -253,6 +254,17 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
       });
       const setCookies = signIn.headers.getSetCookie();
       for (const c of setCookies) reply.header('set-cookie', c);
+
+      // SEC-17 — il cookie CSRF va emesso INSIEME a questa sessione.
+      //
+      // La sessione nasce qui, da signInEmail, non dal ponte /api/auth/*:
+      // senza questa riga il client non avrebbe alcun token da presentare, e
+      // la richiesta successiva — POST /api/invites/complete, cioe' la
+      // verifica del primo codice TOTP — verrebbe rifiutata con 403.
+      const freshSession = await ctx.auth.api.getSession({
+        headers: new Headers({ cookie: setCookies.map((c) => c.split(';')[0]).join('; ') }),
+      });
+      if (freshSession?.session?.id) issueCsrfCookie(reply, ctx.keys.csrf, freshSession.session.id);
 
       const enrollHeaders = new Headers();
       enrollHeaders.set('cookie', setCookies.map((c) => c.split(';')[0]).join('; '));

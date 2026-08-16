@@ -36,6 +36,9 @@ export function csrfValid(key: Buffer, sessionId: string, presented: string | un
  * perche' il client lo rilegge per rimandarlo nell'header. Non e' un segreto
  * di sessione — e' un valore derivato che vale solo per quella sessione, e da
  * solo non autentica nulla.
+ *
+ * `secure: true` sempre: il prefisso `__Host-` lo RICHIEDE, e senza il browser
+ * scarta il cookie in silenzio.
  */
 export const CSRF_COOKIE_OPTIONS = {
   path: '/',
@@ -43,3 +46,25 @@ export const CSRF_COOKIE_OPTIONS = {
   httpOnly: false,
   sameSite: 'strict',
 } as const;
+
+/** Ha `setCookie`: e' cio' che serve, e non lega questo modulo a Fastify. */
+type CookieSetter = {
+  setCookie: (name: string, value: string, options: Record<string, unknown>) => unknown;
+};
+
+/**
+ * SEC-17 — emette il cookie CSRF per una sessione.
+ *
+ * UN SOLO punto, chiamato ovunque nasca o cambi una sessione: il ponte
+ * better-auth, `requireAuth`, `/api/me`, l'accettazione dell'invito.
+ *
+ * Il motivo per cui e' una funzione e non quattro righe ripetute: il token e'
+ * derivato dall'id di sessione, quindi ogni rotazione lo invalida. Dimenticare
+ * di riemetterlo dopo una rotazione non produce un errore visibile — produce
+ * un 403 sulla richiesta successiva, in un punto lontano da dove sta la causa.
+ * E' gia' successo tre volte durante questa implementazione: dopo il login,
+ * dopo la verifica TOTP, e dopo l'accettazione dell'invito.
+ */
+export function issueCsrfCookie(reply: CookieSetter, key: Buffer, sessionId: string): void {
+  reply.setCookie(CSRF_COOKIE, csrfToken(key, sessionId), { ...CSRF_COOKIE_OPTIONS });
+}

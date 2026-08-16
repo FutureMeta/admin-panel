@@ -17,7 +17,7 @@ import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
 import { visibleModules } from '#src/authz/can.ts';
-import { CSRF_COOKIE, CSRF_COOKIE_OPTIONS, csrfToken } from '../csrf.ts';
+import { issueCsrfCookie } from '../csrf.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditContextOf, rateLimitIpKey, requestIps } from '../request-context.ts';
 
@@ -231,14 +231,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         const fresh = new Headers();
         fresh.set('cookie', emitted.map((c) => c.split(';')[0]).join('; '));
         const session = await ctx.auth.api.getSession({ headers: fresh });
-        if (session?.session?.id) {
-          reply.setCookie(CSRF_COOKIE, csrfToken(ctx.keys.csrf, session.session.id), {
-            ...CSRF_COOKIE_OPTIONS,
-            // Il prefisso __Host- richiede Secure: senza, il browser scarta il cookie
-            // e il client non avrebbe mai un token CSRF da presentare.
-            secure: true,
-          });
-        }
+        if (session?.session?.id) issueCsrfCookie(reply, ctx.keys.csrf, session.session.id);
       }
 
       const text = await res.text();
@@ -259,11 +252,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
     { preHandler: requireAuth(ctx) },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const actor = actorOf(request);
-      reply.setCookie(CSRF_COOKIE, csrfToken(ctx.keys.csrf, actor.sessionId), {
-        ...CSRF_COOKIE_OPTIONS,
-        // Il prefisso __Host- richiede Secure, sempre.
-        secure: true,
-      });
+      issueCsrfCookie(reply, ctx.keys.csrf, actor.sessionId);
       return reply.send({
         userId: actor.userId,
         email: actor.actorEmail,
@@ -306,7 +295,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         targetLabel: actor.actorEmail,
         meta: { revoked },
       });
-      reply.clearCookie(CSRF_COOKIE, { path: '/' });
+      reply.clearCookie('__Host-metamc_csrf', { path: '/' });
       return reply.send({ revoked });
     },
   );

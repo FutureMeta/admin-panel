@@ -19,7 +19,7 @@ export type InviteEmailInput = {
 
 export type EmailTemplate = { subject: string; html: string; text: string };
 
-function formatScadenza(date: Date): string {
+function formatExpiry(date: Date): string {
   return new Intl.DateTimeFormat('it-IT', {
     dateStyle: 'full',
     timeStyle: 'short',
@@ -30,7 +30,7 @@ function formatScadenza(date: Date): string {
 export function inviteEmail(input: InviteEmailInput): EmailTemplate {
   const inviter = escapeHtml(input.inviterName);
   const link = escapeHtml(input.link);
-  const scadenza = escapeHtml(formatScadenza(input.expiresAt));
+  const expiry = escapeHtml(formatExpiry(input.expiresAt));
 
   const html = `<!doctype html>
 <html lang="it">
@@ -45,7 +45,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
           ${inviter} ti ha invitato nel pannello di amministrazione di MetaMC.
         </p>
         <p style="margin:0 0 24px;font:400 14px/22px Inter,system-ui,sans-serif;color:#A9BEC9">
-          Il link vale una sola volta e scade il ${scadenza}.
+          Il link vale una sola volta e scade il ${expiry}.
         </p>
         <a href="${link}" style="display:inline-block;background:#DB6E19;color:#0A161D;text-decoration:none;font:600 14px/20px Inter,system-ui,sans-serif;padding:12px 20px;border-radius:8px">
           Accetta l'invito
@@ -69,7 +69,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
     "Accetta l'invito aprendo questo indirizzo:",
     input.link,
     '',
-    `Il link vale una sola volta e scade il ${formatScadenza(input.expiresAt)}.`,
+    `Il link vale una sola volta e scade il ${formatExpiry(input.expiresAt)}.`,
     '',
     'Se non aspettavi questo invito, ignora questo messaggio.',
   ].join('\n');

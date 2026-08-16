@@ -39,7 +39,7 @@ export function windowSteps(step: number): number[] {
 
 export type ReplayVerdict =
   | { allowed: true }
-  | { allowed: false; reason: 'step_gia_consumato' | 'step_non_monotono' };
+  | { allowed: false; reason: 'step_already_used' | 'step_not_monotonic' };
 
 export class TotpReplayGuard {
   readonly #redis: Redis;
@@ -63,7 +63,7 @@ export class TotpReplayGuard {
     const step = currentStep(now);
 
     const marks = await this.#redis.mget(...windowSteps(step).map((s) => KEYS.totpUsed(userId, s)));
-    if (marks.some((m) => m !== null)) return { allowed: false, reason: 'step_gia_consumato' };
+    if (marks.some((m) => m !== null)) return { allowed: false, reason: 'step_already_used' };
 
     const row = await this.#db
       .selectFrom('auth.user')
@@ -86,7 +86,7 @@ export class TotpReplayGuard {
     // accesso LEGITTIMO nella stessa finestra da 30 secondi. E' il prezzo
     // giusto: per farlo l'utente dovrebbe ridigitare lo stesso codice, che e'
     // esattamente il replay, e l'attesa massima e' mezzo minuto.
-    if (last >= step) return { allowed: false, reason: 'step_non_monotono' };
+    if (last >= step) return { allowed: false, reason: 'step_not_monotonic' };
 
     return { allowed: true };
   }

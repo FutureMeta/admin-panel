@@ -19,15 +19,15 @@ import { actorOf } from '../request-context.ts';
 
 /**
  * SEC-37 — allowlist dei filtri. Il client puo' nominare SOLO queste chiavi,
- * e ognuna e' mappata a una colonna scritta qui dentro, mai composta.
+ * e ognuna e' mappata to una colonna scritta qui dentro, mai composta.
  */
 const FILTERABLE = {
-  attore: 'actor_user_id',
-  modulo: 'module_key',
-  azione: 'action',
-  esito: 'outcome',
-  tipoBersaglio: 'target_type',
-  bersaglio: 'target_id',
+  actor: 'actor_user_id',
+  module: 'module_key',
+  action: 'action',
+  outcome: 'outcome',
+  targetType: 'target_type',
+  target: 'target_id',
 } as const;
 
 type FilterKey = keyof typeof FILTERABLE;
@@ -41,14 +41,14 @@ const listSchema = {
       beforeOccurredAt: { type: 'string', format: 'date-time' },
       beforeId: { type: 'string', maxLength: 32 },
       limit: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
-      attore: { type: 'string', maxLength: 64 },
-      modulo: { type: 'string', maxLength: 32 },
-      azione: { type: 'string', maxLength: 96 },
-      esito: { type: 'string', enum: ['success', 'failure', 'denied'] },
-      tipoBersaglio: { type: 'string', maxLength: 48 },
-      bersaglio: { type: 'string', maxLength: 128 },
-      da: { type: 'string', format: 'date-time' },
-      a: { type: 'string', format: 'date-time' },
+      actor: { type: 'string', maxLength: 64 },
+      module: { type: 'string', maxLength: 32 },
+      action: { type: 'string', maxLength: 96 },
+      outcome: { type: 'string', enum: ['success', 'failure', 'denied'] },
+      targetType: { type: 'string', maxLength: 48 },
+      target: { type: 'string', maxLength: 128 },
+      from: { type: 'string', format: 'date-time' },
+      to: { type: 'string', format: 'date-time' },
     },
   },
 } as const;
@@ -101,14 +101,14 @@ export async function registerAuditRoutes(app: FastifyInstance, ctx: AppContext)
     for (const key of Object.keys(FILTERABLE) as FilterKey[]) {
       const value = q[key];
       if (typeof value === 'string' && value.length > 0) {
-        // La colonna viene da FILTERABLE, cioe' da una costante di questo
+        // La colonna viene from FILTERABLE, cioe' from una costante di questo
         // file. Il valore e' un parametro. Nessuna concatenazione.
         query = query.where(FILTERABLE[key], '=', value);
       }
     }
 
-    if (typeof q.da === 'string') query = query.where('occurred_at', '>=', new Date(q.da));
-    if (typeof q.a === 'string') query = query.where('occurred_at', '<=', new Date(q.a));
+    if (typeof q.from === 'string') query = query.where('occurred_at', '>=', new Date(q.from));
+    if (typeof q.to === 'string') query = query.where('occurred_at', '<=', new Date(q.to));
 
     const rows = await query.execute();
     const hasMore = rows.length > limit;
@@ -148,9 +148,9 @@ export async function registerAuditRoutes(app: FastifyInstance, ctx: AppContext)
   // -------------------------------------------------------------------------
   // GET /api/audit/actions — vocabolario per i filtri della UI.
   //
-  // Serve dal catalogo in codice, non da un DISTINCT sulla tabella piu' grande
+  // Serve dal catalogo in codice, non from un DISTINCT sulla tabella piu' grande
   // del sistema: un DISTINCT su audit_log e' una scansione completa mascherata
-  // da menu a tendina.
+  // from menu to tendina.
   // -------------------------------------------------------------------------
   app.get('/api/audit/actions', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
     requireLevel(actorOf(request), 'audit', 1);
@@ -165,7 +165,7 @@ export async function registerAuditRoutes(app: FastifyInstance, ctx: AppContext)
 
   // -------------------------------------------------------------------------
   // GET /api/audit/integrity — la stessa verifica dell'endpoint interno, ma
-  // esposta a chi ha `audit:3`: e' l'informazione che rende il registro
+  // esposta to chi ha `audit:3`: e' l'informazione che rende il registro
   // credibile, e chi lo consulta deve poterla vedere senza chiedere ai sistemi.
   // -------------------------------------------------------------------------
   app.get('/api/audit/integrity', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {

@@ -30,16 +30,16 @@ import { KEYS } from '#src/redis/client.ts';
  * rubato che l'account esiste ed e' stato chiuso.
  */
 export type RejectReason =
-  | 'nessun_cookie'
-  | 'sessione_assente'
-  | 'utente_sconosciuto'
-  | 'sessione_precedente_al_logout_globale'
-  | 'utente_bannato'
-  | 'utente_non_attivo'
-  | 'sessione_revocata'
-  | 'scadenza_assoluta'
-  | 'inattivita'
-  | 'secondo_fattore_mancante';
+  | 'no_cookie'
+  | 'session_missing'
+  | 'unknown_user'
+  | 'session_before_global_logout'
+  | 'user_banned'
+  | 'user_not_active'
+  | 'session_revoked'
+  | 'absolute_expiry'
+  | 'idle_timeout'
+  | 'second_factor_missing';
 
 export type AuthzOutcome =
   | { ok: true; context: AuthzContext }
@@ -98,7 +98,7 @@ export class AuthzMiddleware {
     // passo 1-2 — sessione
     const raw = await auth.api.getSession({ headers });
     if (!raw?.session || !raw.user) {
-      return { ok: false, reason: 'sessione_assente', userId: null, sessionId: null };
+      return { ok: false, reason: 'session_missing', userId: null, sessionId: null };
     }
     const session = raw.session as unknown as SessionShape;
     // L'oggetto utente serve SOLO per la denormalizzazione dell'audit
@@ -116,21 +116,21 @@ export class AuthzMiddleware {
     // passo 3 — se authz manca, si ricostruisce da Postgres
     const snapshot = snapshotRaw ?? (await store.rebuild(userId));
     if (!snapshot) {
-      return { ok: false, reason: 'utente_sconosciuto', userId, sessionId };
+      return { ok: false, reason: 'unknown_user', userId, sessionId };
     }
 
     // passo 4 — rifiuti
     if (revoked === 1) {
-      return { ok: false, reason: 'sessione_revocata', userId, sessionId };
+      return { ok: false, reason: 'session_revoked', userId, sessionId };
     }
     if (new Date(session.createdAt) < new Date(snapshot.sessionsValidFrom)) {
-      return { ok: false, reason: 'sessione_precedente_al_logout_globale', userId, sessionId };
+      return { ok: false, reason: 'session_before_global_logout', userId, sessionId };
     }
     if (banActive(snapshot, now)) {
-      return { ok: false, reason: 'utente_bannato', userId, sessionId };
+      return { ok: false, reason: 'user_banned', userId, sessionId };
     }
     if (snapshot.status !== 'active') {
-      return { ok: false, reason: 'utente_non_attivo', userId, sessionId };
+      return { ok: false, reason: 'user_not_active', userId, sessionId };
     }
 
     // -----------------------------------------------------------------------
@@ -170,23 +170,23 @@ export class AuthzMiddleware {
     // c'e', la sessione e' stata cancellata (revoca) e il blob Redis e' solo
     // in ritardo.
     if (!row) {
-      return { ok: false, reason: 'sessione_assente', userId, sessionId };
+      return { ok: false, reason: 'session_missing', userId, sessionId };
     }
 
     const absolute = toDate(row.absolute_expires_at);
     // Assente non vuol dire illimitato: senza tetto la sessione non vale.
     if (!absolute || absolute < now) {
-      return { ok: false, reason: 'scadenza_assoluta', userId, sessionId };
+      return { ok: false, reason: 'absolute_expiry', userId, sessionId };
     }
     if (new Date(row.expiresAt) < now) {
-      return { ok: false, reason: 'scadenza_assoluta', userId, sessionId };
+      return { ok: false, reason: 'absolute_expiry', userId, sessionId };
     }
     const idleMs = now.getTime() - new Date(row.updatedAt).getTime();
     if (idleMs > idleSeconds * 1000) {
-      return { ok: false, reason: 'inattivita', userId, sessionId };
+      return { ok: false, reason: 'idle_timeout', userId, sessionId };
     }
     if (row.aal < 2) {
-      return { ok: false, reason: 'secondo_fattore_mancante', userId, sessionId };
+      return { ok: false, reason: 'second_factor_missing', userId, sessionId };
     }
 
     // passo 5 — se la versione differisce, la si riallinea sulla riga di

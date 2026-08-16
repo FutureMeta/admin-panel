@@ -32,8 +32,8 @@ export type CreateInviteInput = {
 export type CreatedInvite = { id: string; token: string; expiresAt: Date };
 
 export class InviteConflict extends Error {
-  readonly code: 'utente_esistente' | 'invito_pendente' | 'email_propria';
-  constructor(code: 'utente_esistente' | 'invito_pendente' | 'email_propria') {
+  readonly code: 'user_exists' | 'invite_pending' | 'own_email';
+  constructor(code: 'user_exists' | 'invite_pending' | 'own_email') {
     super(code);
     this.name = 'InviteConflict';
     this.code = code;
@@ -58,8 +58,8 @@ export async function assertInvitable(
     .where((eb) => eb.fn('lower', ['email']), '=', emailLower)
     .executeTakeFirst();
   if (existing) {
-    if (existing.id === actorId) throw new InviteConflict('email_propria');
-    throw new InviteConflict('utente_esistente');
+    if (existing.id === actorId) throw new InviteConflict('own_email');
+    throw new InviteConflict('user_exists');
   }
 
   const pending = await trx
@@ -69,7 +69,7 @@ export async function assertInvitable(
     .where('consumed_at', 'is', null)
     .where('revoked_at', 'is', null)
     .executeTakeFirst();
-  if (pending) throw new InviteConflict('invito_pendente');
+  if (pending) throw new InviteConflict('invite_pending');
 }
 
 export async function insertInvite(

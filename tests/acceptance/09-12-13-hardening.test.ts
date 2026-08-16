@@ -1,5 +1,5 @@
 // §14 test 9  — per ogni rotta con `:id`, un utente non autorizzato riceve LO
-//               STESSO status di un id inesistente.  SEC-31
+//               STESSO status di un id missingId.  SEC-31
 // §14 test 12 — una POST senza header `Origin` viene rifiutata.  SEC-15
 // §14 test 13 — una POST con `Sec-Fetch-Site: same-site` viene rifiutata. SEC-16
 //
@@ -15,25 +15,25 @@ let t: TestApp;
 /**
  * Attore SENZA alcun ruolo: 0 su tutti i moduli.
  *
- * E' il "non autorizzato" del test 9. Un moderatore non andrebbe bene su
+ * E' il "non autorizzato" del test 9. Un moderator non andrebbe bene su
  * `GET /api/users/:id`, perche' ha `utenti:1` ed e' quindi autorizzato a
  * leggere: il confronto misurerebbe una differenza legittima e il test
  * fallirebbe per il motivo sbagliato.
  */
-let debole: Actor;
+let unprivileged: Actor;
 /** Moderatore: autorizzato a leggere, non a scrivere. Serve al caso del ban. */
-let moderatore: Actor;
-/** Owner: serve a dimostrare che il 404 del debole non e` una rotta rotta. */
-let forte: Actor;
-let bersaglio: string;
+let moderator: Actor;
+/** Owner: serve a dimostrare che il 404 del unprivileged non e` una rotta rotta. */
+let owner: Actor;
+let target: string;
 
 beforeAll(async () => {
   t = await startTestApp({ label: 'hard' });
-  debole = await loginAs(t, await seedUser(t));
-  moderatore = await loginAs(t, await seedUser(t, { roleKey: 'moderatore' }));
-  forte = await loginAs(t, await seedUser(t, { roleKey: 'owner' }));
+  unprivileged = await loginAs(t, await seedUser(t));
+  moderator = await loginAs(t, await seedUser(t, { roleKey: 'moderatore' }));
+  owner = await loginAs(t, await seedUser(t, { roleKey: 'owner' }));
   const vittima = await seedUser(t, { roleKey: 'admin' });
-  bersaglio = vittima.id;
+  target = vittima.id;
 }, 180_000);
 
 afterAll(async () => {
@@ -61,9 +61,9 @@ describe('SEC-31 / test 9 — nessun oracolo 403-vs-404', () => {
     expect(routes.length).toBeGreaterThanOrEqual(8);
   });
 
-  it('utente non autorizzato e id inesistente danno lo STESSO status, rotta per rotta', async () => {
+  it('utente non autorizzato e id missingId danno lo STESSO status, rotta per rotta', async () => {
     const routes = routesWithId();
-    const discrepanze: string[] = [];
+    const mismatches: string[] = [];
 
     for (const route of routes) {
       const method = route.method as 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -75,81 +75,81 @@ describe('SEC-31 / test 9 — nessun oracolo 403-vs-404', () => {
           ? undefined
           : { reason: 'test', roleId: 1, moduleKey: 'audit', level: 1, entries: [] };
 
-      const inesistente = await t.app.inject({
+      const missingId = await t.app.inject({
         method,
         url: url(randomUUID().replace(/-/g, '')),
-        headers: debole.headers(),
+        headers: unprivileged.headers(),
         ...(payload ? { payload } : {}),
       });
       const nonAutorizzato = await t.app.inject({
         method,
-        url: url(bersaglio),
-        headers: debole.headers(),
+        url: url(target),
+        headers: unprivileged.headers(),
         ...(payload ? { payload } : {}),
       });
 
       // 401 non conta: quella e' assenza di sessione, non un oracolo.
-      if (inesistente.statusCode === 401 || nonAutorizzato.statusCode === 401) continue;
+      if (missingId.statusCode === 401 || nonAutorizzato.statusCode === 401) continue;
 
-      if (inesistente.statusCode !== nonAutorizzato.statusCode) {
-        discrepanze.push(
-          `${method} ${route.url}: id inesistente -> ${inesistente.statusCode}, ` +
+      if (missingId.statusCode !== nonAutorizzato.statusCode) {
+        mismatches.push(
+          `${method} ${route.url}: id missingId -> ${missingId.statusCode}, ` +
             `non autorizzato -> ${nonAutorizzato.statusCode}`,
         );
       }
     }
 
-    expect(discrepanze).toEqual([]);
+    expect(mismatches).toEqual([]);
   });
 
-  it('un moderatore non distingue un utente esistente da uno inventato', async () => {
-    // Il moderatore PUO` leggere (utenti:1) ma non bannare (serve utenti:3):
+  it('un moderator non distingue un utente existingId da uno inventedId', async () => {
+    // Il moderator PUO` leggere (utenti:1) ma non bannare (serve utenti:3):
     // e' il caso realistico in cui l'oracolo si annida.
-    const esistente = await t.app.inject({
+    const existingId = await t.app.inject({
       method: 'POST',
-      url: `/api/users/${bersaglio}/ban`,
-      headers: moderatore.headers(),
+      url: `/api/users/${target}/ban`,
+      headers: moderator.headers(),
       payload: { reason: 'tentativo' },
     });
-    const inventato = await t.app.inject({
+    const inventedId = await t.app.inject({
       method: 'POST',
       url: `/api/users/${randomUUID().replace(/-/g, '')}/ban`,
-      headers: moderatore.headers(),
+      headers: moderator.headers(),
       payload: { reason: 'tentativo' },
     });
-    expect(esistente.statusCode).toBe(inventato.statusCode);
-    expect(esistente.body).toBe(inventato.body);
+    expect(existingId.statusCode).toBe(inventedId.statusCode);
+    expect(existingId.body).toBe(inventedId.body);
   });
 
-  it('un admin non distingue un OWNER che non domina da un id inventato', async () => {
+  it('un admin non distingue un OWNER che non domina da un id inventedId', async () => {
     // SEC-08 + SEC-31 insieme: l'admin non domina l'owner, e la risposta e'
     // la stessa di un utente che non esiste. Sapere "quello c'e', ma non
     // puoi toccarlo" e' gia' informazione.
     const admin = await loginAs(t, await seedUser(t, { roleKey: 'admin' }));
-    const ownerId = forte.userId;
+    const ownerId = owner.userId;
 
-    const suOwner = await t.app.inject({
+    const onOwner = await t.app.inject({
       method: 'POST',
       url: `/api/users/${ownerId}/ban`,
       headers: admin.headers(),
       payload: { reason: 'tentativo' },
     });
-    const suInventato = await t.app.inject({
+    const onInvented = await t.app.inject({
       method: 'POST',
       url: `/api/users/${randomUUID().replace(/-/g, '')}/ban`,
       headers: admin.headers(),
       payload: { reason: 'tentativo' },
     });
-    expect(suOwner.statusCode).toBe(404);
-    expect(suOwner.statusCode).toBe(suInventato.statusCode);
-    expect(suOwner.body).toBe(suInventato.body);
+    expect(onOwner.statusCode).toBe(404);
+    expect(onOwner.statusCode).toBe(onInvented.statusCode);
+    expect(onOwner.body).toBe(onInvented.body);
   });
 
   it('un owner invece ci arriva: il 404 non e` una rotta rotta', async () => {
     const res = await t.app.inject({
       method: 'GET',
-      url: `/api/users/${bersaglio}`,
-      headers: forte.headers(),
+      url: `/api/users/${target}`,
+      headers: owner.headers(),
     });
     expect(res.statusCode).toBe(200);
   });
@@ -163,8 +163,8 @@ describe('SEC-15 / test 12 — Origin', () => {
       headers: {
         'sec-fetch-site': 'same-origin',
         'content-type': 'application/json',
-        cookie: `__Host-metamc_session=${debole.sessionCookie}`,
-        'x-csrf-token': debole.csrf,
+        cookie: `__Host-metamc_session=${unprivileged.sessionCookie}`,
+        'x-csrf-token': unprivileged.csrf,
       },
       payload: {},
     });
@@ -178,7 +178,7 @@ describe('SEC-15 / test 12 — Origin', () => {
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/session/logout-all',
-      headers: debole.headers({ origin: 'https://malevolo.example' }),
+      headers: unprivileged.headers({ origin: 'https://malevolo.example' }),
       payload: {},
     });
     expect(res.statusCode).toBe(403);
@@ -188,7 +188,7 @@ describe('SEC-15 / test 12 — Origin', () => {
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/session/logout-all',
-      headers: debole.headers({ origin: `https://forum.${new URL(TEST_ORIGIN).host}` }),
+      headers: unprivileged.headers({ origin: `https://forum.${new URL(TEST_ORIGIN).host}` }),
       payload: {},
     });
     expect(res.statusCode).toBe(403);
@@ -198,7 +198,7 @@ describe('SEC-15 / test 12 — Origin', () => {
     const res = await t.app.inject({
       method: 'GET',
       url: '/api/me',
-      headers: { cookie: `__Host-metamc_session=${debole.sessionCookie}` },
+      headers: { cookie: `__Host-metamc_session=${unprivileged.sessionCookie}` },
     });
     expect(res.statusCode).toBe(200);
   });
@@ -209,7 +209,7 @@ describe('SEC-16 / test 13 — Sec-Fetch-Site', () => {
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/session/logout-all',
-      headers: debole.headers({ 'sec-fetch-site': 'same-site' }),
+      headers: unprivileged.headers({ 'sec-fetch-site': 'same-site' }),
       payload: {},
     });
     // Si rifiuta anche `same-site`, non solo `cross-site`: il punto e' proprio
@@ -221,7 +221,7 @@ describe('SEC-16 / test 13 — Sec-Fetch-Site', () => {
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/session/logout-all',
-      headers: debole.headers({ 'sec-fetch-site': 'cross-site' }),
+      headers: unprivileged.headers({ 'sec-fetch-site': 'cross-site' }),
       payload: {},
     });
     expect(res.statusCode).toBe(403);
@@ -234,8 +234,8 @@ describe('SEC-16 / test 13 — Sec-Fetch-Site', () => {
       headers: {
         origin: TEST_ORIGIN,
         'content-type': 'application/json',
-        cookie: `__Host-metamc_session=${debole.sessionCookie}`,
-        'x-csrf-token': debole.csrf,
+        cookie: `__Host-metamc_session=${unprivileged.sessionCookie}`,
+        'x-csrf-token': unprivileged.csrf,
       },
       payload: {},
     });
@@ -248,7 +248,7 @@ describe('SEC-17 — signed double-submit', () => {
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/session/logout-all',
-      headers: sameOriginHeaders({ cookie: `__Host-metamc_session=${debole.sessionCookie}` }),
+      headers: sameOriginHeaders({ cookie: `__Host-metamc_session=${unprivileged.sessionCookie}` }),
       payload: {},
     });
     expect(res.statusCode).toBe(403);
@@ -259,24 +259,24 @@ describe('SEC-17 — signed double-submit', () => {
       method: 'POST',
       url: '/api/session/logout-all',
       headers: sameOriginHeaders({
-        cookie: `__Host-metamc_session=${debole.sessionCookie}`,
+        cookie: `__Host-metamc_session=${unprivileged.sessionCookie}`,
         // E' il caso del sottodominio che scrive cookie: puo' scegliere il
         // valore del cookie CSRF, ma non puo' produrre un HMAC valido per
         // l'id di sessione della vittima, che non conosce.
-        'x-csrf-token': forte.csrf,
+        'x-csrf-token': owner.csrf,
       }),
       payload: {},
     });
     expect(res.statusCode).toBe(403);
   });
 
-  it('POST con un token CSRF inventato -> 403', async () => {
+  it('POST con un token CSRF inventedId -> 403', async () => {
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/session/logout-all',
       headers: sameOriginHeaders({
-        cookie: `__Host-metamc_session=${debole.sessionCookie}`,
-        'x-csrf-token': 'token-inventato-di-lunghezza-simile-abcdefgh',
+        cookie: `__Host-metamc_session=${unprivileged.sessionCookie}`,
+        'x-csrf-token': 'token-inventedId-di-lunghezza-simile-abcdefgh',
       }),
       payload: {},
     });
@@ -312,7 +312,7 @@ describe('SEC-33 / SEC-34 — CSP e header di sicurezza', () => {
     const res = await t.app.inject({
       method: 'GET',
       url: '/api/me',
-      headers: { cookie: `__Host-metamc_session=${debole.sessionCookie}` },
+      headers: { cookie: `__Host-metamc_session=${unprivileged.sessionCookie}` },
     });
     expect(res.headers['cache-control']).toBe('private, no-store');
     expect(res.headers.vary).toContain('Cookie');

@@ -32,7 +32,7 @@ let db: Database;
 let owner = '';
 let admin = '';
 let dev = '';
-let moderatore = '';
+let moderator = '';
 
 beforeAll(async () => {
   testDb = await createTestDatabase('escalation');
@@ -42,7 +42,7 @@ beforeAll(async () => {
   owner = await userWithRole(db, 'owner', 'owner@metamc.it');
   admin = await userWithRole(db, 'admin', 'admin@metamc.it');
   dev = await userWithRole(db, 'dev', 'dev@metamc.it');
-  moderatore = await userWithRole(db, 'moderatore', 'mod@metamc.it');
+  moderator = await userWithRole(db, 'moderatore', 'mod@metamc.it');
 }, 180_000);
 
 afterAll(async () => {
@@ -63,22 +63,22 @@ describe('il seed della matrice regge le proprieta` che i test misurano', () => 
   });
 
   it('l`override individuale e` solo in aumento: GREATEST(ruolo, override)', async () => {
-    const before = await readPermissions(db, moderatore);
+    const before = await readPermissions(db, moderator);
     expect(before.statistiche).toBe(1);
 
-    await grantOverride(db, moderatore, 'statistiche', 3);
-    expect((await readPermissions(db, moderatore)).statistiche).toBe(3);
+    await grantOverride(db, moderator, 'statistiche', 3);
+    expect((await readPermissions(db, moderator)).statistiche).toBe(3);
 
     // Un override PIU` BASSO del ruolo non declassa: non esiste semantica di deny.
-    await grantOverride(db, moderatore, 'statistiche', 0);
-    expect((await readPermissions(db, moderatore)).statistiche).toBe(1);
+    await grantOverride(db, moderator, 'statistiche', 0);
+    expect((await readPermissions(db, moderator)).statistiche).toBe(1);
 
-    await db.deleteFrom('auth.user_permissions').where('user_id', '=', moderatore).execute();
+    await db.deleteFrom('auth.user_permissions').where('user_id', '=', moderator).execute();
   });
 
   it('un utente senza ruoli ha 0 ovunque, e i moduli ci sono comunque tutti', async () => {
-    const nudo = await createUser(db, {});
-    const p = await readPermissions(db, nudo);
+    const roleless = await createUser(db, {});
+    const p = await readPermissions(db, roleless);
     expect(Object.keys(p)).toHaveLength(8);
     expect(Object.values(p).every((l) => l === 0)).toBe(true);
   });
@@ -86,7 +86,7 @@ describe('il seed della matrice regge le proprieta` che i test misurano', () => 
 
 describe('SEC-08 / test 6 — dominanza attore->bersaglio', () => {
   it('owner domina tutti', async () => {
-    for (const target of [admin, dev, moderatore]) {
+    for (const target of [admin, dev, moderator]) {
       expect(await dominates(db, owner, target)).toBe(true);
     }
   });
@@ -95,13 +95,13 @@ describe('SEC-08 / test 6 — dominanza attore->bersaglio', () => {
     expect(await dominates(db, admin, owner)).toBe(false);
   });
 
-  it('admin domina dev e moderatore', async () => {
+  it('admin domina dev e moderator', async () => {
     expect(await dominates(db, admin, dev)).toBe(true);
-    expect(await dominates(db, admin, moderatore)).toBe(true);
+    expect(await dominates(db, admin, moderator)).toBe(true);
   });
 
-  it('un moderatore non domina un admin', async () => {
-    expect(await dominates(db, moderatore, admin)).toBe(false);
+  it('un moderator non domina un admin', async () => {
+    expect(await dominates(db, moderator, admin)).toBe(false);
   });
 
   it('basta UN modulo in cui il bersaglio e` piu` alto per perdere la dominanza', async () => {
@@ -126,8 +126,8 @@ describe('SEC-08 / test 6 — dominanza attore->bersaglio', () => {
   });
 
   it('chiunque "domina" un utente senza permessi: e` corretto, non c`e` nulla da superare', async () => {
-    const nudo = await createUser(db, {});
-    expect(await dominates(db, moderatore, nudo)).toBe(true);
+    const roleless = await createUser(db, {});
+    expect(await dominates(db, moderator, roleless)).toBe(true);
   });
 });
 
@@ -138,7 +138,7 @@ describe('SEC-07 / test 5 — nessuno concede cio` che non ha', () => {
     }
   });
 
-  it('admin puo` concedere dev e moderatore', async () => {
+  it('admin puo` concedere dev e moderator', async () => {
     expect(await canGrantRole(db, admin, await roleIdByKey(db, 'dev'))).toBe(true);
     expect(await canGrantRole(db, admin, await roleIdByKey(db, 'moderatore'))).toBe(true);
   });
@@ -147,9 +147,9 @@ describe('SEC-07 / test 5 — nessuno concede cio` che non ha', () => {
     expect(await canGrantRole(db, admin, await roleIdByKey(db, 'owner'))).toBe(false);
   });
 
-  it('un moderatore non puo` concedere admin ne` dev', async () => {
-    expect(await canGrantRole(db, moderatore, await roleIdByKey(db, 'admin'))).toBe(false);
-    expect(await canGrantRole(db, moderatore, await roleIdByKey(db, 'dev'))).toBe(false);
+  it('un moderator non puo` concedere admin ne` dev', async () => {
+    expect(await canGrantRole(db, moderator, await roleIdByKey(db, 'admin'))).toBe(false);
+    expect(await canGrantRole(db, moderator, await roleIdByKey(db, 'dev'))).toBe(false);
   });
 
   it('un dev non puo` concedere admin: basta un modulo in cui admin e` piu` alto', async () => {
@@ -169,28 +169,28 @@ describe('SEC-07 / test 5 — nessuno concede cio` che non ha', () => {
     }
   });
 
-  it('grantableRoles per un moderatore e` vuoto o solo di ruoli a livello suo', async () => {
-    const roles = await grantableRoles(db, moderatore);
+  it('grantableRoles per un moderator e` vuoto o solo di ruoli a livello suo', async () => {
+    const roles = await grantableRoles(db, moderator);
     for (const r of roles) {
-      expect(await canGrantRole(db, moderatore, r.id)).toBe(true);
+      expect(await canGrantRole(db, moderator, r.id)).toBe(true);
     }
     expect(roles.map((r) => r.key)).not.toContain('admin');
   });
 
   it('l`override individuale segue la stessa regola: nessuno concede oltre il proprio livello', async () => {
-    const ruoli = await moduleIdByKey(db, 'ruoli');
+    const rolesModule = await moduleIdByKey(db, 'ruoli');
     // admin ha 2 su `ruoli`
-    expect(await canGrantLevel(db, admin, ruoli, 2)).toBe(true);
-    expect(await canGrantLevel(db, admin, ruoli, 3)).toBe(false);
-    expect(await canGrantLevel(db, owner, ruoli, 3)).toBe(true);
+    expect(await canGrantLevel(db, admin, rolesModule, 2)).toBe(true);
+    expect(await canGrantLevel(db, admin, rolesModule, 3)).toBe(false);
+    expect(await canGrantLevel(db, owner, rolesModule, 3)).toBe(true);
   });
 
   it('un attore che guadagna un livello guadagna anche la concedibilita`', async () => {
-    const ruoli = await moduleIdByKey(db, 'ruoli');
-    expect(await canGrantLevel(db, dev, ruoli, 1)).toBe(false); // dev ha 0 su ruoli
+    const rolesModule = await moduleIdByKey(db, 'ruoli');
+    expect(await canGrantLevel(db, dev, rolesModule, 1)).toBe(false); // dev ha 0 su ruoli
     await grantOverride(db, dev, 'ruoli', 2);
-    expect(await canGrantLevel(db, dev, ruoli, 2)).toBe(true);
-    expect(await canGrantLevel(db, dev, ruoli, 3)).toBe(false);
+    expect(await canGrantLevel(db, dev, rolesModule, 2)).toBe(true);
+    expect(await canGrantLevel(db, dev, rolesModule, 3)).toBe(false);
     await db.deleteFrom('auth.user_permissions').where('user_id', '=', dev).execute();
   });
 });
@@ -221,11 +221,11 @@ describe('test 4 — permissions_version cambia a ogni modifica che tocca l`auto
   it('cambiare la matrice di un RUOLO alza la versione a TUTTI quelli che ce l`hanno', async () => {
     const a = await userWithRole(db, 'moderatore');
     const b = await userWithRole(db, 'moderatore');
-    const estraneo = await userWithRole(db, 'dev');
+    const unrelated = await userWithRole(db, 'dev');
     const [va, vb, ve] = [
       await permissionsVersion(db, a),
       await permissionsVersion(db, b),
-      await permissionsVersion(db, estraneo),
+      await permissionsVersion(db, unrelated),
     ];
 
     const modRole = await roleIdByKey(db, 'moderatore');
@@ -240,7 +240,7 @@ describe('test 4 — permissions_version cambia a ogni modifica che tocca l`auto
     expect(await permissionsVersion(db, a)).toBeGreaterThan(va);
     expect(await permissionsVersion(db, b)).toBeGreaterThan(vb);
     // ...e a nessun altro.
-    expect(await permissionsVersion(db, estraneo)).toBe(ve);
+    expect(await permissionsVersion(db, unrelated)).toBe(ve);
   });
 
   it('bannare alza la versione (il ban passa dallo stesso contatore)', async () => {

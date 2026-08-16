@@ -46,9 +46,9 @@ function header(map: Record<string, string>): string {
  * Sessione di test che PORTA AVANTI i cookie.
  *
  * E' essenziale, non comodo: la verifica TOTP ruota il token (SEC-06), e un
- * secondo tentativo fatto con il cookie vecchio verrebbe rifiutato perche' la
+ * second tentativo fatto con il cookie oldToken verrebbe rifiutato perche' la
  * sessione non esiste piu' — non perche' il codice sia stato riusato. Il test
- * passerebbe per il motivo sbagliato, cioe' non proverebbe nulla.
+ * passerebbe per il motivo wrong, cioe' non proverebbe nulla.
  */
 async function signInAndEnroll(user: { email: string; password: string }) {
   const signIn = await t.app.inject({
@@ -99,19 +99,19 @@ describe('SEC-11 / test 7 — anti-replay TOTP', () => {
     expect((await s.verify(code)).statusCode).toBe(401);
   });
 
-  it('la seconda presentazione e` indistinguibile da un codice sbagliato', async () => {
+  it('la seconda presentazione e` indistinguibile da un codice wrong', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
     const s = await signInAndEnroll(user);
     const code = totpNow(s.secret);
 
     await s.verify(code);
     const replay = await s.verify(code);
-    const sbagliato = await s.verify('000000');
+    const wrong = await s.verify('000000');
 
     // Dire "questo codice era gia' stato usato" confermerebbe che il codice
     // era giusto: e' un oracolo, e va chiuso.
-    expect(replay.statusCode).toBe(sbagliato.statusCode);
-    expect(replay.body).toBe(sbagliato.body);
+    expect(replay.statusCode).toBe(wrong.statusCode);
+    expect(replay.body).toBe(wrong.body);
   });
 
   it('anche i codici degli step ADIACENTI della finestra sono bruciati', async () => {
@@ -215,26 +215,26 @@ describe('SEC-06 / test 8 — il token di sessione cambia dopo il 2FA', () => {
     expect(csrfDopo).not.toBe(csrfPrima);
   });
 
-  it('il token vecchio non vale piu` dopo la rotazione', async () => {
+  it('il token oldToken non vale piu` dopo la rotazione', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
     const s = await signInAndEnroll(user);
-    const vecchio = s.jar()['__Host-metamc_session'];
+    const oldToken = s.jar()['__Host-metamc_session'];
     await s.verify(totpNow(s.secret));
 
     const res = await t.app.inject({
       method: 'GET',
       url: '/api/me',
-      headers: { cookie: `__Host-metamc_session=${vecchio}` },
+      headers: { cookie: `__Host-metamc_session=${oldToken}` },
     });
     expect(res.statusCode).toBe(401);
   });
 
-  it('un secondo login emette un token diverso dal primo', async () => {
+  it('un second login emette un token diverso dal first', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
-    const primo = await loginAs(t, user);
+    const first = await loginAs(t, user);
     await waitForNextTotpStep(t, user.id);
-    const secondo = await loginAs(t, user);
-    expect(secondo.sessionCookie).not.toBe(primo.sessionCookie);
+    const second = await loginAs(t, user);
+    expect(second.sessionCookie).not.toBe(first.sessionCookie);
   });
 });
 

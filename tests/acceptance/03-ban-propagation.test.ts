@@ -30,14 +30,14 @@ async function meStatus(actor: Actor): Promise<number> {
   return res.statusCode;
 }
 
-describe('SEC-02 — il ban cade entro un secondo', () => {
+describe('SEC-02 — il ban cade entro un second', () => {
   it('una sessione valida accede', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
     const actor = await loginAs(t, user);
     expect(await meStatus(actor)).toBe(200);
   });
 
-  it('bannare in Postgres + riscrivere authz -> 401 alla richiesta successiva, sotto 1 secondo', async () => {
+  it('bannare in Postgres + riscrivere authz -> 401 alla richiesta successiva, sotto 1 second', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
     const actor = await loginAs(t, user);
     expect(await meStatus(actor)).toBe(200);
@@ -108,18 +108,18 @@ describe('SEC-02 — il ban cade entro un secondo', () => {
 
   it('la revoca PUNTUALE di una sessione non tocca le altre', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
-    const primo = await loginAs(t, user);
-    const secondo = await loginAs(t, user);
-    expect(primo.sessionCookie).not.toBe(secondo.sessionCookie);
+    const first = await loginAs(t, user);
+    const second = await loginAs(t, user);
+    expect(first.sessionCookie).not.toBe(second.sessionCookie);
 
     // La sessione da revocare si risolve dal COOKIE, non prendendo "la prima
     // per createdAt": l'enrollment ne ha lasciata un'altra, e revocare quella
     // farebbe passare il test per il motivo sbagliato.
-    const target = await sessionOfActor(t, primo);
+    const target = await sessionOfActor(t, first);
     await t.ctx.authz.revokeSession(target.id, target.expiresAt);
 
-    expect(await meStatus(primo)).toBe(401);
-    expect(await meStatus(secondo)).toBe(200);
+    expect(await meStatus(first)).toBe(401);
+    expect(await meStatus(second)).toBe(200);
   });
 
   it('se authz:{userId} sparisce da Redis viene ricostruita da Postgres, e il ban resta', async () => {

@@ -1,5 +1,5 @@
-// §14 test 10 — due accettazioni CONCORRENTI dello stesso invito: una sola
-//               riesce, e non nascono due utenti.
+// §14 test 10 — due accettazioni CONCORRENTI dello stesso invite: una sola
+//               riesce, e non nascono due users.
 // §14 test 11 — due consumi CONCORRENTI dello stesso recovery code: uno solo
 //               riesce.  SEC-13
 //
@@ -13,12 +13,12 @@ import { type Actor, loginAs, seedUser } from '#tests/support/actors.ts';
 import { sameOriginHeaders, startTestApp, type TestApp } from '#tests/support/app.ts';
 
 let t: TestApp;
-let invitante: Actor;
+let inviter: Actor;
 let roleId: number;
 
 beforeAll(async () => {
   t = await startTestApp({ label: 'conc' });
-  invitante = await loginAs(t, await seedUser(t, { roleKey: 'owner' }));
+  inviter = await loginAs(t, await seedUser(t, { roleKey: 'owner' }));
   const role = await t.ctx.db
     .selectFrom('auth.roles')
     .select('id')
@@ -31,15 +31,15 @@ afterAll(async () => {
   await t?.close();
 });
 
-/** Emette un invito e restituisce il token estratto dall'email. */
-async function emettiInvito(email: string): Promise<string> {
+/** Emette un invite e restituisce il token estratto dall'email. */
+async function issueInvite(email: string): Promise<string> {
   const res = await t.app.inject({
     method: 'POST',
     url: '/api/invites',
-    headers: invitante.headers(),
+    headers: inviter.headers(),
     payload: { email, roleId },
   });
-  if (res.statusCode !== 201) throw new Error(`invito non emesso: ${res.statusCode} ${res.body}`);
+  if (res.statusCode !== 201) throw new Error(`invite non emesso: ${res.statusCode} ${res.body}`);
 
   const mail = t.mailer.lastTo(email);
   if (!mail) throw new Error('nessuna email inviata');
@@ -48,8 +48,8 @@ async function emettiInvito(email: string): Promise<string> {
   return token;
 }
 
-/** Apre il link di invito e restituisce il cookie di onboarding. */
-async function apriInvito(token: string): Promise<string> {
+/** Apre il link di invite e restituisce il cookie di onboarding. */
+async function openInvite(token: string): Promise<string> {
   const res = await t.app.inject({ method: 'GET', url: `/accept?t=${token}` });
   expect(res.statusCode).toBe(302);
   const setCookie = res.headers['set-cookie'];
@@ -59,13 +59,13 @@ async function apriInvito(token: string): Promise<string> {
   return onb.split(';')[0]?.split('=')[1] ?? '';
 }
 
-describe('test 10 — due accettazioni concorrenti dello stesso invito', () => {
+describe('test 10 — due accettazioni concorrenti dello stesso invite', () => {
   it('il token non compare MAI nella risposta HTTP: esiste solo nell`email', async () => {
     const email = 'solo-email@metamc.it';
     const res = await t.app.inject({
       method: 'POST',
       url: '/api/invites',
-      headers: invitante.headers(),
+      headers: inviter.headers(),
       payload: { email, roleId },
     });
     expect(res.statusCode).toBe(201);
@@ -76,7 +76,7 @@ describe('test 10 — due accettazioni concorrenti dello stesso invito', () => {
   });
 
   it('in tabella c`e` solo lo SHA-256 del token, mai il token', async () => {
-    const token = await emettiInvito('hash-solo@metamc.it');
+    const token = await issueInvite('hash-solo@metamc.it');
     const rows = await t.ctx.db
       .selectFrom('auth.invitation')
       .select(['token_hash'])
@@ -91,13 +91,13 @@ describe('test 10 — due accettazioni concorrenti dello stesso invito', () => {
 
   it('due POST /api/invites/accept concorrenti: UNA sola riesce', async () => {
     const email = 'gara@metamc.it';
-    const token = await emettiInvito(email);
+    const token = await issueInvite(email);
 
-    // Due sessioni di onboarding distinte sullo STESSO invito: e' lo scenario
+    // Due sessioni di onboarding distinte sullo STESSO invite: e' lo scenario
     // reale — lo stesso link aperto in due schede, o un doppio clic.
-    const [onbA, onbB] = await Promise.all([apriInvito(token), apriInvito(token)]);
+    const [onbA, onbB] = await Promise.all([openInvite(token), openInvite(token)]);
 
-    const accetta = (onb: string) =>
+    const accept = (onb: string) =>
       t.app.inject({
         method: 'POST',
         url: '/api/invites/accept',
@@ -105,36 +105,36 @@ describe('test 10 — due accettazioni concorrenti dello stesso invito', () => {
         payload: { password: 'password-di-accettazione-lunga', name: 'Nuovo Utente' },
       });
 
-    const [a, b] = await Promise.all([accetta(onbA), accetta(onbB)]);
+    const [a, b] = await Promise.all([accept(onbA), accept(onbB)]);
     const statuses = [a.statusCode, b.statusCode].sort();
 
     expect(statuses.filter((s) => s === 201)).toHaveLength(1);
     expect(statuses.filter((s) => s === 409)).toHaveLength(1);
 
     // ...e soprattutto: UN solo utente.
-    const utenti = await t.ctx.db.selectFrom('auth.user').select('id').where('email', '=', email).execute();
-    expect(utenti).toHaveLength(1);
+    const users = await t.ctx.db.selectFrom('auth.user').select('id').where('email', '=', email).execute();
+    expect(users).toHaveLength(1);
 
-    const invito = await t.ctx.db
+    const invite = await t.ctx.db
       .selectFrom('auth.invitation')
       .select(['consumed_at', 'consumed_user_id'])
       .where('email_lower', '=', email)
       .executeTakeFirstOrThrow();
-    expect(invito.consumed_at).not.toBeNull();
-    expect(invito.consumed_user_id).toBe(utenti[0]?.id);
+    expect(invite.consumed_at).not.toBeNull();
+    expect(invite.consumed_user_id).toBe(users[0]?.id);
   });
 
   it('quattro accettazioni concorrenti: sempre una sola', async () => {
     const email = 'gara-quattro@metamc.it';
-    const token = await emettiInvito(email);
+    const token = await issueInvite(email);
     const onbs = await Promise.all([
-      apriInvito(token),
-      apriInvito(token),
-      apriInvito(token),
-      apriInvito(token),
+      openInvite(token),
+      openInvite(token),
+      openInvite(token),
+      openInvite(token),
     ]);
 
-    const risultati = await Promise.all(
+    const results = await Promise.all(
       onbs.map((onb) =>
         t.app.inject({
           method: 'POST',
@@ -145,57 +145,57 @@ describe('test 10 — due accettazioni concorrenti dello stesso invito', () => {
       ),
     );
 
-    expect(risultati.filter((r) => r.statusCode === 201)).toHaveLength(1);
-    const utenti = await t.ctx.db.selectFrom('auth.user').select('id').where('email', '=', email).execute();
-    expect(utenti).toHaveLength(1);
+    expect(results.filter((r) => r.statusCode === 201)).toHaveLength(1);
+    const users = await t.ctx.db.selectFrom('auth.user').select('id').where('email', '=', email).execute();
+    expect(users).toHaveLength(1);
   });
 
-  it('un invito gia` consumato non si riapre, nemmeno con lo stesso token', async () => {
+  it('un invite gia` consumato non si riapre, nemmeno con lo stesso token', async () => {
     const email = 'una-volta@metamc.it';
-    const token = await emettiInvito(email);
-    const onb = await apriInvito(token);
+    const token = await issueInvite(email);
+    const onb = await openInvite(token);
 
-    const primo = await t.app.inject({
+    const first = await t.app.inject({
       method: 'POST',
       url: '/api/invites/accept',
       headers: sameOriginHeaders({ cookie: `__Host-metamc_onboarding=${onb}` }),
       payload: { password: 'password-di-accettazione-lunga', name: 'Nuovo' },
     });
-    expect(primo.statusCode).toBe(201);
+    expect(first.statusCode).toBe(201);
 
-    // Il link non porta piu' da nessuna parte: nessun nuovo onboarding.
-    const riapertura = await t.app.inject({ method: 'GET', url: `/accept?t=${token}` });
-    expect(riapertura.statusCode).toBe(302);
-    const list = riapertura.headers['set-cookie'];
+    // Il link non porta piu' da nessuna parte: nessun fresh onboarding.
+    const reopen = await t.app.inject({ method: 'GET', url: `/accept?t=${token}` });
+    expect(reopen.statusCode).toBe(302);
+    const list = reopen.headers['set-cookie'];
     const cookies = Array.isArray(list) ? list : list ? [list] : [];
     expect(cookies.some((c) => c.startsWith('__Host-metamc_onboarding='))).toBe(false);
   });
 
-  it('SEC-32 — token inesistente, scaduto e revocato producono lo STESSO esito', async () => {
-    const inesistente = await t.app.inject({ method: 'GET', url: '/accept?t=token-che-non-esiste-affatto' });
+  it('SEC-32 — token missing, expired e revoked producono lo STESSO outcome', async () => {
+    const missing = await t.app.inject({ method: 'GET', url: '/accept?t=token-che-non-esiste-affatto' });
 
-    const emailScaduta = 'scaduto@metamc.it';
-    const tokenScaduto = await emettiInvito(emailScaduta);
+    const expiredEmail = 'expired@metamc.it';
+    const expiredToken = await issueInvite(expiredEmail);
     // Si spostano indietro ENTRAMBE le date: il CHECK `expires_at >
-    // created_at` non ammette un invito nato gia' scaduto, ed e' giusto cosi'
-    // — nella realta' un invito non si "accorcia", si revoca.
+    // created_at` non ammette un invite nato gia' expired, ed e' giusto cosi'
+    // — nella realta' un invite non si "accorcia", si revoca.
     await t.ctx.db
       .updateTable('auth.invitation')
       .set({ created_at: new Date(Date.now() - 90 * 3600_000), expires_at: new Date(Date.now() - 1000) })
-      .where('email_lower', '=', emailScaduta)
+      .where('email_lower', '=', expiredEmail)
       .execute();
-    const scaduto = await t.app.inject({ method: 'GET', url: `/accept?t=${tokenScaduto}` });
+    const expired = await t.app.inject({ method: 'GET', url: `/accept?t=${expiredToken}` });
 
-    const emailRevocata = 'revocato@metamc.it';
-    const tokenRevocato = await emettiInvito(emailRevocata);
+    const revokedEmail = 'revoked@metamc.it';
+    const revokedToken = await issueInvite(revokedEmail);
     await t.ctx.db
       .updateTable('auth.invitation')
-      .set({ revoked_at: new Date(), revoked_by: invitante.userId })
-      .where('email_lower', '=', emailRevocata)
+      .set({ revoked_at: new Date(), revoked_by: inviter.userId })
+      .where('email_lower', '=', revokedEmail)
       .execute();
-    const revocato = await t.app.inject({ method: 'GET', url: `/accept?t=${tokenRevocato}` });
+    const revoked = await t.app.inject({ method: 'GET', url: `/accept?t=${revokedToken}` });
 
-    for (const res of [inesistente, scaduto, revocato]) {
+    for (const res of [missing, expired, revoked]) {
       expect(res.statusCode).toBe(302);
       expect(res.headers.location).toBe('/accept');
       const list = res.headers['set-cookie'];
@@ -206,14 +206,14 @@ describe('test 10 — due accettazioni concorrenti dello stesso invito', () => {
 
   it('l`indice parziale impedisce due inviti pendenti per la stessa email', async () => {
     const email = 'doppione@metamc.it';
-    await emettiInvito(email);
-    const secondo = await t.app.inject({
+    await issueInvite(email);
+    const second = await t.app.inject({
       method: 'POST',
       url: '/api/invites',
-      headers: invitante.headers(),
+      headers: inviter.headers(),
       payload: { email, roleId },
     });
-    expect(secondo.statusCode).toBe(409);
+    expect(second.statusCode).toBe(409);
   });
 });
 
@@ -230,8 +230,8 @@ describe('SEC-13 / test 11 — due consumi concorrenti dello stesso recovery cod
       t.ctx.db.transaction().execute((trx) => consumeRecoveryCode(trx, user.id, code as string, '127.0.0.1')),
     ]);
 
-    const riusciti = [a, b].filter((r) => r.ok);
-    expect(riusciti).toHaveLength(1);
+    const succeeded = [a, b].filter((r) => r.ok);
+    expect(succeeded).toHaveLength(1);
 
     const row = await t.ctx.db
       .selectFrom('auth.recovery_code')
@@ -247,12 +247,12 @@ describe('SEC-13 / test 11 — due consumi concorrenti dello stesso recovery cod
     const { codes } = await t.ctx.db.transaction().execute((trx) => issueRecoveryCodes(trx, user.id));
     const code = codes[0] as string;
 
-    const esiti = await Promise.all(
+    const outcomes = await Promise.all(
       Array.from({ length: 5 }, () =>
         t.ctx.db.transaction().execute((trx) => consumeRecoveryCode(trx, user.id, code, '127.0.0.1')),
       ),
     );
-    expect(esiti.filter((e) => e.ok)).toHaveLength(1);
+    expect(outcomes.filter((e) => e.ok)).toHaveLength(1);
   });
 
   it('un codice speso non si riapre nemmeno con una UPDATE diretta', async () => {
@@ -274,21 +274,21 @@ describe('SEC-13 / test 11 — due consumi concorrenti dello stesso recovery cod
 
   it('rigenerare invalida in blocco la generazione precedente', async () => {
     const user = await seedUser(t);
-    const prima = await t.ctx.db.transaction().execute((trx) => issueRecoveryCodes(trx, user.id));
-    const dopo = await t.ctx.db.transaction().execute((trx) => issueRecoveryCodes(trx, user.id));
-    expect(dopo.generation).toBe(prima.generation + 1);
+    const firstGeneration = await t.ctx.db.transaction().execute((trx) => issueRecoveryCodes(trx, user.id));
+    const secondGeneration = await t.ctx.db.transaction().execute((trx) => issueRecoveryCodes(trx, user.id));
+    expect(secondGeneration.generation).toBe(firstGeneration.generation + 1);
 
     // Un codice della generazione vecchia non vale piu'.
-    const esito = await t.ctx.db
+    const outcome = await t.ctx.db
       .transaction()
-      .execute((trx) => consumeRecoveryCode(trx, user.id, prima.codes[0] as string, '127.0.0.1'));
-    expect(esito.ok).toBe(false);
+      .execute((trx) => consumeRecoveryCode(trx, user.id, firstGeneration.codes[0] as string, '127.0.0.1'));
+    expect(outcome.ok).toBe(false);
 
     // Uno della nuova si'.
-    const nuovo = await t.ctx.db
+    const fresh = await t.ctx.db
       .transaction()
-      .execute((trx) => consumeRecoveryCode(trx, user.id, dopo.codes[0] as string, '127.0.0.1'));
-    expect(nuovo.ok).toBe(true);
+      .execute((trx) => consumeRecoveryCode(trx, user.id, secondGeneration.codes[0] as string, '127.0.0.1'));
+    expect(fresh.ok).toBe(true);
   });
 
   it('i codici sono 10, da 26 caratteri, e in tabella c`e` solo il digest', async () => {
@@ -318,10 +318,10 @@ describe('SEC-13 / test 11 — due consumi concorrenti dello stesso recovery cod
     const { codes } = await t.ctx.db.transaction().execute((trx) => issueRecoveryCodes(trx, user.id));
     const code = codes[0] as string;
     // Formato mostrato all'utente: gruppi separati da trattini, minuscolo.
-    const trascritto = (code.match(/.{1,5}/g) ?? []).join('-').toLowerCase();
-    const esito = await t.ctx.db
+    const transcribed = (code.match(/.{1,5}/g) ?? []).join('-').toLowerCase();
+    const outcome = await t.ctx.db
       .transaction()
-      .execute((trx) => consumeRecoveryCode(trx, user.id, trascritto, '127.0.0.1'));
-    expect(esito.ok).toBe(true);
+      .execute((trx) => consumeRecoveryCode(trx, user.id, transcribed, '127.0.0.1'));
+    expect(outcome.ok).toBe(true);
   });
 });

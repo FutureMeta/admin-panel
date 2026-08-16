@@ -10,6 +10,7 @@ import { installErrorHandler } from './errors.ts';
 import { assertNoStateChangingGet, registerSecurityHooks } from './hooks.ts';
 import { contentSecurityPolicy, newNonce } from './index-html.ts';
 import { auditContextOf, requestIps } from './request-context.ts';
+import { registerAccountRoutes } from './routes/account.ts';
 import { registerAuditRoutes } from './routes/audit.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerHealthRoutes } from './routes/health.ts';
@@ -178,6 +179,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
 
   await registerHealthRoutes(app, ctx);
   await registerAuthRoutes(app, ctx);
+  await registerAccountRoutes(app, ctx);
   await registerInviteRoutes(app, ctx);
   await registerOnboardingRoutes(app, ctx);
   await registerUserRoutes(app, ctx);

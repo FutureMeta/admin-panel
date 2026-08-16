@@ -112,8 +112,8 @@ export class PasswordService {
    * comportamento di better-auth, che potrebbe cambiare in una minor.
    */
   async verify(phc: string, password: string): Promise<boolean> {
-    const nostro = phc.startsWith('$argon2id$') && this.#parametriCorrenti(phc);
-    if (!nostro) {
+    const isOurs = phc.startsWith('$argon2id$') && this.#hasCurrentParams(phc);
+    if (!isOurs) {
       await this.verifyDecoy(password);
       return false;
     }
@@ -128,7 +128,7 @@ export class PasswordService {
     });
   }
 
-  #parametriCorrenti(phc: string): boolean {
+  #hasCurrentParams(phc: string): boolean {
     const p = phcParams(phc);
     return p !== undefined && p.m === ARGON2_PARAMS.memoryCost && p.t === ARGON2_PARAMS.timeCost;
   }

@@ -77,8 +77,8 @@ export class HashSemaphore {
    */
   async run<T>(fn: () => Promise<T>): Promise<T> {
     if (this.#inFlight >= this.#limit) {
-      const entrato = await this.#attendiSlot();
-      if (!entrato) {
+      const acquired = await this.#waitForSlot();
+      if (!acquired) {
         this.#rejected += 1;
         throw new Overloaded(1);
       }
@@ -94,24 +94,24 @@ export class HashSemaphore {
     }
   }
 
-  #attendiSlot(): Promise<boolean> {
+  #waitForSlot(): Promise<boolean> {
     return new Promise<boolean>((resolve) => {
-      let risolto = false;
+      let settled = false;
       const timer = setTimeout(() => {
-        if (risolto) return;
-        risolto = true;
-        const i = this.#waiting.indexOf(sveglia);
+        if (settled) return;
+        settled = true;
+        const i = this.#waiting.indexOf(wake);
         if (i >= 0) this.#waiting.splice(i, 1);
         resolve(false);
       }, this.#maxWaitMs);
 
-      const sveglia = () => {
-        if (risolto) return;
-        risolto = true;
+      const wake = () => {
+        if (settled) return;
+        settled = true;
         clearTimeout(timer);
         resolve(true);
       };
-      this.#waiting.push(sveglia);
+      this.#waiting.push(wake);
     });
   }
 }

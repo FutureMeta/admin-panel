@@ -189,7 +189,7 @@ describe('la rotta e` protetta anche senza segreto configurato', () => {
     try {
       // Si azzera il segreto a runtime: e' il caso di una configurazione
       // incompleta in produzione.
-      (senza.ctx.env as { RESEND_WEBHOOK_SECRET?: string }).RESEND_WEBHOOK_SECRET = undefined;
+      Reflect.deleteProperty(senza.ctx.env, 'RESEND_WEBHOOK_SECRET');
       const res = await senza.app.inject({
         method: 'POST',
         url: '/webhooks/resend',

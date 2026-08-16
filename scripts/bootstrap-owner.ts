@@ -120,7 +120,7 @@ async function main(): Promise<void> {
     console.log(`  ${appOrigin}/accept?t=${result.token}`);
     console.log('');
     console.log('  Il token non e` salvato da nessuna parte: in tabella c`e` solo il suo SHA-256.');
-    console.log('  Se lo perdi, cancella la riga di invite ed esegui di nuovo il comando.');
+    console.log('  Se lo perdi, cancella la riga di invito ed esegui di nuovo il comando.');
     console.log('');
     console.log('  Ricorda: la policy vuole DUE owner (§1.3). Il secondo va invitato subito,');
     console.log('  altrimenti la procedura di reset 2FA a quattro occhi non esiste.');

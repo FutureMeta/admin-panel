@@ -14,6 +14,12 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
   root: 'web',
+
+  // Vite RISCRIVE i tag <script> e <link> che emette, e un attributo scritto a
+  // mano in index.html va perso. `html.cspNonce` glielo fa aggiungere lui, su
+  // tutti i tag generati: e' l'unico modo perche' il segnaposto arrivi dove
+  // serve. Il valore lo sostituisce la rotta Fastify, per richiesta.
+  html: { cspNonce: '__CSP_NONCE__' },
   plugins: [react(), tailwindcss()],
   build: {
     outDir: '../dist',

@@ -10,15 +10,12 @@
   </head>
   <body>
     <!--
-      Il segnaposto __CSP_NONCE__ viene sostituito dalla rotta Fastify che
-      serve questa pagina (§5.1). Il file arriva qui dal build di Vite e non
-      viene mai riletto da disco per richiesta: sta in memoria, pre-splittato
-      sul segnaposto.
-
-      Se il segnaposto sparisse dal build, prepareIndexHtml() farebbe fallire
-      l'avvio invece di servire una pagina senza nonce, che sarebbe bianca.
+      Il nonce CSP lo inietta la rotta Fastify che serve questa pagina (§5.1),
+      sostituendo il segnaposto che Vite mette sui tag generati tramite
+      html.cspNonce. Il file sta in memoria pre-splittato, mai riletto da
+      disco per richiesta.
     -->
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx" nonce="__CSP_NONCE__"></script>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

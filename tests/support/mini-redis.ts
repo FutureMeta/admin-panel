@@ -289,7 +289,12 @@ export class MiniRedis {
     }
   }
 
-  async start(): Promise<void> {
+  /**
+   *  0 = porta effimera scelta dal sistema (il caso dei test).
+   * In sviluppo si passa una porta fissa, cosi' REDIS_URL non cambia a ogni
+   * riavvio.
+   */
+  async start(port = 0): Promise<void> {
     this.#server = createServer((socket) => {
       this.#sockets.add(socket);
       let buffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
@@ -306,7 +311,7 @@ export class MiniRedis {
 
     await new Promise<void>((resolve, reject) => {
       this.#server?.once('error', reject);
-      this.#server?.listen(0, '127.0.0.1', () => {
+      this.#server?.listen(port, '127.0.0.1', () => {
         const addr = this.#server?.address();
         if (addr && typeof addr === 'object') this.#port = addr.port;
         resolve();

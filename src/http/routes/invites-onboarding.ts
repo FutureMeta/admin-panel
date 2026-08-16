@@ -111,7 +111,15 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
       );
       reply.setCookie(ONBOARDING_COOKIE, onboardingToken, {
         path: '/',
-        secure: ctx.env.APP_ORIGIN.startsWith('https://'),
+        // SEMPRE true, mai condizionato allo schema di APP_ORIGIN.
+        //
+        // Il prefisso __Host- RICHIEDE Secure: un cookie __Host- senza
+        // quell'attributo il browser lo scarta in silenzio, e il flusso di
+        // accettazione si romperebbe senza un errore da nessuna parte.
+        // Su localhost i browser accettano i cookie Secure anche in chiaro
+        // (e' un'origine considerata affidabile), quindi non c'e' un caso in
+        // cui metterlo a false aiuti.
+        secure: true,
         httpOnly: true,
         // `lax` e non `strict`: il link arriva da un client di posta, cioe' da
         // una navigazione cross-site, e con `strict` il cookie non partirebbe.

@@ -171,5 +171,8 @@ jobs:
 
       # Il segnaposto del nonce deve sopravvivere al build: senza, la CSP con
       # nonce non ha effetto e la pagina resta bianca (§5.1).
-      - name: Il nonce CSP e' nel build
-        run: grep -q '__CSP_NONCE__' dist/index.html
+      # Sul TAG, non sulla presenza della stringa: Vite riscrive i tag che
+      # emette, e cercare solo il segnaposto passerebbe anche se fosse rimasto
+      # in un commento — con strict-dynamic la pagina resterebbe bianca.
+      - name: Il nonce CSP e' sul tag script del build
+        run: grep -qE '<script[^>]*nonce="__CSP_NONCE__"' dist/index.html

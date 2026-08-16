@@ -43,7 +43,8 @@ export function requireAuth(ctx: AppContext): PreHandler {
     // ruota, e il client non deve preoccuparsi di aggiornarlo.
     reply.setCookie(CSRF_COOKIE, csrfToken(ctx.keys.csrf, outcome.context.sessionId), {
       ...CSRF_COOKIE_OPTIONS,
-      secure: ctx.env.APP_ORIGIN.startsWith('https://'),
+      // Vedi invites-onboarding.ts: il prefisso __Host- richiede Secure, sempre.
+      secure: true,
     });
   };
 }

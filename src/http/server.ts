@@ -6,6 +6,7 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance, type FastifyRequ
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
+import { registerDevAssets } from './dev-assets.ts';
 import { installErrorHandler } from './errors.ts';
 import { assertNoStateChangingGet, registerSecurityHooks } from './hooks.ts';
 import { contentSecurityPolicy, newNonce } from './index-html.ts';
@@ -177,6 +178,9 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     request.raw.on('close', () => controller.abort());
     (request as FastifyRequest & { abortSignal: AbortSignal }).abortSignal = controller.signal;
   });
+
+  // In produzione /assets/* lo serve nginx e questa rotta non esiste (§2).
+  if (ctx.env.NODE_ENV !== 'production') registerDevAssets(app);
 
   await registerHealthRoutes(app, ctx);
   await registerAuthRoutes(app, ctx);

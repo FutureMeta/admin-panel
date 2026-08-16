@@ -32,7 +32,11 @@ RUN pnpm run build:web
 # Il segnaposto del nonce DEVE sopravvivere al build: senza, la CSP con nonce
 # non ha effetto e la pagina resta bianca. Meglio scoprirlo qui che in
 # produzione, ed è anche cio' che prepareIndexHtml() verifica all'avvio.
-RUN grep -q '__CSP_NONCE__' dist/index.html
+# Il controllo e' sul TAG, non sulla presenza della stringa nel file: Vite
+# riscrive i tag che emette, e un attributo scritto a mano in index.html va
+# perso. Cercare solo '__CSP_NONCE__' passerebbe anche se il segnaposto fosse
+# rimasto in un commento — e la pagina resterebbe bianca con strict-dynamic.
+RUN grep -qE '<script[^>]*nonce="__CSP_NONCE__"' dist/index.html
 
 # ---------------------------------------------------------------------------
 # 3. Dipendenze di sola produzione

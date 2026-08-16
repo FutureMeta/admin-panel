@@ -24,13 +24,37 @@ if (!process.env.UV_THREADPOOL_SIZE) {
 
 const logger = createLogger(env.LOG_LEVEL, env.NODE_ENV !== 'production');
 
+/**
+ * Senza API key non si spedisce.
+ *
+ * In sviluppo le email restano in memoria e il link viene stampato sul
+ * terminale: è l'unico modo di provare il flusso di invito senza un dominio
+ * verificato. SEC-43 vieta di loggare token, e quella regola resta valida —
+ * la stampa avviene SOLO fuori produzione, e in produzione questo ramo non
+ * viene nemmeno costruito.
+ */
+function createDevMailer(): Mailer {
+  const memory = new InMemoryMailer();
+  return {
+    async send(request) {
+      const result = await memory.send(request);
+      const link = /https?:\/\/\S+/.exec(request.text)?.[0];
+      console.log('');
+      console.log(`  [email di sviluppo] a: ${request.to}`);
+      console.log(`  oggetto: ${request.subject}`);
+      if (link) console.log(`  link:    ${link}`);
+      console.log('');
+      return result;
+    },
+  };
+}
+
 const mailer: Mailer =
   env.RESEND_API_KEY !== undefined
     ? new ResendMailer({ apiKey: env.RESEND_API_KEY, from: env.MAIL_FROM, logger })
-    : // Senza API key non si spedisce: in sviluppo le email finiscono in
-      // memoria e si leggono dai log. In produzione la validazione dell'env
-      // deve garantirne la presenza, e il runbook lo dice.
-      new InMemoryMailer();
+    : env.NODE_ENV === 'production'
+      ? new InMemoryMailer()
+      : createDevMailer();
 
 if (env.NODE_ENV === 'production' && !env.RESEND_API_KEY) {
   logger.error('RESEND_API_KEY assente in produzione: gli inviti non partiranno.');
@@ -40,7 +64,19 @@ const indexHtmlPath = fileURLToPath(new URL('../../dist/index.html', import.meta
 const indexHtml = loadIndexHtml(indexHtmlPath);
 logger.info({ slots: indexHtml.slots }, 'index.html caricato in memoria e pre-splittato');
 
-const ctx = await buildContext({ env, mailer, indexHtml, logger });
+// RATE_LIMIT_IN_MEMORY: scorciatoia di SVILUPPO per le macchine senza un Redis
+// vero. Il server RESP2 minimale non implementa EVAL, e rate-limiter-flexible
+// su Redis gira uno script Lua. La politica non cambia: cambia dove sta il
+// contatore — che in produzione deve essere condiviso, e infatti li' la
+// scorciatoia è vietata.
+const rateLimitInMemory = process.env.RATE_LIMIT_IN_MEMORY === '1';
+if (rateLimitInMemory && env.NODE_ENV === 'production') {
+  throw new Error(
+    'RATE_LIMIT_IN_MEMORY non è ammessa in produzione: un contatore per-processo non è un limite condiviso.',
+  );
+}
+
+const ctx = await buildContext({ env, mailer, indexHtml, logger, rateLimitInMemory });
 const app = await buildServer(ctx);
 
 await app.listen({ host: env.HOST, port: env.PORT });

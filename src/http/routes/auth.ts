@@ -234,7 +234,9 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         if (session?.session?.id) {
           reply.setCookie(CSRF_COOKIE, csrfToken(ctx.keys.csrf, session.session.id), {
             ...CSRF_COOKIE_OPTIONS,
-            secure: ctx.env.APP_ORIGIN.startsWith('https://'),
+            // Il prefisso __Host- richiede Secure: senza, il browser scarta il cookie
+            // e il client non avrebbe mai un token CSRF da presentare.
+            secure: true,
           });
         }
       }
@@ -259,7 +261,8 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       const actor = actorOf(request);
       reply.setCookie(CSRF_COOKIE, csrfToken(ctx.keys.csrf, actor.sessionId), {
         ...CSRF_COOKIE_OPTIONS,
-        secure: ctx.env.APP_ORIGIN.startsWith('https://'),
+        // Il prefisso __Host- richiede Secure, sempre.
+        secure: true,
       });
       return reply.send({
         userId: actor.userId,

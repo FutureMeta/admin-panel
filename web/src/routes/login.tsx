@@ -8,7 +8,7 @@
 // SEC-20 — dopo il login si va a `/`, sempre. Nessun parametro di ritorno
 // viene letto dalla URL.
 
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { Banner, Button, Field } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
@@ -184,13 +184,13 @@ export function LoginPage() {
               <Button type="submit" variant="primary" size="lg" loading={busy}>
                 Continua
               </Button>
-              <a
-                href="/password-dimenticata"
+              <Link
+                to="/password-dimenticata"
                 className="t-sm"
                 style={{ color: 'var(--tx-muted)', textAlign: 'center' }}
               >
                 Password dimenticata
-              </a>
+              </Link>
             </form>
           ) : step === 'totp' ? (
             <form onSubmit={submitTotp} style={{ display: 'grid', gap: 'var(--sp4)' }}>

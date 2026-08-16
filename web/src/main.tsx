@@ -23,6 +23,7 @@ import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
 import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
+import { ForgotPasswordPage, ResetPasswordPage } from './routes/password.tsx';
 import { ForbiddenPage, NotFoundPage, UnauthorizedPage } from './routes/states.tsx';
 import { RolesPage, UsersPage } from './routes/users.tsx';
 
@@ -306,6 +307,17 @@ const rootRoute = createRootRoute({ component: Outlet, notFoundComponent: NotFou
 const loginRoute = createRoute({ getParentRoute: () => rootRoute, path: '/login', component: LoginPage });
 const acceptRoute = createRoute({ getParentRoute: () => rootRoute, path: '/accept', component: AcceptPage });
 
+const forgotRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/password-dimenticata',
+  component: ForgotPasswordPage,
+});
+const resetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/reset',
+  component: ResetPasswordPage,
+});
+
 const shellRoute = createRoute({ getParentRoute: () => rootRoute, id: 'shell', component: AppShell });
 const homeRoute = createRoute({ getParentRoute: () => shellRoute, path: '/', component: HomePage });
 const usersRoute = createRoute({ getParentRoute: () => shellRoute, path: '/utenti', component: UsersRoute });
@@ -324,6 +336,8 @@ const auditRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   loginRoute,
   acceptRoute,
+  forgotRoute,
+  resetRoute,
   shellRoute.addChildren([homeRoute, usersRoute, rolesRoute, invitesRoute, auditRoute]),
 ]);
 

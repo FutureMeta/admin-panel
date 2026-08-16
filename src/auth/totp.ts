@@ -73,9 +73,20 @@ export class TotpReplayGuard {
 
     // bigint: node-postgres lo restituisce come stringa.
     const last = row ? Number(row.last_totp_step) : 0;
-    // Il confronto e' contro lo step piu' BASSO della finestra: se
-    // last >= step+1 anche il codice "futuro" e' gia' stato bruciato.
-    if (last >= step + TOTP_WINDOW) return { allowed: false, reason: 'step_non_monotono' };
+
+    // `last >= step`, non `last > step`.
+    //
+    // `last_totp_step` registra lo step piu' alto gia' consumato. Se e' uguale
+    // a quello corrente, una verifica in questa finestra e' gia' avvenuta, e
+    // qualunque codice presentabile adesso e' o quello gia' speso o uno dei
+    // due adiacenti — che con window=1 sono accettati dal verificatore e sono
+    // quindi altrettanto riusabili.
+    //
+    // La regola e' piu' stretta del minimo necessario: blocca anche un secondo
+    // accesso LEGITTIMO nella stessa finestra da 30 secondi. E' il prezzo
+    // giusto: per farlo l'utente dovrebbe ridigitare lo stesso codice, che e'
+    // esattamente il replay, e l'attesa massima e' mezzo minuto.
+    if (last >= step) return { allowed: false, reason: 'step_non_monotono' };
 
     return { allowed: true };
   }

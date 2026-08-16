@@ -29,12 +29,15 @@ export function totpAt(secretBase32: string, step: number, digits = 6): string {
   const counter = Buffer.alloc(8);
   counter.writeBigUInt64BE(BigInt(step));
   const mac = createHmac('sha1', key).update(counter).digest();
-  const offset = mac[mac.length - 1] & 0x0f;
+  // `at()` invece dell'indicizzazione: l'HMAC-SHA1 e' sempre 20 byte, ma
+  // `noUncheckedIndexedAccess` non lo sa e ha ragione a non presumerlo.
+  const offset = (mac.at(-1) ?? 0) & 0x0f;
+  const b = (i: number): number => mac.at(i) ?? 0;
   const bin =
-    ((mac[offset] & 0x7f) << 24) |
-    ((mac[offset + 1] & 0xff) << 16) |
-    ((mac[offset + 2] & 0xff) << 8) |
-    (mac[offset + 3] & 0xff);
+    ((b(offset) & 0x7f) << 24) |
+    ((b(offset + 1) & 0xff) << 16) |
+    ((b(offset + 2) & 0xff) << 8) |
+    (b(offset + 3) & 0xff);
   return String(bin % 10 ** digits).padStart(digits, '0');
 }
 

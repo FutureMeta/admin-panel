@@ -15,7 +15,7 @@
   "scripts": {
     "dev": "node --env-file=.env --watch src/server/main.ts",
     "start": "node src/server/main.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p web/tsconfig.json",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "lint:guards": "node scripts/check-guards.ts",

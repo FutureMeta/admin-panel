@@ -73,6 +73,37 @@ const ITALIAN = [
   'attendiSlot',
 ];
 
+/**
+ * Termini di DOMINIO: sono valori del database, non nomi inventati dal codice.
+ *
+ * Le chiavi dei moduli (`utenti`, `ruoli`, `inviti`, `sessioni`,
+ * `impostazioni`, `statistiche`) e dei ruoli (`moderatore`) stanno nel seed
+ * della migration 003 e le legge lo staff nella UI. Tradurle in inglese qui
+ * significherebbe romperle la', ed e' gia' successo per un giro: i test hanno
+ * cercato un ruolo `moderator` che non esiste.
+ */
+const DOMAIN_TERMS = new Set([
+  'utenti',
+  'ruoli',
+  'inviti',
+  'sessioni',
+  'impostazioni',
+  'statistiche',
+  'moderatore',
+]);
+
+function stripJsxText(source: string): string {
+  // Il testo fra > e < e' contenuto visibile, non un identificatore: le
+  // etichette dell'interfaccia sono in italiano di proposito.
+  // La sostituzione preserva le newline: senza, i numeri di riga riportati
+  // scivolerebbero e indicherebbero il punto sbagliato.
+  const NEWLINE = String.fromCharCode(10);
+  return source.replace(/>[^<>{}]+</g, (match) => {
+    const kept = [...match].filter((c) => c === NEWLINE).join('');
+    return `>${kept}<`;
+  });
+}
+
 function stripCommentsAndStrings(source: string): string {
   let out = '';
   let i = 0;
@@ -132,9 +163,14 @@ function main(): void {
   for (const file of files) {
     const rel = relative(ROOT, file);
     if (rel === join('scripts', 'check-identifiers.ts')) continue;
-    const code = stripCommentsAndStrings(readFileSync(file, 'utf8'));
+    // L'ordine conta: prima il testo JSX, poi le stringhe. Al contrario, un
+    // apostrofo dentro una frase italiana ("l'ha fatta") aprirebbe una
+    // stringa che si chiude molto piu' avanti, e tutto cio' che sta in mezzo
+    // sparirebbe dall'analisi o vi entrerebbe per sbaglio.
+    const code = stripCommentsAndStrings(stripJsxText(readFileSync(file, 'utf8')));
     code.split('\n').forEach((line, idx) => {
       for (const match of line.matchAll(pattern)) {
+        if (DOMAIN_TERMS.has(match[0].toLowerCase())) continue;
         found.push(`  ${rel}:${idx + 1}  ${match[0]}`);
       }
     });

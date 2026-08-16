@@ -1,0 +1,365 @@
+/* Stile dell'applicazione.
+ *
+ * I token di design/tokens.css sono la FONTE DI VERITA' visiva: qui non si
+ * ridefinisce un colore, lo si consuma come var(--nome). Tailwind e' mappato
+ * su quegli stessi token con @theme inline, cosi' una utility come `bg-surface`
+ * e una regola scritta a mano puntano allo stesso valore e non possono
+ * divergere.
+ */
+
+@import 'tailwindcss';
+@import '../../design/tokens.css';
+
+@theme inline {
+  --color-base: var(--s-base);
+  --color-surface: var(--s-surface);
+  --color-elevated: var(--s-elevated);
+  --color-overlay: var(--s-overlay);
+  --color-inset: var(--s-inset);
+
+  --color-tx: var(--tx-primary);
+  --color-tx-secondary: var(--tx-secondary);
+  --color-tx-muted: var(--tx-muted);
+  --color-tx-disabled: var(--tx-disabled);
+
+  --color-ac: var(--ac);
+  --color-ac-hover: var(--ac-hover);
+  --color-ac-pressed: var(--ac-pressed);
+  --color-ac-soft: var(--ac-soft);
+  --color-ac-text: var(--ac-text);
+  --color-blu: var(--blu);
+  --color-blu-viz: var(--blu-viz);
+
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+  --color-info: var(--info);
+
+  --radius-xs: var(--r-xs);
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+
+  --font-ui: var(--font-ui);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+}
+
+/* --------------------------------------------------------------------------
+ * Base
+ * ------------------------------------------------------------------------ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--s-base);
+  color: var(--tx-primary);
+  font: 400 14px/22px var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* La profondita' viene dai bordi hairline, non dalle ombre. */
+hr {
+  border: 0;
+  border-top: 1px solid var(--bd-subtle);
+}
+
+/* Il focus e' sempre visibile e sempre dello stesso colore: l'arancio del
+ * brand e' riservato ad azione primaria, stato attivo e focus. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--bd-focus);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* Ogni elemento che mostra numeri usa cifre tabulari: senza, una colonna di
+ * importi balla a ogni aggiornamento. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+ * Componenti ricorrenti
+ * ------------------------------------------------------------------------ */
+
+@layer components {
+  .surface {
+    background: var(--s-surface);
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-lg);
+  }
+
+  .elevated {
+    background: var(--s-elevated);
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-lg);
+    box-shadow: var(--e2);
+  }
+
+  /* --- bottoni ------------------------------------------------------------ */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--sp2);
+    height: 36px;
+    padding: 0 var(--sp4);
+    border: 1px solid transparent;
+    border-radius: var(--r-md);
+    font: 600 14px/20px var(--font-ui);
+    cursor: pointer;
+    transition:
+      background var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease),
+      color var(--dur-fast) var(--ease);
+    white-space: nowrap;
+  }
+  .btn:disabled {
+    cursor: not-allowed;
+    color: var(--tx-disabled);
+    background: var(--s-inset);
+    border-color: var(--bd-subtle);
+  }
+  .btn-sm {
+    height: 30px;
+    padding: 0 var(--sp3);
+    font-size: 13px;
+  }
+  .btn-lg {
+    height: 44px;
+    padding: 0 var(--sp6);
+  }
+
+  .btn-primary {
+    background: var(--ac);
+    color: #0a161d;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: var(--ac-hover);
+  }
+  .btn-primary:active:not(:disabled) {
+    background: var(--ac-pressed);
+  }
+
+  .btn-secondary {
+    background: var(--s-elevated);
+    border-color: var(--bd-strong);
+    color: var(--tx-primary);
+  }
+  .btn-secondary:hover:not(:disabled) {
+    background: var(--s-overlay);
+  }
+
+  .btn-ghost {
+    background: transparent;
+    color: var(--tx-secondary);
+  }
+  .btn-ghost:hover:not(:disabled) {
+    background: var(--s-elevated);
+    color: var(--tx-primary);
+  }
+
+  .btn-danger {
+    background: var(--err);
+    color: #fff;
+  }
+  .btn-danger:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+
+  /* --- campi -------------------------------------------------------------- */
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: var(--sp2);
+  }
+  .label {
+    font: 600 13px/18px var(--font-ui);
+    color: var(--tx-secondary);
+  }
+  .input {
+    height: 40px;
+    padding: 0 var(--sp3);
+    background: var(--s-inset);
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-md);
+    color: var(--tx-primary);
+    font: 400 14px/22px var(--font-ui);
+    width: 100%;
+  }
+  .input::placeholder {
+    color: var(--tx-disabled);
+  }
+  .input:hover {
+    border-color: var(--bd-strong);
+  }
+  .input[aria-invalid='true'] {
+    border-color: var(--err);
+  }
+  .input-otp {
+    font: 400 22px/28px var(--font-mono);
+    letter-spacing: 0.5em;
+    text-align: center;
+    padding-left: 0.5em;
+  }
+  .hint {
+    font: 400 12px/18px var(--font-ui);
+    color: var(--tx-muted);
+  }
+  .error-text {
+    font: 400 13px/20px var(--font-ui);
+    color: var(--err);
+  }
+
+  /* --- badge -------------------------------------------------------------- */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--sp1);
+    height: 22px;
+    padding: 0 var(--sp2);
+    border-radius: var(--r-full);
+    font: 600 11px/14px var(--font-ui);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .badge-ok {
+    background: var(--ok-soft);
+    color: var(--ok);
+  }
+  .badge-warn {
+    background: var(--warn-soft);
+    color: var(--warn);
+  }
+  .badge-err {
+    background: var(--err-soft);
+    color: var(--err);
+  }
+  .badge-info {
+    background: var(--info-soft);
+    color: var(--info);
+  }
+  .badge-neutral {
+    background: var(--s-inset);
+    color: var(--tx-secondary);
+  }
+  .badge-ac {
+    background: var(--ac-soft);
+    color: var(--ac-text);
+  }
+
+  /* --- tabelle ------------------------------------------------------------ */
+  .table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .table th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--s-surface);
+    border-bottom: 1px solid var(--bd-subtle);
+    padding: var(--sp3) var(--sp4);
+    text-align: left;
+    font: 600 11px/14px var(--font-ui);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--tx-muted);
+    white-space: nowrap;
+  }
+  .table td {
+    padding: var(--sp3) var(--sp4);
+    border-bottom: 1px solid var(--bd-subtle);
+    vertical-align: middle;
+  }
+  .table tbody tr:hover td {
+    background: var(--s-elevated);
+  }
+  .num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .mono {
+    font: 400 12px/18px var(--font-mono);
+    color: var(--tx-secondary);
+  }
+
+  /* --- sidebar ------------------------------------------------------------ */
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--sp3);
+    height: 36px;
+    padding: 0 var(--sp3);
+    border-radius: var(--r-md);
+    color: var(--tx-secondary);
+    font: 500 14px/20px var(--font-ui);
+    text-decoration: none;
+    transition: background var(--dur-fast) var(--ease);
+  }
+  .nav-item:hover {
+    background: var(--s-elevated);
+    color: var(--tx-primary);
+  }
+  .nav-item[data-active='true'] {
+    background: var(--ac-soft);
+    color: var(--ac-text);
+  }
+
+  /* --- skeleton ----------------------------------------------------------- */
+  .skeleton {
+    background: linear-gradient(90deg, var(--s-inset) 25%, var(--s-elevated) 50%, var(--s-inset) 75%);
+    background-size: 200% 100%;
+    animation: skeleton 1.4s var(--ease) infinite;
+    border-radius: var(--r-sm);
+  }
+  @keyframes skeleton {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+
+  /* --- motivo esagonale del brand ----------------------------------------- */
+  .hex-panel {
+    background:
+      radial-gradient(120% 100% at 20% 0%, rgba(219, 110, 25, 0.1), transparent 60%),
+      radial-gradient(90% 80% at 90% 100%, rgba(36, 120, 161, 0.12), transparent 60%),
+      var(--s-inset);
+    position: relative;
+    overflow: hidden;
+  }
+  .hex-panel::before {
+    content: '';
+    position: absolute;
+    inset: -10%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='64' viewBox='0 0 56 64'%3E%3Cpath d='M28 1 54 16v32L28 63 2 48V16z' fill='none' stroke='rgba(255,255,255,0.04)' stroke-width='1'/%3E%3C/svg%3E");
+    background-size: 56px 64px;
+    pointer-events: none;
+  }
+}

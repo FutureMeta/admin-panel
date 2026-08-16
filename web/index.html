@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="it" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>MetaMC Admin</title>
+    <link rel="icon" href="/assets/logo.png" />
+  </head>
+  <body>
+    <!--
+      Il segnaposto __CSP_NONCE__ viene sostituito dalla rotta Fastify che
+      serve questa pagina (§5.1). Il file arriva qui dal build di Vite e non
+      viene mai riletto da disco per richiesta: sta in memoria, pre-splittato
+      sul segnaposto.
+
+      Se il segnaposto sparisse dal build, prepareIndexHtml() farebbe fallire
+      l'avvio invece di servire una pagina senza nonce, che sarebbe bianca.
+    -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx" nonce="__CSP_NONCE__"></script>
+  </body>
+</html>

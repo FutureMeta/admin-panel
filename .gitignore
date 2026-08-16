@@ -8,3 +8,4 @@ coverage/
 .vite/
 .vitest/
 spikes/_probe.ts
+web/public/logo.png

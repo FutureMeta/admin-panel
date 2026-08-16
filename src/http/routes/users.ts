@@ -112,13 +112,13 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
     const roles = await ctx.db
       .selectFrom('auth.user_roles as ur')
       .innerJoin('auth.roles as r', 'r.id', 'ur.role_id')
-      .select(['ur.user_id', 'r.key', 'r.name'])
+      .select(['ur.user_id', 'r.key', 'r.name', 'r.is_system'])
       .execute();
 
-    const byUser = new Map<string, Array<{ key: string; name: string }>>();
+    const byUser = new Map<string, Array<{ key: string; name: string; isSystem: boolean }>>();
     for (const r of roles) {
       const list = byUser.get(r.user_id) ?? [];
-      list.push({ key: r.key, name: r.name });
+      list.push({ key: r.key, name: r.name, isSystem: r.is_system });
       byUser.set(r.user_id, list);
     }
 
@@ -171,7 +171,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       ctx.db
         .selectFrom('auth.user_roles as ur')
         .innerJoin('auth.roles as r', 'r.id', 'ur.role_id')
-        .select(['r.id', 'r.key', 'r.name', 'ur.granted_at'])
+        .select(['r.id', 'r.key', 'r.name', 'r.is_system as isSystem', 'ur.granted_at'])
         .where('ur.user_id', '=', id)
         .execute(),
       ctx.db

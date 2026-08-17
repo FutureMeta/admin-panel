@@ -6,7 +6,6 @@ import Fastify, { type FastifyBaseLogger, type FastifyInstance, type FastifyRequ
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
-import { registerDevAssets } from './dev-assets.ts';
 import { installErrorHandler } from './errors.ts';
 import { assertNoStateChangingGet, registerSecurityHooks } from './hooks.ts';
 import { contentSecurityPolicy, newNonce } from './index-html.ts';
@@ -21,6 +20,7 @@ import { registerRoleRoutes } from './routes/roles.ts';
 import { registerTwoFactorResetRoutes } from './routes/two-factor-reset.ts';
 import { registerUserRoutes } from './routes/users.ts';
 import { registerWebhookRoutes } from './routes/webhooks.ts';
+import { registerStaticAssets } from './static-assets.ts';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -179,8 +179,10 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     (request as FastifyRequest & { abortSignal: AbortSignal }).abortSignal = controller.signal;
   });
 
-  // In produzione /assets/* lo serve nginx e questa rotta non esiste (§2).
-  if (ctx.env.NODE_ENV !== 'production') registerDevAssets(app);
+  // Sempre, non solo in sviluppo: se davanti non c'e' nginx, senza questa
+  // rotta il pannello serve index.html e poi 404 sul suo stesso JavaScript.
+  // Dove nginx c'e', intercetta `/assets/` e `/fonts/` prima di arrivare qui.
+  registerStaticAssets(app, ctx.env.NODE_ENV === 'production');
 
   await registerHealthRoutes(app, ctx);
   await registerAuthRoutes(app, ctx);

@@ -26,11 +26,9 @@ coverage/
 .github/
 .claude/
 
-# Il prototipo di riferimento: e' materiale di progettazione, non codice.
-# Circa 1,4 MB fra l'export a file unico e le schermate divise, e in
+# Il prototipo di riferimento: e' materiale di progettazione, non codice, e in
 # produzione non serve a niente.
 frontend/
-MetaMC Admin - standalone.html
 
 # Anteprima delle schermate: gira solo sotto `vite dev`, e la build ha un solo
 # input (index.html), quindi non entrerebbe comunque in dist.

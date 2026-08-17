@@ -1,7 +1,12 @@
 /* Font del prototipo, serviti dalla nostra origine.
  *
- * Generato da scripts/extract-fonts.ts — non modificare a mano.
- * Inter, Montserrat e JetBrains Mono, SIL Open Font License 1.1.
+ * Inter, Montserrat e JetBrains Mono, SIL Open Font License 1.1. I file stanno
+ * in web/public/fonts e sono versionati.
+ *
+ * Estratti una volta dall'export a file unico del prototipo, che li portava
+ * incorporati in base64; quel file non e' piu' nel repository e nemmeno lo
+ * script che lo leggeva. Per rigenerarli servirebbe riesportare il prototipo,
+ * oppure riprenderli da Google Fonts: sono gli stessi.
  */
 
 @font-face {

@@ -1,4 +1,5 @@
-// Rotte utenti: elenco, dettaglio, ruoli, override, ban, sessioni, offboarding.
+// Rotte utenti: elenco, dettaglio, ruoli, override, ban, sessioni, offboarding,
+// eliminazione.
 // §7, §8.10, SEC-07, SEC-08, SEC-31, SEC-36
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
@@ -69,6 +70,9 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       .selectFrom('auth.user')
       .select(['id', 'email', 'name'])
       .where('id', '=', targetId)
+      // Un utente eliminato non e' piu' un bersaglio: risponde 404 come uno
+      // che non e' mai esistito (SEC-31).
+      .where('deleted_at', 'is', null)
       .executeTakeFirst();
     if (!target) throw new NotFound();
     if (!(await dominates(ctx.db, actor.userId, targetId))) {
@@ -105,6 +109,9 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         'u.ban_expires',
         'u.createdAt',
       ])
+      // Gli eliminati non compaiono: la riga esiste solo per il registro e
+      // per la storia degli inviti.
+      .where('u.deleted_at', 'is', null)
       .orderBy('u.createdAt', 'desc')
       .limit(500)
       .execute();
@@ -182,6 +189,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         'twoFactorEnabled',
       ])
       .where('id', '=', id)
+      .where('deleted_at', 'is', null)
       .executeTakeFirst();
     if (!user) throw new NotFound();
 
@@ -585,6 +593,112 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
             targetType: 'user',
             targetId: id,
             targetLabel: target.email,
+            after: { reason: body.reason, sessioniRevocate: sessions.length, invitiRevocati: invites },
+          },
+        };
+      });
+
+      await ctx.store.invalidate(id);
+      return reply.send(summary);
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // POST /api/users/:id/delete — eliminazione. Step-up, dominanza, §8.10
+  //
+  // Fa tutto quello che fa l'offboarding, piu' la distruzione delle
+  // credenziali: password, secondo fattore, codici di recupero, passkey. Da
+  // qui non si torna indietro, ed e' la differenza che giustifica due
+  // operazioni invece di una.
+  //
+  // La riga di auth."user" resta. Non e' un ripiego: `auth.invitation.
+  // invited_by` e' NOT NULL verso quella tabella, e un DELETE vero
+  // richiederebbe di rendere nullabile «chi ha fatto entrare chi» — che in un
+  // pannello ad accesso solo su invito e' la storia da non perdere. La riga
+  // sopravvive come identita' per il registro, e sparisce dall'elenco.
+  // -------------------------------------------------------------------------
+  app.post(
+    '/api/users/:id/delete',
+    { schema: banSchema, preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      requireLevel(actor, 'utenti', 3);
+      const { id } = request.params as { id: string };
+      const body = request.body as { reason: string };
+      const ips = requestIps(request);
+
+      if (id === actor.userId) throw new BadRequest('NON_PUOI_ELIMINARE_TE_STESSO');
+      const target = await requireDominatedTarget(request, id);
+
+      // §1.3 — devono restare almeno due owner. Senza, la procedura di reset
+      // del secondo fattore a quattro occhi non esiste piu', e la prima
+      // persona che perde il telefono resta fuori per sempre.
+      const owners = await ctx.db
+        .selectFrom('auth.user_roles as ur')
+        .innerJoin('auth.roles as r', 'r.id', 'ur.role_id')
+        .innerJoin('auth.user as u', 'u.id', 'ur.user_id')
+        .select('ur.user_id')
+        .where('r.key', '=', 'owner')
+        .where('u.deleted_at', 'is', null)
+        .execute();
+      if (owners.some((o) => o.user_id === id) && owners.length <= 2) {
+        throw new BadRequest('SERVONO_DUE_OWNER');
+      }
+
+      const summary = await securityTransaction(ctx.db, async (trx) => {
+        const before = await trx
+          .selectFrom('auth.user')
+          .select(['email', 'name', 'status'])
+          .where('id', '=', id)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst();
+        // Gia' eliminato: il trigger lo impedirebbe comunque, ma un 404 e'
+        // una risposta piu' onesta di un errore del database.
+        if (!before) throw new NotFound();
+
+        await trx
+          .updateTable('auth.user')
+          .set({
+            deleted_at: new Date(),
+            banned: true,
+            status: 'disabled',
+            ban_reason: body.reason,
+            twoFactorEnabled: false,
+            sessions_valid_from: new Date(),
+          })
+          .where('id', '=', id)
+          .execute();
+
+        const sessions = await trx
+          .deleteFrom('auth.session')
+          .where('userId', '=', id)
+          .returning('id')
+          .execute();
+        const invites = await revokeInvitesBy(trx, id, actor.userId);
+
+        await trx.deleteFrom('auth.user_roles').where('user_id', '=', id).execute();
+        await trx.deleteFrom('auth.user_permissions').where('user_id', '=', id).execute();
+
+        // Le credenziali. E' questo che rende l'operazione definitiva.
+        await trx.deleteFrom('auth.account').where('userId', '=', id).execute();
+        await trx.deleteFrom('auth.twoFactor').where('userId', '=', id).execute();
+        await trx.deleteFrom('auth.recovery_code').where('user_id', '=', id).execute();
+        await trx.deleteFrom('auth.webauthn_credential').where('user_id', '=', id).execute();
+        await trx.deleteFrom('auth.verification').where('identifier', '=', `reset:${id}`).execute();
+
+        return {
+          result: { sessions: sessions.length, invites },
+          events: {
+            action: AUDIT_ACTIONS.userDeleted,
+            outcome: 'success' as const,
+            actor: auditActorOf(actor),
+            request: auditContextOf(request, ips),
+            moduleKey: 'utenti',
+            targetType: 'user',
+            targetId: id,
+            targetLabel: target.email,
+            // Chi era, scritto nel registro prima di sparire dall'elenco.
+            before: { email: before.email, name: before.name, status: before.status },
             after: { reason: body.reason, sessioniRevocate: sessions.length, invitiRevocati: invites },
           },
         };

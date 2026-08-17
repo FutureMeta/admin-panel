@@ -35,6 +35,7 @@ export const AUDIT_ACTIONS = {
   userBanned: 'user.banned',
   userUnbanned: 'user.unbanned',
   userOffboarded: 'user.offboarded',
+  userDeleted: 'user.deleted',
 
   // --- ruoli e permessi -----------------------------------------------------
   roleGranted: 'user.role.grant',
@@ -94,6 +95,7 @@ export const SECURITY_ACTIONS: ReadonlySet<AuditAction> = new Set<AuditAction>([
   AUDIT_ACTIONS.userBanned,
   AUDIT_ACTIONS.userUnbanned,
   AUDIT_ACTIONS.userOffboarded,
+  AUDIT_ACTIONS.userDeleted,
   AUDIT_ACTIONS.roleGranted,
   AUDIT_ACTIONS.roleRevoked,
   AUDIT_ACTIONS.permissionGranted,

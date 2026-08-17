@@ -419,6 +419,16 @@ function UserDialog({
         setError(undefined);
         return;
       }
+      if (err instanceof ApiError && err.code === 'SERVONO_DUE_OWNER') {
+        setError(
+          'Devono restare almeno due owner: senza, il reset del secondo fattore a quattro occhi non esiste più.',
+        );
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'NON_PUOI_ELIMINARE_TE_STESSO') {
+        setError('Non puoi eliminare te stesso.');
+        return;
+      }
       setError(
         err instanceof ApiError && err.isNotFound
           ? 'Operazione non consentita su questa persona.'
@@ -567,6 +577,35 @@ function UserDialog({
                 }}
               >
                 Offboarding
+              </Button>
+            ) : null}
+            {canManageUsers ? (
+              <Button
+                variant="danger"
+                loading={act.isPending}
+                onClick={() => {
+                  // Doppia conferma, e la seconda chiede di scrivere il nome.
+                  // Non è teatro: è l'unica operazione del pannello che non si
+                  // annulla, e un clic per sbaglio distrugge le credenziali.
+                  if (
+                    !window.confirm(
+                      `Eliminare ${user.name}?\n\n` +
+                        'Password, secondo fattore e codici di recupero vengono distrutti: ' +
+                        "l'account non è più recuperabile. La persona sparisce dall'elenco, " +
+                        'ma resta nel registro attività e nella storia degli inviti.',
+                    )
+                  ) {
+                    return;
+                  }
+                  const typed = window.prompt(`Scrivi ${user.name} per confermare:`);
+                  if (typed?.trim() !== user.name) return;
+                  const reason = window.prompt('Motivo (finisce nel registro):');
+                  if (reason && reason.trim().length >= 3) {
+                    act.mutate({ path: `/api/users/${userId}/delete`, body: { reason: reason.trim() } });
+                  }
+                }}
+              >
+                Elimina definitivamente
               </Button>
             ) : null}
           </div>

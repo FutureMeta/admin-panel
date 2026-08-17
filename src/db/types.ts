@@ -43,6 +43,11 @@ export type UserTable = {
   last_totp_step: WithDefault<string>;
   invited_by: string | null;
   invite_id: string | null;
+  /**
+   * Eliminato: le credenziali non esistono piu' e la riga sopravvive solo
+   * come identita' per il registro e per la storia degli inviti.
+   */
+  deleted_at: Date | null;
 };
 
 export type SessionTable = {

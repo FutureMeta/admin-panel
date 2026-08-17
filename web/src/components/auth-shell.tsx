@@ -5,9 +5,12 @@
 // largo 372px. Tenerle come due file separati significherebbe che fra un mese
 // una ha il bordo e l'altra no.
 //
-// Metriche di frontend/9-reset-password.dc.html: contenitore alto quanto la
-// finestra, largo al massimo 1440 e centrato, bordo sottile e nessun raggio —
-// non è una card, è la pagina.
+// Metriche di frontend/9-reset-password.dc.html, con UNA deviazione: il file
+// del disegno limita il contenitore a 1440px e lo centra, perché la tavola è
+// disegnata a quella larghezza. Su uno schermo più largo quel limite diventa
+// un riquadro centrato con due bande vuote ai lati — l'effetto sbagliato per
+// una pagina che non ha altro contenuto attorno. Qui la schermata riempie la
+// finestra; il resto (colonne 1.05:1, padding 48, modulo 372) è quello.
 
 import type { ReactNode } from 'react';
 import { HexField } from './hex-field.tsx';
@@ -27,125 +30,119 @@ export function AuthShell({
   children: ReactNode;
 }) {
   return (
-    <main style={{ minHeight: '100vh', background: 'var(--s-base)' }}>
+    <main
+      style={{
+        minHeight: '100vh',
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1fr)',
+        background: 'var(--s-surface)',
+      }}
+    >
       <div
         style={{
-          maxWidth: 1440,
-          margin: '0 auto',
-          minHeight: '100vh',
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1fr)',
-          border: '1px solid var(--bd-subtle)',
+          position: 'relative',
+          background: 'linear-gradient(155deg,#0E222D 0%,#0A161D 62%,#0E1F28 100%)',
           overflow: 'hidden',
-          background: 'var(--s-surface)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+          padding: 48,
         }}
       >
-        <div
-          style={{
-            position: 'relative',
-            background: 'linear-gradient(155deg,#0E222D 0%,#0A161D 62%,#0E1F28 100%)',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            padding: 48,
-          }}
-        >
-          <HexField />
+        <HexField />
 
-          <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
-            <img src="/assets/logo.png" alt="" width={40} height={40} style={{ objectFit: 'contain' }} />
-            <div>
+        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <img src="/assets/logo.png" alt="" width={40} height={40} style={{ objectFit: 'contain' }} />
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontWeight: 700,
+                fontSize: 16,
+                letterSpacing: '.14em',
+                textTransform: 'uppercase',
+                color: '#E9F1F5',
+              }}
+            >
+              MetaMC
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: '.1em',
+                textTransform: 'uppercase',
+                color: '#718996',
+                marginTop: 2,
+              }}
+            >
+              Console operativa
+            </div>
+          </div>
+        </div>
+
+        <div style={{ position: 'relative', maxWidth: 400 }}>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 30,
+              lineHeight: '40px',
+              fontWeight: 700,
+              letterSpacing: '-.02em',
+              color: '#E9F1F5',
+            }}
+          >
+            {headline.map((line, i) => (
+              <span key={line}>
+                {line}
+                {i < headline.length - 1 ? <br /> : null}
+              </span>
+            ))}
+          </div>
+          <p style={{ margin: '16px 0 0', fontSize: 14, lineHeight: '22px', color: '#A9BEC9' }}>
+            {description}
+          </p>
+        </div>
+
+        <div style={{ position: 'relative', display: 'flex', gap: 28, flexWrap: 'wrap' }}>
+          {stats.map((s) => (
+            <div key={s.label}>
               <div
                 style={{
                   fontFamily: 'var(--font-display)',
+                  fontSize: 20,
                   fontWeight: 700,
-                  fontSize: 16,
-                  letterSpacing: '.14em',
-                  textTransform: 'uppercase',
                   color: '#E9F1F5',
+                  fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                MetaMC
+                {s.value}
               </div>
               <div
                 style={{
                   fontSize: 11,
-                  letterSpacing: '.1em',
+                  letterSpacing: '.08em',
                   textTransform: 'uppercase',
                   color: '#718996',
-                  marginTop: 2,
+                  marginTop: 4,
                 }}
               >
-                Console operativa
+                {s.label}
               </div>
             </div>
-          </div>
-
-          <div style={{ position: 'relative', maxWidth: 400 }}>
-            <div
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 30,
-                lineHeight: '40px',
-                fontWeight: 700,
-                letterSpacing: '-.02em',
-                color: '#E9F1F5',
-              }}
-            >
-              {headline.map((line, i) => (
-                <span key={line}>
-                  {line}
-                  {i < headline.length - 1 ? <br /> : null}
-                </span>
-              ))}
-            </div>
-            <p style={{ margin: '16px 0 0', fontSize: 14, lineHeight: '22px', color: '#A9BEC9' }}>
-              {description}
-            </p>
-          </div>
-
-          <div style={{ position: 'relative', display: 'flex', gap: 28, flexWrap: 'wrap' }}>
-            {stats.map((s) => (
-              <div key={s.label}>
-                <div
-                  style={{
-                    fontFamily: 'var(--font-display)',
-                    fontSize: 20,
-                    fontWeight: 700,
-                    color: '#E9F1F5',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  {s.value}
-                </div>
-                <div
-                  style={{
-                    fontSize: 11,
-                    letterSpacing: '.08em',
-                    textTransform: 'uppercase',
-                    color: '#718996',
-                    marginTop: 4,
-                  }}
-                >
-                  {s.label}
-                </div>
-              </div>
-            ))}
-          </div>
+          ))}
         </div>
+      </div>
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 48,
-            background: 'var(--s-surface)',
-          }}
-        >
-          <div style={{ width: '100%', maxWidth: 372 }}>{children}</div>
-        </div>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 48,
+          background: 'var(--s-surface)',
+        }}
+      >
+        <div style={{ width: '100%', maxWidth: 372 }}>{children}</div>
       </div>
     </main>
   );

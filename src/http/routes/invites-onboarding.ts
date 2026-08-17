@@ -9,7 +9,6 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction, writeAudit } from '#src/audit/log.ts';
-import { sanitizeDisplayName } from '#src/audit/sanitize.ts';
 import { HibpUnavailable, PasswordCompromised } from '#src/auth/hibp.ts';
 import { PASSWORD_MAX, PASSWORD_MIN } from '#src/auth/password.ts';
 import { formatRecoveryCode, issueRecoveryCodes } from '#src/auth/recovery-codes.ts';
@@ -35,14 +34,16 @@ export type OnboardingState = {
   userId?: string;
 };
 
+// Solo la password. Il nome NON e' piu' un campo del corpo: lo ha deciso chi
+// ha emesso l'invito e sta nella riga, come l'email (§8.1.9). Un campo in meno
+// nel corpo e' anche una superficie in meno.
 const acceptSchema = {
   body: {
     type: 'object',
-    required: ['password', 'name'],
+    required: ['password'],
     additionalProperties: false,
     properties: {
       password: { type: 'string', minLength: PASSWORD_MIN, maxLength: PASSWORD_MAX },
-      name: { type: 'string', minLength: 1, maxLength: 120 },
     },
   },
 } as const;
@@ -159,7 +160,7 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
     const invite = await ctx.db
       .selectFrom('auth.invitation as i')
       .leftJoin('auth.user as u', 'u.id', 'i.invited_by')
-      .select(['i.expires_at as expiresAt', 'u.name as invitedByName'])
+      .select(['i.display_name as name', 'i.expires_at as expiresAt', 'u.name as invitedByName'])
       .where('i.id', '=', state.inviteId)
       .executeTakeFirst();
 
@@ -177,6 +178,7 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
 
     return reply.send({
       email: state.emailLower,
+      name: invite?.name ?? null,
       roleName: role?.name ?? null,
       expiresAt: invite?.expiresAt ?? null,
       invitedByName: invite?.invitedByName ?? null,
@@ -202,7 +204,7 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
     { schema: acceptSchema, bodyLimit: 4_096 },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const { token: onboardingToken, state } = await readOnboarding(request);
-      const body = request.body as { password: string; name: string };
+      const body = request.body as { password: string };
       const ips = requestIps(request);
 
       await ctx.rateLimit.consume('inviteIp', rateLimitIpKey(ips));
@@ -229,7 +231,6 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
       // threadpool per decine di millisecondi, e tenerlo dentro allungherebbe
       // di altrettanto la presa del lock della catena hash.
       const passwordHash = await ctx.passwords.hash(body.password);
-      const displayName = sanitizeDisplayName(body.name);
       const tokenHash = Buffer.from(state.tokenHash, 'base64');
 
       const created = await securityTransaction(ctx.db, async (trx) => {
@@ -239,12 +240,17 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
         if (!invite) throw new Conflict('INVITO_NON_SPENDIBILE');
 
         // §8.1.9 — l'email viene dalla RIGA INVITO, mai dal body.
-        const newUserId = await createUserFromInvite(trx, invite, passwordHash, displayName);
+        const newUserId = await createUserFromInvite(trx, invite, passwordHash);
         if (!(await consumeInvite(trx, invite.id, newUserId))) {
           throw new Conflict('INVITO_NON_SPENDIBILE');
         }
 
-        const actor = { userId: newUserId, email: invite.email_lower, displayName, sessionId: null };
+        const actor = {
+          userId: newUserId,
+          email: invite.email_lower,
+          displayName: invite.display_name,
+          sessionId: null,
+        };
         return {
           result: { userId: newUserId, email: invite.email_lower },
           events: [

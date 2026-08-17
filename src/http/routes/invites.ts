@@ -25,10 +25,17 @@ import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-co
 const createInviteSchema = {
   body: {
     type: 'object',
-    required: ['email', 'roleId'],
+    required: ['email', 'name', 'roleId'],
     additionalProperties: false,
     properties: {
       email: { type: 'string', format: 'email', maxLength: 320 },
+      /**
+       * Il nome con cui la persona comparira' nel registro. Lo decide chi
+       * invita, non chi accetta: e' l'etichetta con cui gli altri la
+       * riconoscono leggendo chi ha fatto cosa, e lasciarla scegliere a chi
+       * arriva vorrebbe dire permettergli di presentarsi come vuole.
+       */
+      name: { type: 'string', minLength: 1, maxLength: 120 },
       roleId: { type: 'integer', minimum: 1 },
     },
   },
@@ -45,8 +52,11 @@ export async function registerInviteRoutes(app: FastifyInstance, ctx: AppContext
       const actor = actorOf(request);
       requireLevel(actor, 'inviti', 2);
 
-      const body = request.body as { email: string; roleId: number };
+      const body = request.body as { email: string; name: string; roleId: number };
       const emailLower = body.email.trim().toLowerCase();
+      // Stessa ripulitura del registro: niente caratteri di controllo, niente
+      // sequenze bidirezionali, lunghezza limitata.
+      const displayName = sanitizeDisplayName(body.name);
       const ips = requestIps(request);
 
       // SEC-38 — la validazione JSON Schema non e' mai l'unico enforcement di
@@ -85,6 +95,7 @@ export async function registerInviteRoutes(app: FastifyInstance, ctx: AppContext
           await assertInvitable(trx, emailLower, actor.userId);
           const invite = await insertInvite(trx, {
             emailLower,
+            displayName,
             roleId: body.roleId,
             invitedBy: actor.userId,
           });
@@ -179,6 +190,7 @@ export async function registerInviteRoutes(app: FastifyInstance, ctx: AppContext
         .select([
           'i.id',
           'i.email_lower as email',
+          'i.display_name as name',
           'i.created_at as createdAt',
           'i.expires_at as expiresAt',
           'r.name as roleName',

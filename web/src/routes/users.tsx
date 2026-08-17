@@ -13,6 +13,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Fragment, type ReactNode, useState } from 'react';
 import {
   Chip,
+  FilterSelect,
   lastSeenLabel,
   moduleCountLabel,
   PageHeader,
@@ -20,6 +21,7 @@ import {
   PanelBar,
   PanelFooter,
   SearchBox,
+  SelectField,
   StatusChip,
 } from '../components/page.tsx';
 import { Avatar, Button, DateTime, EmptyState, Field, Notice, SkeletonRows } from '../components/ui.tsx';
@@ -585,6 +587,7 @@ function InviteDialog({
   onCreated: () => void;
   onNeedStepUp: () => void;
 }) {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [roleId, setRoleId] = useState<number | undefined>();
   const [error, setError] = useState<string | undefined>();
@@ -599,7 +602,11 @@ function InviteDialog({
   });
 
   const create = useMutation({
-    mutationFn: () => api('/api/invites', { method: 'POST', body: { email: email.trim(), roleId } }),
+    mutationFn: () =>
+      api('/api/invites', {
+        method: 'POST',
+        body: { email: email.trim(), name: name.trim(), roleId },
+      }),
     onSuccess: () => {
       setDone(true);
       onCreated();
@@ -639,7 +646,7 @@ function InviteDialog({
               form="invite-form"
               variant="primary"
               loading={create.isPending}
-              disabled={!roleId}
+              disabled={!roleId || name.trim().length === 0}
             >
               Invia invito
             </Button>
@@ -670,6 +677,18 @@ function InviteDialog({
         >
           {error ? <Notice tone="err" title={error} /> : null}
 
+          {/* Il nome lo decide chi invita, come nel disegno: comparirà nel
+              registro accanto a ogni azione di questa persona, e chi accetta
+              non potrà cambiarlo. */}
+          <Field
+            label="Nome account Minecraft"
+            required
+            maxLength={120}
+            placeholder="es. Miky88"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+
           <Field
             label="Email"
             type="email"
@@ -677,33 +696,19 @@ function InviteDialog({
             placeholder="nome@metamc.it"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            hint="L'indirizzo non sarà modificabile in fase di accettazione."
+            hint="Né il nome né l'indirizzo saranno modificabili in fase di accettazione."
           />
 
-          <div className="field">
-            <label className="label" htmlFor="ruolo">
-              Ruolo
-            </label>
-            <select
-              id="ruolo"
-              className="input"
-              required
-              value={roleId ?? ''}
-              onChange={(e) => setRoleId(Number(e.target.value))}
-            >
-              <option value="" disabled>
-                Scegli…
-              </option>
-              {(roles.data?.roles ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
-            <span className="hint">
-              Compaiono solo i ruoli che puoi concedere: nessuno dà più di quanto ha.
-            </span>
-          </div>
+          <SelectField
+            label="Ruolo"
+            id="ruolo"
+            required
+            placeholder="Scegli…"
+            value={roleId === undefined ? '' : String(roleId)}
+            onChange={(v) => setRoleId(Number(v))}
+            options={(roles.data?.roles ?? []).map((r) => ({ value: String(r.id), label: r.name }))}
+            hint="Compaiono solo i ruoli che puoi concedere: nessuno dà più di quanto ha."
+          />
         </form>
       )}
     </Modal>
@@ -810,23 +815,18 @@ export function RolesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => vo
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 'none' }}>
-            <select
-              className="input"
-              aria-label="Ruolo da modificare"
-              value={current.id}
-              onChange={(e) => {
-                setRoleId(Number(e.target.value));
+            {/* La pastiglia del registro, non un campo di modulo: qui la
+                tendina sta in un'intestazione, accanto al conteggio. */}
+            <FilterSelect
+              label="Ruolo da modificare"
+              value={String(current.id)}
+              onChange={(v) => {
+                setRoleId(Number(v));
                 setDraft({});
                 setError(undefined);
               }}
-              style={{ height: 32, width: 180, fontSize: 12.5 }}
-            >
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+              options={roles.map((r) => ({ value: String(r.id), label: r.name }))}
+            />
             <span style={{ fontSize: 11.5, color: 'var(--tx-muted)', whiteSpace: 'nowrap' }}>
               {current.members} {current.members === 1 ? 'utente' : 'utenti'}
             </span>

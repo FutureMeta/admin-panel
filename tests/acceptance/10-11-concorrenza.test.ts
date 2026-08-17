@@ -37,7 +37,7 @@ async function issueInvite(email: string): Promise<string> {
     method: 'POST',
     url: '/api/invites',
     headers: inviter.headers(),
-    payload: { email, roleId },
+    payload: { email, name: 'Invitato', roleId },
   });
   if (res.statusCode !== 201) throw new Error(`invite non emesso: ${res.statusCode} ${res.body}`);
 
@@ -66,7 +66,7 @@ describe('test 10 — due accettazioni concorrenti dello stesso invite', () => {
       method: 'POST',
       url: '/api/invites',
       headers: inviter.headers(),
-      payload: { email, roleId },
+      payload: { email, name: 'Invitato', roleId },
     });
     expect(res.statusCode).toBe(201);
     const mail = t.mailer.lastTo(email);
@@ -102,7 +102,7 @@ describe('test 10 — due accettazioni concorrenti dello stesso invite', () => {
         method: 'POST',
         url: '/api/invites/accept',
         headers: sameOriginHeaders({ cookie: `__Host-metamc_onboarding=${onb}` }),
-        payload: { password: 'password-di-accettazione-lunga', name: 'Nuovo Utente' },
+        payload: { password: 'password-di-accettazione-lunga' },
       });
 
     const [a, b] = await Promise.all([accept(onbA), accept(onbB)]);
@@ -140,7 +140,7 @@ describe('test 10 — due accettazioni concorrenti dello stesso invite', () => {
           method: 'POST',
           url: '/api/invites/accept',
           headers: sameOriginHeaders({ cookie: `__Host-metamc_onboarding=${onb}` }),
-          payload: { password: 'password-di-accettazione-lunga', name: 'Nuovo' },
+          payload: { password: 'password-di-accettazione-lunga' },
         }),
       ),
     );
@@ -159,7 +159,7 @@ describe('test 10 — due accettazioni concorrenti dello stesso invite', () => {
       method: 'POST',
       url: '/api/invites/accept',
       headers: sameOriginHeaders({ cookie: `__Host-metamc_onboarding=${onb}` }),
-      payload: { password: 'password-di-accettazione-lunga', name: 'Nuovo' },
+      payload: { password: 'password-di-accettazione-lunga' },
     });
     expect(first.statusCode).toBe(201);
 
@@ -211,7 +211,7 @@ describe('test 10 — due accettazioni concorrenti dello stesso invite', () => {
       method: 'POST',
       url: '/api/invites',
       headers: inviter.headers(),
-      payload: { email, roleId },
+      payload: { email, name: 'Invitato', roleId },
     });
     expect(second.statusCode).toBe(409);
   });

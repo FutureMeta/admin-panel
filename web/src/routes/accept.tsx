@@ -21,6 +21,7 @@ import { ApiError, api } from '../lib/api.ts';
 type OnboardingModule = { key: string; name: string; level: number };
 type Onboarding = {
   email: string;
+  name: string | null;
   roleName: string | null;
   expiresAt: string | null;
   invitedByName: string | null;
@@ -40,7 +41,6 @@ export function AcceptPage() {
   const navigate = useNavigate();
   const [step, setStep] = useState<Step>('caricamento');
   const [invite, setInvite] = useState<Onboarding | undefined>();
-  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [totpUri, setTotpUri] = useState<string | undefined>();
@@ -70,7 +70,7 @@ export function AcceptPage() {
     try {
       const res = await api<{ totpURI: string | null }>('/api/invites/accept', {
         method: 'POST',
-        body: { password, name: name.trim() },
+        body: { password },
       });
       setTotpUri(res.totpURI ?? undefined);
       setStep('totp');
@@ -373,14 +373,15 @@ export function AcceptPage() {
                   <input id="accept-email" className="input" value={invite?.email ?? ''} disabled />
                 </div>
 
-                <Field
-                  label="Come ti chiami"
-                  required
-                  maxLength={120}
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  hint="Comparirà nel registro attività accanto a ogni tua azione."
-                />
+                <div className="field">
+                  <label className="label" htmlFor="accept-name">
+                    Nome account
+                  </label>
+                  {/* Anche il nome viene dalla riga invito: lo ha scelto chi ti
+                      ha invitato, e comparirà nel registro accanto a ogni tua
+                      azione. Qui si mostra, non si raccoglie. */}
+                  <input id="accept-name" className="input" value={invite?.name ?? ''} disabled />
+                </div>
                 <Field
                   label="Nuova password"
                   type="password"

@@ -122,7 +122,19 @@ export function SearchBox({
   );
 }
 
-/** Menu a tendina nella forma delle pastiglie del registro: 30px, trasparente. */
+/**
+ * Menu a tendina nella forma delle pastiglie del registro: 30px, fondo
+ * trasparente, freccia subito dopo il testo.
+ *
+ * La pastiglia visibile è uno `span`, e la `select` vera ci sta sopra
+ * trasparente. Il motivo è di misura, non di gusto: una `select` nativa si
+ * dimensiona sull'opzione PIÙ LUNGA, non sul valore mostrato — per «Tutti i
+ * moduli» veniva larga 132px contro i 116.4 del disegno, e quei sedici pixel
+ * di vuoto dopo il testo facevano sembrare l'etichetta e la freccia spostate
+ * a destra. Così la pastiglia si stringe sul contenuto come nel prototipo, e
+ * il menu resta quello del sistema operativo: nessuna tendina reimplementata,
+ * nessuna tastiera da rifare.
+ */
 export function FilterSelect({
   value,
   onChange,
@@ -134,8 +146,13 @@ export function FilterSelect({
   label: string;
   options: Array<{ value: string; label: string }>;
 }) {
+  const current = options.find((o) => o.value === value)?.label ?? label;
   return (
     <span className="filter-select">
+      <span className="filter-select-face" aria-hidden="true">
+        {current}
+        <Icon path="m6 9 6 6 6-6" size={12} />
+      </span>
       <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">{label}</option>
         {options.map((o) => (
@@ -144,8 +161,68 @@ export function FilterSelect({
           </option>
         ))}
       </select>
-      <Icon path="m6 9 6 6 6-6" size={12} />
     </span>
+  );
+}
+
+/**
+ * Tendina a piena larghezza dentro un modulo: la forma del campo «Ruolo»
+ * della finestra d'invito nel prototipo — 38px, fondo `--s-inset`, testo a
+ * sinistra e freccia sul bordo destro.
+ *
+ * Qui la larghezza la decide il contenitore, non l'opzione più lunga, quindi
+ * la `select` nativa va bene com'è: serve solo spegnere la freccia del
+ * sistema operativo e disegnare la nostra. Il caso della pastiglia è diverso
+ * ed è trattato in `FilterSelect`.
+ */
+export function SelectField({
+  label,
+  value,
+  onChange,
+  hint,
+  required = false,
+  placeholder,
+  options,
+  id,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  hint?: string;
+  required?: boolean;
+  placeholder?: string;
+  options: Array<{ value: string; label: string }>;
+  id?: string;
+}) {
+  const fieldId = id ?? `s-${label.replace(/\W+/g, '-').toLowerCase()}`;
+  return (
+    <div className="field">
+      <label className="label" htmlFor={fieldId}>
+        {label}
+      </label>
+      <span className="select-field">
+        <select
+          id={fieldId}
+          className="input"
+          required={required}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {placeholder ? (
+            <option value="" disabled>
+              {placeholder}
+            </option>
+          ) : null}
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <Icon path="m6 9 6 6 6-6" size={13} />
+      </span>
+      {hint ? <span className="hint">{hint}</span> : null}
+    </div>
   );
 }
 

@@ -87,6 +87,9 @@ async function main(): Promise<void> {
 
       const invite = await insertInvite(trx, {
         emailLower: email.trim().toLowerCase(),
+        // Il nome era gia' un argomento del comando: prima finiva solo nel
+        // registro, ora e' anche il nome con cui l'owner comparira'.
+        displayName,
         roleId: ownerRole.id,
         invitedBy: bootstrapId,
         now: new Date(),

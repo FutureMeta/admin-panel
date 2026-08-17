@@ -291,6 +291,7 @@ describe('SEC-09 — il ruolo di sistema e` protetto dal database, non solo dal 
         .insertInto('auth.invitation')
         .values({
           email_lower: 'tentativo@metamc.it',
+          display_name: 'Tentativo',
           token_hash: Buffer.alloc(32, 1),
           role_id: await roleIdByKey(db, 'owner'),
           invited_by: owner,

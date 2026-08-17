@@ -165,6 +165,8 @@ export type RolesMatrix = {
 export type InviteRow = {
   id: string;
   email: string;
+  /** Il nome deciso da chi invita: comparirà nel registro accanto alle azioni. */
+  name: string;
   createdAt: string;
   expiresAt: string;
   roleName: string;

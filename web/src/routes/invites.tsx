@@ -8,7 +8,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Chip, PageHeader, Panel, PanelBar, PanelFooter } from '../components/page.tsx';
-import { Banner, Button, DateTime, EmptyState, RelativeTime, SkeletonRows } from '../components/ui.tsx';
+import {
+  Avatar,
+  Banner,
+  Button,
+  DateTime,
+  EmptyState,
+  RelativeTime,
+  SkeletonRows,
+} from '../components/ui.tsx';
 import { ApiError, api, type InviteRow, type Me } from '../lib/api.ts';
 
 export function InvitesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => void }) {
@@ -93,7 +101,17 @@ export function InvitesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => 
                   const expiringSoon = new Date(invite.expiresAt).getTime() - Date.now() < 12 * 3600_000;
                   return (
                     <tr key={invite.id}>
-                      <td style={{ paddingLeft: 16 }}>{invite.email}</td>
+                      <td style={{ paddingLeft: 16 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+                          <Avatar name={invite.name} size={26} square />
+                          <span>
+                            <span style={{ display: 'block', fontWeight: 500 }}>{invite.name}</span>
+                            <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tx-muted)' }}>
+                              {invite.email}
+                            </span>
+                          </span>
+                        </span>
+                      </td>
                       <td>
                         <Chip>{invite.roleName}</Chip>
                       </td>

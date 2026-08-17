@@ -77,6 +77,7 @@ async function bootstrapOwnerInvite(email: string): Promise<string> {
     return await t.ctx.db.transaction().execute(async (trx) => {
       const invite = await insertInvite(trx, {
         emailLower: email,
+        displayName: 'Owner',
         roleId: ownerRole.id,
         invitedBy: bootstrapId,
       });
@@ -104,6 +105,7 @@ describe('§17.2 — il primo owner riesce a installare il sistema', () => {
         .insertInto('auth.invitation')
         .values({
           email_lower: 'tentativo@metamc.it',
+          display_name: 'Tentativo',
           token_hash: Buffer.alloc(32, 3),
           role_id: ownerRole.id,
           invited_by: 'bootstrap0000000000000000000001',
@@ -134,6 +136,7 @@ describe('§17.2 — il primo owner riesce a installare il sistema', () => {
       .insertInto('auth.invitation')
       .values({
         email_lower: 'promozione@metamc.it',
+        display_name: 'Promozione',
         token_hash: Buffer.alloc(32, 4),
         role_id: moderator.id,
         invited_by: inviter,
@@ -181,7 +184,7 @@ describe('§17.2 — il primo owner riesce a installare il sistema', () => {
       method: 'POST',
       url: '/api/invites/accept',
       headers: sameOriginHeaders({ cookie: `__Host-metamc_onboarding=${onboarding}` }),
-      payload: { password: 'password-del-primo-owner', name: 'Primo Owner' },
+      payload: { password: 'password-del-primo-owner' },
     });
     expect(accepted.statusCode).toBe(201);
 

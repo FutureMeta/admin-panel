@@ -24,6 +24,8 @@ export function hashInviteToken(token: string): Buffer {
 
 export type CreateInviteInput = {
   emailLower: string;
+  /** Gia' passato da sanitizeDisplayName: qui dentro non si ripulisce nulla. */
+  displayName: string;
   roleId: number;
   invitedBy: string;
   now?: Date;
@@ -84,6 +86,7 @@ export async function insertInvite(
     .insertInto('auth.invitation')
     .values({
       email_lower: input.emailLower,
+      display_name: input.displayName,
       token_hash: hash,
       role_id: input.roleId,
       invited_by: input.invitedBy,
@@ -98,6 +101,7 @@ export async function insertInvite(
 export type PendingInvite = {
   id: string;
   email_lower: string;
+  display_name: string;
   role_id: number;
   invited_by: string;
   expires_at: Date;
@@ -116,7 +120,7 @@ export async function findSpendableInvite(
 ): Promise<PendingInvite | undefined> {
   const row = await db
     .selectFrom('auth.invitation')
-    .select(['id', 'email_lower', 'role_id', 'invited_by', 'expires_at'])
+    .select(['id', 'email_lower', 'display_name', 'role_id', 'invited_by', 'expires_at'])
     .where('token_hash', '=', hashInviteToken(token))
     .where('consumed_at', 'is', null)
     .where('revoked_at', 'is', null)
@@ -146,7 +150,7 @@ export async function claimInvite(
 ): Promise<PendingInvite | undefined> {
   const row = await trx
     .selectFrom('auth.invitation')
-    .select(['id', 'email_lower', 'role_id', 'invited_by', 'expires_at'])
+    .select(['id', 'email_lower', 'display_name', 'role_id', 'invited_by', 'expires_at'])
     .where('token_hash', '=', tokenHash)
     .where('consumed_at', 'is', null)
     .where('revoked_at', 'is', null)
@@ -189,7 +193,6 @@ export async function createUserFromInvite(
   trx: Transaction<DB>,
   invite: PendingInvite,
   passwordHash: string,
-  displayName: string,
 ): Promise<string> {
   const userId = randomUUID().replace(/-/g, '');
 
@@ -197,7 +200,10 @@ export async function createUserFromInvite(
     .insertInto('auth.user')
     .values({
       id: userId,
-      name: displayName,
+      // Il nome viene dalla RIGA INVITO, come l'email: chi accetta non lo
+      // sceglie e non lo trasmette. E' l'etichetta con cui comparira' nel
+      // registro accanto a ogni sua azione, e chi invita l'ha gia' decisa.
+      name: invite.display_name,
       email: invite.email_lower,
       emailVerified: true,
       status: 'pending_onboarding',

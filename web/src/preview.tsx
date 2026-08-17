@@ -127,6 +127,7 @@ const INVITES: InviteRow[] = [
   {
     id: 'i-1',
     email: 'nuovo@metamc.it',
+    name: 'Kryos',
     createdAt: hoursAgo(10),
     expiresAt: new Date(Date.now() + 60 * 3600_000).toISOString(),
     roleName: 'Moderatore',
@@ -135,6 +136,7 @@ const INVITES: InviteRow[] = [
   {
     id: 'i-2',
     email: 'altro@metamc.it',
+    name: 'Miky88',
     createdAt: hoursAgo(40),
     expiresAt: new Date(Date.now() + 8 * 3600_000).toISOString(),
     roleName: 'Developer',

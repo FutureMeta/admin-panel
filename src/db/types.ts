@@ -155,6 +155,12 @@ export type EffectivePermissionsView = {
 export type InvitationTable = {
   id: Generated<string>;
   email_lower: string;
+  /**
+   * Il nome con cui la persona comparira' nel registro. Lo decide chi invita:
+   * al momento dell'accettazione si legge da qui, mai dal corpo della
+   * richiesta — la stessa regola dell'email (§8.1.9).
+   */
+  display_name: string;
   /** sha256(token). Il token in chiaro non esiste da nessuna parte lato server. */
   token_hash: Buffer;
   role_id: number;

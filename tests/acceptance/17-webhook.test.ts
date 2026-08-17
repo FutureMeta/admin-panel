@@ -135,7 +135,7 @@ describe('SEC-19 / test 17 — sign del webhook sul raw body', () => {
       method: 'POST',
       url: '/api/invites',
       headers: { 'content-type': 'application/json' },
-      payload: { email: 'x@metamc.it', roleId: 1 },
+      payload: { email: 'x@metamc.it', name: 'Invitato', roleId: 1 },
     });
     expect(res.statusCode).toBe(403);
   });

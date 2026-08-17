@@ -319,8 +319,26 @@ body {
   .input-mono {
     font-family: var(--font-mono);
   }
+  /* La freccia del sistema operativo non somiglia a quella del disegno: si
+   * spegne e si disegna la nostra, lasciandole lo spazio a destra. */
   select.input {
-    padding-right: 8px;
+    appearance: none;
+    padding-right: 32px;
+  }
+  .select-field {
+    position: relative;
+    display: block;
+  }
+  /* 13 e non 12: nel prototipo la freccia sta a 12px dal bordo INTERNO, e il
+   * campo ha un bordo da 1px. Il contenitore qui non ce l'ha, quindi la
+   * distanza dal bordo esterno e' la somma dei due. */
+  .select-field svg {
+    position: absolute;
+    top: 50%;
+    right: 13px;
+    transform: translateY(-50%);
+    color: var(--tx-muted);
+    pointer-events: none;
   }
   .hint {
     display: block;
@@ -584,30 +602,45 @@ body {
     box-shadow: none;
   }
 
-  /* Le pastiglie del registro: 30px, fondo trasparente, freccia a destra. */
+  /* Le pastiglie del registro: 30px, fondo trasparente, freccia dopo il testo.
+   * La faccia è uno span che si stringe sul contenuto; la select vera ci sta
+   * sopra trasparente e riceve i clic. */
   .filter-select {
     position: relative;
     display: inline-flex;
+  }
+  .filter-select-face {
+    display: inline-flex;
     align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-sm);
+    color: var(--tx-secondary);
+    font-size: 12.5px;
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .filter-select-face svg {
     color: var(--tx-muted);
   }
   .filter-select select {
-    appearance: none;
-    height: 30px;
-    padding: 0 28px 0 10px;
-    border: 1px solid var(--bd-subtle);
-    border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--tx-secondary);
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    border: 0;
+    cursor: pointer;
     font-family: var(--font-ui);
     font-size: 12.5px;
-    cursor: pointer;
-    max-width: 200px;
   }
-  .filter-select svg {
-    position: absolute;
-    right: 10px;
-    pointer-events: none;
+  /* La select è invisibile, quindi l'anello di fuoco va sulla faccia. */
+  .filter-select:focus-within .filter-select-face {
+    box-shadow:
+      0 0 0 1px var(--ac),
+      0 0 0 4px var(--ac-soft);
   }
 
   /* --- tabelle ------------------------------------------------------------ */

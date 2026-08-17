@@ -7,14 +7,34 @@
 //
 // I recovery code si mostrano UNA SOLA VOLTA. La schermata lo dice prima di
 // mostrarli e non lascia proseguire finche' non si conferma di averli salvati.
+//
+// Impaginazione del prototipo: campo di esagoni a piena pagina sotto, card
+// centrata da 940px divisa in due — a sinistra cosa stai per ricevere, a
+// destra cosa devi fare.
 
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
-import { Pill as Badge, Notice as Banner, Button, Field } from '../components/ui.tsx';
+import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import { HexField } from '../components/hex-field.tsx';
+import { Button, Field, Notice } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
-type Onboarding = { email: string; roleName: string | null };
+type OnboardingModule = { key: string; name: string; level: number };
+type Onboarding = {
+  email: string;
+  roleName: string | null;
+  expiresAt: string | null;
+  invitedByName: string | null;
+  modules: OnboardingModule[];
+};
 type Step = 'caricamento' | 'scaduto' | 'password' | 'totp' | 'codici';
+
+const LEVEL_LABEL = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
+const LEVEL_TONE = [
+  { color: 'var(--tx-muted)', soft: 'var(--s-inset)' },
+  { color: 'var(--info)', soft: 'var(--info-soft)' },
+  { color: 'var(--ok)', soft: 'var(--ok-soft)' },
+  { color: 'var(--ac-text)', soft: 'var(--ac-soft)' },
+] as const;
 
 export function AcceptPage() {
   const navigate = useNavigate();
@@ -39,7 +59,7 @@ export function AcceptPage() {
       .catch(() => setStep('scaduto'));
   }, []);
 
-  async function submitPassword(e: React.FormEvent) {
+  async function submitPassword(e: FormEvent) {
     e.preventDefault();
     if (password !== confirm) {
       setError('Le due password non coincidono.');
@@ -72,7 +92,7 @@ export function AcceptPage() {
     }
   }
 
-  async function submitTotp(e: React.FormEvent) {
+  async function submitTotp(e: FormEvent) {
     e.preventDefault();
     setError(undefined);
     setBusy(true);
@@ -92,6 +112,13 @@ export function AcceptPage() {
   }
 
   const secret = totpUri ? new URLSearchParams(totpUri.split('?')[1] ?? '').get('secret') : null;
+  const expires = invite?.expiresAt
+    ? new Intl.DateTimeFormat('it-IT', {
+        dateStyle: 'short',
+        timeStyle: 'short',
+        timeZone: 'Europe/Rome',
+      }).format(new Date(invite.expiresAt))
+    : null;
 
   return (
     <main
@@ -100,193 +127,412 @@ export function AcceptPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 'var(--sp8)',
+        padding: '56px 32px',
+        background: 'var(--s-base)',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      <div className="surface" style={{ width: 'min(560px, 100%)', padding: 'var(--sp8)' }}>
-        {step === 'caricamento' ? (
-          <p className="t-lead" style={{ color: 'var(--tx-muted)', margin: 0 }}>
-            Verifica dell'invito…
+      <HexField width={1440} height={840} opacity={0.5} />
+
+      {step === 'caricamento' ? (
+        <p className="t-lead" style={{ position: 'relative', color: 'var(--tx-muted)', margin: 0 }}>
+          Verifica dell'invito…
+        </p>
+      ) : step === 'scaduto' ? (
+        <Shell single>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 24,
+              lineHeight: '32px',
+              fontWeight: 700,
+              letterSpacing: '-.01em',
+              margin: '0 0 8px',
+            }}
+          >
+            Invito non più valido
+          </h1>
+          {/* SEC-32 — scaduto, già usato, revocato o mai esistito: stessa frase. */}
+          <p style={{ margin: '0 0 24px', fontSize: 13.5, lineHeight: '21px', color: 'var(--tx-secondary)' }}>
+            Il link non è utilizzabile. Chiedi a chi ti ha invitato di emetterne uno nuovo.
           </p>
-        ) : step === 'scaduto' ? (
-          <>
-            <h1 className="t-title" style={{ margin: '0 0 var(--sp3)' }}>
-              Invito non più valido
+          <Button variant="secondary" onClick={() => navigate({ to: '/login' })}>
+            Vai al login
+          </Button>
+        </Shell>
+      ) : step === 'codici' ? (
+        <Shell single>
+          <h1
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 24,
+              lineHeight: '32px',
+              fontWeight: 700,
+              letterSpacing: '-.01em',
+              margin: '0 0 8px',
+            }}
+          >
+            Salva i codici di recupero
+          </h1>
+          <p style={{ margin: '0 0 20px', fontSize: 13.5, lineHeight: '21px', color: 'var(--tx-secondary)' }}>
+            Sono l'unico modo di rientrare se perdi il telefono. Vengono mostrati{' '}
+            <strong style={{ color: 'var(--tx-primary)' }}>ora e mai più</strong>: senza, l'unica via è una
+            procedura che richiede due owner e ventiquattro ore.
+          </p>
+
+          <div
+            className="mono"
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              gap: '6px 20px',
+              background: 'var(--s-inset)',
+              border: '1px solid var(--bd-subtle)',
+              borderRadius: 'var(--r-sm)',
+              padding: 18,
+              marginBottom: 18,
+              fontSize: 13,
+              color: 'var(--tx-primary)',
+            }}
+          >
+            {codes.map((c) => (
+              <span key={c}>{c}</span>
+            ))}
+          </div>
+
+          <label
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'flex-start',
+              marginBottom: 20,
+              fontSize: 12.5,
+              lineHeight: '19px',
+              color: 'var(--tx-secondary)',
+            }}
+          >
+            <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
+            Li ho salvati in un posto sicuro, fuori da questo browser.
+          </label>
+
+          <Button variant="primary" size="lg" disabled={!saved} onClick={() => navigate({ to: '/' })} block>
+            Entra nel pannello
+          </Button>
+        </Shell>
+      ) : (
+        <Shell>
+          {/* Colonna sinistra: cosa stai per ricevere. */}
+          <div style={{ padding: 40, borderRight: '1px solid var(--bd-subtle)' }}>
+            <Logo />
+            <h1
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 24,
+                lineHeight: '32px',
+                fontWeight: 700,
+                letterSpacing: '-.01em',
+                margin: '0 0 8px',
+              }}
+            >
+              Ciao,
+              <br />
+              sei stato invitato.
             </h1>
-            <p className="t-lead" style={{ color: 'var(--tx-secondary)', margin: '0 0 var(--sp6)' }}>
-              Il link non è utilizzabile. Può essere scaduto, già usato o revocato: chiedi a chi ti ha
-              invitato di emetterne uno nuovo.
-            </p>
-            <Button variant="secondary" onClick={() => navigate({ to: '/login' })}>
-              Vai al login
-            </Button>
-          </>
-        ) : step === 'password' ? (
-          <>
-            <header style={{ marginBottom: 'var(--sp6)' }}>
-              <h1 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
-                Benvenuto in MetaMC Admin
-              </h1>
-              <p className="t-lead" style={{ margin: 0, color: 'var(--tx-muted)' }}>
-                {invite?.email}
-              </p>
-              {invite?.roleName ? (
-                <div style={{ marginTop: 'var(--sp3)' }}>
-                  <Badge tone="ac">{invite.roleName}</Badge>
-                </div>
+            <p
+              style={{ margin: '0 0 24px', fontSize: 13.5, lineHeight: '21px', color: 'var(--tx-secondary)' }}
+            >
+              {invite?.invitedByName ? (
+                <>
+                  Invito da{' '}
+                  <span style={{ color: 'var(--tx-primary)', fontWeight: 600 }}>{invite.invitedByName}</span>
+                  {expires ? ' · ' : ''}
+                </>
               ) : null}
-            </header>
-
-            {error ? (
-              <div style={{ marginBottom: 'var(--sp5)' }}>
-                <Banner tone="err" title={error} />
-              </div>
-            ) : null}
-
-            <form onSubmit={submitPassword} style={{ display: 'grid', gap: 'var(--sp4)' }}>
-              <Field
-                label="Come ti chiami"
-                required
-                maxLength={120}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                hint="Comparirà nel registro attività accanto a ogni tua azione."
-              />
-              <Field
-                label="Password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={12}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                hint="Almeno 12 caratteri. Nessuna regola di composizione: la lunghezza conta più dei simboli."
-              />
-              <Field
-                label="Ripeti la password"
-                type="password"
-                autoComplete="new-password"
-                required
-                minLength={12}
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-              />
-              <Button type="submit" variant="primary" size="lg" loading={busy}>
-                Continua
-              </Button>
-            </form>
-          </>
-        ) : step === 'totp' ? (
-          <>
-            <h1 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
-              Attiva la verifica in due passaggi
-            </h1>
-            <p className="t-lead" style={{ margin: '0 0 var(--sp6)', color: 'var(--tx-muted)' }}>
-              È obbligatoria: senza, l'accesso al pannello non si apre.
+              {expires ? (
+                <>
+                  scade il{' '}
+                  <span className="mono" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                    {expires}
+                  </span>{' '}
+                  (Europe/Rome).
+                </>
+              ) : null}
             </p>
 
-            {error ? (
-              <div style={{ marginBottom: 'var(--sp5)' }}>
-                <Banner tone="err" title={error} />
-              </div>
-            ) : null}
-
-            <ol className="t-lead" style={{ margin: '0 0 var(--sp5)', paddingLeft: 'var(--sp5)' }}>
-              <li>Apri la tua app di autenticazione (Aegis, 1Password, Bitwarden…).</li>
-              <li>Aggiungi un account inserendo a mano la chiave qui sotto.</li>
-              <li>Digita il codice a sei cifre che l'app mostra.</li>
-            </ol>
-
-            {secret ? (
+            {invite?.roleName ? (
               <div
-                className="mono"
                 style={{
-                  background: 'var(--s-inset)',
-                  border: '1px solid var(--bd-subtle)',
-                  borderRadius: 'var(--r-md)',
-                  padding: 'var(--sp4)',
-                  wordBreak: 'break-all',
-                  marginBottom: 'var(--sp5)',
-                  color: 'var(--tx-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  padding: '12px 14px',
+                  border: '1px solid rgba(219,110,25,.35)',
+                  background: 'var(--ac-soft)',
+                  borderRadius: 'var(--r-sm)',
+                  marginBottom: 26,
                 }}
               >
-                {secret}
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 600,
+                    letterSpacing: '.1em',
+                    textTransform: 'uppercase',
+                    color: 'var(--ac-text)',
+                  }}
+                >
+                  Ruolo
+                </span>
+                <span
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 15,
+                    fontWeight: 700,
+                    color: 'var(--tx-primary)',
+                  }}
+                >
+                  {invite.roleName}
+                </span>
               </div>
             ) : null}
 
-            <form onSubmit={submitTotp} style={{ display: 'grid', gap: 'var(--sp4)' }}>
-              <Field
-                label="Codice a sei cifre"
-                className="input input-mono"
-                inputMode="numeric"
-                pattern="[0-9]{6}"
-                maxLength={6}
-                required
-                autoFocus
-                value={code}
-                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              />
-              <Button type="submit" variant="primary" size="lg" loading={busy} disabled={code.length !== 6}>
-                Attiva e completa
-              </Button>
-            </form>
-          </>
-        ) : (
-          <>
-            <h1 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
-              Salva i codici di recupero
-            </h1>
-            <p className="t-lead" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-secondary)' }}>
-              Sono l'unico modo di rientrare se perdi il telefono. Vengono mostrati{' '}
-              <strong>ora e mai più</strong>: senza, l'unica via è una procedura che richiede due owner e
-              ventiquattro ore.
-            </p>
-
             <div
-              className="mono"
               style={{
-                display: 'grid',
-                gridTemplateColumns: 'repeat(2, 1fr)',
-                gap: 'var(--sp2) var(--sp4)',
-                background: 'var(--s-inset)',
-                border: '1px solid var(--bd-subtle)',
-                borderRadius: 'var(--r-md)',
-                padding: 'var(--sp5)',
-                marginBottom: 'var(--sp5)',
-                fontSize: 13,
-                color: 'var(--tx-primary)',
+                fontSize: 11,
+                fontWeight: 600,
+                letterSpacing: '.1em',
+                textTransform: 'uppercase',
+                color: 'var(--tx-muted)',
+                marginBottom: 12,
               }}
             >
-              {codes.map((c) => (
-                <span key={c}>{c}</span>
-              ))}
+              Moduli inclusi
             </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {(invite?.modules ?? []).map((m) => {
+                const tone = LEVEL_TONE[m.level] ?? LEVEL_TONE[0];
+                return (
+                  <div
+                    key={m.key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '10px 12px',
+                      border: '1px solid var(--bd-subtle)',
+                      borderRadius: 'var(--r-sm)',
+                      background: 'var(--s-elevated)',
+                    }}
+                  >
+                    <span style={{ fontSize: 13, fontWeight: 500 }}>{m.name}</span>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: '3px 8px',
+                        borderRadius: 'var(--r-full)',
+                        background: tone.soft,
+                        color: tone.color,
+                      }}
+                    >
+                      {LEVEL_LABEL[m.level] ?? m.level}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <p style={{ margin: '20px 0 0', fontSize: 12, lineHeight: '19px', color: 'var(--tx-muted)' }}>
+              I moduli non elencati non compaiono nel pannello. Un owner può ampliare l'accesso in qualsiasi
+              momento.
+            </p>
+          </div>
 
-            <label
-              className="t-lead"
+          {/* Colonna destra: cosa devi fare. */}
+          <div style={{ padding: 40 }}>
+            <h2
+              style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, margin: '0 0 20px' }}
+            >
+              {step === 'password' ? 'Attiva il tuo accesso' : 'Attiva la verifica in due passaggi'}
+            </h2>
+
+            {error ? (
+              <div style={{ marginBottom: 18 }}>
+                <Notice tone="err" title={error} />
+              </div>
+            ) : null}
+
+            {step === 'password' ? (
+              <form onSubmit={submitPassword} style={{ display: 'grid', gap: 18 }}>
+                <div className="field">
+                  <label className="label" htmlFor="accept-email">
+                    Email
+                  </label>
+                  {/* L'indirizzo viene dalla riga invito e non è modificabile:
+                      il campo lo mostra, non lo raccoglie (§8.1.9). */}
+                  <input id="accept-email" className="input" value={invite?.email ?? ''} disabled />
+                </div>
+
+                <Field
+                  label="Come ti chiami"
+                  required
+                  maxLength={120}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  hint="Comparirà nel registro attività accanto a ogni tua azione."
+                />
+                <Field
+                  label="Nuova password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={12}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  hint="Almeno 12 caratteri. Nessuna regola di composizione: la lunghezza conta più dei simboli."
+                />
+                <Field
+                  label="Conferma password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={12}
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                />
+                <Button type="submit" variant="primary" size="lg" loading={busy} block>
+                  Continua
+                </Button>
+              </form>
+            ) : (
+              <>
+                <div
+                  style={{
+                    padding: 16,
+                    border: '1px solid var(--bd-subtle)',
+                    borderRadius: 'var(--r-md)',
+                    background: 'var(--s-elevated)',
+                    marginBottom: 24,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Autenticazione a due fattori</div>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        padding: '3px 8px',
+                        borderRadius: 'var(--r-full)',
+                        background: 'var(--err-soft)',
+                        color: 'var(--err)',
+                      }}
+                    >
+                      Obbligatoria
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 12, lineHeight: '19px', color: 'var(--tx-secondary)' }}>
+                    Aggiungi un account nella tua app di autenticazione (Aegis, 1Password, Bitwarden…)
+                    inserendo a mano la chiave qui sotto, poi digita il primo codice.
+                  </div>
+                  {secret ? (
+                    <div
+                      className="mono"
+                      style={{
+                        fontSize: 11.5,
+                        color: 'var(--tx-primary)',
+                        marginTop: 10,
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {secret}
+                    </div>
+                  ) : null}
+                </div>
+
+                <form onSubmit={submitTotp} style={{ display: 'grid', gap: 16 }}>
+                  <Field
+                    label="Codice a sei cifre"
+                    className="input input-mono"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    required
+                    autoFocus
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  />
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    loading={busy}
+                    disabled={code.length !== 6}
+                    block
+                  >
+                    Attiva account ed entra
+                  </Button>
+                </form>
+              </>
+            )}
+
+            <p
               style={{
-                display: 'flex',
-                gap: 'var(--sp3)',
-                alignItems: 'flex-start',
-                marginBottom: 'var(--sp5)',
+                margin: '14px 0 0',
+                fontSize: 11.5,
+                lineHeight: '18px',
+                color: 'var(--tx-muted)',
+                textAlign: 'center',
               }}
             >
-              <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
-              Li ho salvati in un posto sicuro, fuori da questo browser.
-            </label>
-
-            <Button
-              variant="primary"
-              size="lg"
-              disabled={!saved}
-              onClick={() => navigate({ to: '/' })}
-              style={{ width: '100%' }}
-            >
-              Entra nel pannello
-            </Button>
-          </>
-        )}
-      </div>
+              Attivando l'account accetti il regolamento interno dello staff.
+            </p>
+          </div>
+        </Shell>
+      )}
     </main>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+/** La card centrata: due colonne nel flusso normale, una sola per gli esiti. */
+function Shell({ single = false, children }: { single?: boolean; children: ReactNode }) {
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        maxWidth: single ? 520 : 940,
+        display: 'grid',
+        gridTemplateColumns: single ? '1fr' : 'repeat(auto-fit, minmax(360px, 1fr))',
+        border: '1px solid var(--bd-subtle)',
+        borderRadius: 'var(--r-lg)',
+        background: 'var(--s-surface)',
+        boxShadow: 'var(--e3)',
+        overflow: 'hidden',
+        ...(single ? { padding: 40 } : {}),
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Logo() {
+  return (
+    <img
+      src="/assets/logo.png"
+      alt="MetaMC"
+      width={34}
+      height={34}
+      style={{ objectFit: 'contain', marginBottom: 22, display: 'block' }}
+    />
   );
 }

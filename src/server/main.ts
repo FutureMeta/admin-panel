@@ -39,11 +39,17 @@ function createDevMailer(): Mailer {
     async send(request) {
       const result = await memory.send(request);
       const link = /https?:\/\/\S+/.exec(request.text)?.[0];
-      console.log('');
-      console.log(`  [email di sviluppo] a: ${request.to}`);
-      console.log(`  oggetto: ${request.subject}`);
-      if (link) console.log(`  link:    ${link}`);
-      console.log('');
+      // `process.stdout` e non `console`: questa e' un'uscita destinata a
+      // essere letta da chi sviluppa, non una traccia di debug dimenticata.
+      const lines = [
+        '',
+        `  [email di sviluppo] a: ${request.to}`,
+        `  soggetto: ${request.subject}`,
+        ...(link ? [`  link:     ${link}`] : []),
+        '',
+        '',
+      ];
+      process.stdout.write(lines.join('\n'));
       return result;
     },
   };

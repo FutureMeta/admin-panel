@@ -178,14 +178,25 @@ function AppShell() {
   // I comandi sono filtrati con la stessa regola della sidebar: si elencano
   // solo quelli che l'utente puo' davvero eseguire.
   const commands: Command[] = [
-    ...(data.modules.includes('utenti')
-      ? [{ id: 'users', label: 'Vai a Utenti', hint: 'g u', run: () => void navigate({ to: '/utenti' }) }]
-      : []),
-    ...(data.modules.includes('ruoli')
-      ? [{ id: 'roles', label: 'Vai a Ruoli e permessi', run: () => void navigate({ to: '/ruoli' }) }]
+    ...((['utenti', 'ruoli', 'inviti'] as const).some((m) => data.modules.includes(m))
+      ? [
+          {
+            id: 'users',
+            label: 'Vai a Utenti & Ruoli',
+            hint: 'g u',
+            run: () => void navigate({ to: '/utenti' }),
+          },
+        ]
       : []),
     ...(data.modules.includes('audit')
-      ? [{ id: 'audit', label: 'Vai al Registro attività', run: () => void navigate({ to: '/registro' }) }]
+      ? [
+          {
+            id: 'audit',
+            label: 'Vai al Registro attività',
+            hint: 'g r',
+            run: () => void navigate({ to: '/registro' }),
+          },
+        ]
       : []),
     {
       id: 'logout-all',
@@ -206,15 +217,12 @@ function AppShell() {
   ];
 
   // Il titolo della pagina corrente, per il breadcrumb della topbar.
+  // Sono le etichette di `BREAD` in frontend/metamc-shared.js.
   const breadcrumb = pathname.startsWith('/utenti')
-    ? 'Utenti'
-    : pathname.startsWith('/ruoli')
-      ? 'Ruoli e permessi'
-      : pathname.startsWith('/inviti')
-        ? 'Inviti'
-        : pathname.startsWith('/registro')
-          ? 'Registro attività'
-          : 'Panoramica';
+    ? 'Utenti & Ruoli'
+    : pathname.startsWith('/registro')
+      ? 'Registro attività'
+      : 'Console';
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
@@ -231,10 +239,8 @@ function AppShell() {
           }}
           feedDisconnected={false}
         />
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px 24px 64px' }}>
-          <div style={{ maxWidth: 1440, margin: '0 auto', display: 'grid', gap: 20 }}>
-            <Outlet />
-          </div>
+        <main className="app-main">
+          <Outlet />
         </main>
       </div>
 
@@ -287,25 +293,27 @@ function HomePage() {
   );
 }
 
+/**
+ * "Utenti & Ruoli" è UNA schermata, come nel prototipo: la tabella, l'editor
+ * della matrice e gli inviti pendenti sono tre sezioni della stessa pagina.
+ *
+ * Ogni sezione compare solo se l'utente ha il modulo corrispondente: chi ha
+ * `inviti` ma non `utenti` vede la sola lista degli inviti, e non una pagina
+ * vuota con dei blocchi disabilitati.
+ */
 function UsersRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('utenti')) return <ForbiddenPage />;
-  return <UsersPage me={me.data} onNeedStepUp={requestStepUp} />;
-}
-
-function RolesRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('ruoli')) return <ForbiddenPage />;
-  return <RolesPage me={me.data} onNeedStepUp={requestStepUp} />;
-}
-
-function InvitesRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('inviti')) return <ForbiddenPage />;
-  return <InvitesPage me={me.data} onNeedStepUp={requestStepUp} />;
+  const data = me.data;
+  const sections = ['utenti', 'ruoli', 'inviti'] as const;
+  if (!sections.some((m) => data.modules.includes(m))) return <ForbiddenPage />;
+  return (
+    <>
+      {data.modules.includes('utenti') ? <UsersPage me={data} onNeedStepUp={requestStepUp} /> : null}
+      {data.modules.includes('ruoli') ? <RolesPage me={data} onNeedStepUp={requestStepUp} /> : null}
+      {data.modules.includes('inviti') ? <InvitesPage me={data} onNeedStepUp={requestStepUp} /> : null}
+    </>
+  );
 }
 
 function AuditRoute() {
@@ -336,12 +344,6 @@ const resetRoute = createRoute({
 const shellRoute = createRoute({ getParentRoute: () => rootRoute, id: 'shell', component: AppShell });
 const homeRoute = createRoute({ getParentRoute: () => shellRoute, path: '/', component: HomePage });
 const usersRoute = createRoute({ getParentRoute: () => shellRoute, path: '/utenti', component: UsersRoute });
-const rolesRoute = createRoute({ getParentRoute: () => shellRoute, path: '/ruoli', component: RolesRoute });
-const invitesRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/inviti',
-  component: InvitesRoute,
-});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -353,7 +355,7 @@ const routeTree = rootRoute.addChildren([
   acceptRoute,
   forgotRoute,
   resetRoute,
-  shellRoute.addChildren([homeRoute, usersRoute, rolesRoute, invitesRoute, auditRoute]),
+  shellRoute.addChildren([homeRoute, usersRoute, auditRoute]),
 ]);
 
 const router = createRouter({ routeTree, defaultPreload: false });

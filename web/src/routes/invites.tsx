@@ -7,16 +7,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import {
-  Badge,
-  Banner,
-  Button,
-  Card,
-  DateTime,
-  EmptyState,
-  RelativeTime,
-  SkeletonRows,
-} from '../components/ui.tsx';
+import { Chip, PageHeader, Panel, PanelBar, PanelFooter } from '../components/page.tsx';
+import { Banner, Button, DateTime, EmptyState, RelativeTime, SkeletonRows } from '../components/ui.tsx';
 import { ApiError, api, type InviteRow, type Me } from '../lib/api.ts';
 
 export function InvitesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => void }) {
@@ -49,89 +41,103 @@ export function InvitesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => 
   const rows = invites.data?.invites ?? [];
 
   return (
-    <Card
-      title="Inviti pendenti"
-      subtitle="Il link vale 72 ore e funziona una volta sola. Non è recuperabile da qui: esiste solo nell'email."
-    >
-      {error ? (
-        <div style={{ marginBottom: 'var(--sp4)' }}>
-          <Banner tone="err" title={error} />
-        </div>
-      ) : null}
+    <>
+      <PageHeader
+        title="Inviti pendenti"
+        sub="Il link vale 72 ore e funziona una volta sola. Non è recuperabile da qui: esiste solo nell'email."
+      />
 
-      {invites.isPending ? (
-        <SkeletonRows />
-      ) : invites.isError ? (
-        <Banner
-          tone="err"
-          title="Non è stato possibile caricare gli inviti"
-          action={
-            <Button size="sm" onClick={() => void invites.refetch()}>
-              Riprova
-            </Button>
-          }
-        />
-      ) : rows.length === 0 ? (
-        <EmptyState
-          title="Nessun invito in sospeso"
-          description="Quando inviti qualcuno, l'invito compare qui finché non viene accettato, revocato o non scade."
-        />
-      ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Destinatario</th>
-                <th>Ruolo</th>
-                <th>Invitato da</th>
-                <th>Scade</th>
-                {canRevoke ? <th /> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((invite) => {
-                const expiringSoon = new Date(invite.expiresAt).getTime() - Date.now() < 12 * 3600_000;
-                return (
-                  <tr key={invite.id}>
-                    <td>{invite.email}</td>
-                    <td>
-                      <Badge tone="neutral">{invite.roleName}</Badge>
-                    </td>
-                    <td className="t-lead" style={{ color: 'var(--tx-muted)' }}>
-                      {invite.invitedByName ?? '—'}
-                    </td>
-                    <td>
-                      <DateTime value={invite.expiresAt} />{' '}
-                      <span
-                        className="t-lead"
-                        style={{ color: expiringSoon ? 'var(--warn)' : 'var(--tx-muted)' }}
-                      >
-                        (<RelativeTime value={invite.expiresAt} />)
-                      </span>
-                    </td>
-                    {canRevoke ? (
-                      <td style={{ textAlign: 'right' }}>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          loading={revoke.isPending}
-                          onClick={() => {
-                            if (window.confirm(`Revocare l'invito per ${invite.email}? Non si riapre.`)) {
-                              revoke.mutate(invite.id);
-                            }
-                          }}
-                        >
-                          Revoca
-                        </Button>
+      {error ? <Banner tone="err" title={error} /> : null}
+
+      <Panel>
+        <PanelBar>
+          <span style={{ fontSize: 12.5, color: 'var(--tx-secondary)' }}>In attesa di accettazione</span>
+          <span className="mono" style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--tx-muted)' }}>
+            {rows.length} {rows.length === 1 ? 'invito' : 'inviti'}
+          </span>
+        </PanelBar>
+
+        {invites.isPending ? (
+          <SkeletonRows />
+        ) : invites.isError ? (
+          <div style={{ padding: 16 }}>
+            <Banner
+              tone="err"
+              title="Non è stato possibile caricare gli inviti"
+              action={
+                <Button size="sm" onClick={() => void invites.refetch()}>
+                  Riprova
+                </Button>
+              }
+            />
+          </div>
+        ) : rows.length === 0 ? (
+          <EmptyState
+            title="Nessun invito in sospeso"
+            description="Quando inviti qualcuno, l'invito compare qui finché non viene accettato, revocato o non scade."
+          />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'var(--s-inset)' }}>
+                  <th style={{ paddingLeft: 16 }}>Destinatario</th>
+                  <th>Ruolo</th>
+                  <th>Invitato da</th>
+                  <th style={{ textAlign: 'right' }}>Scade</th>
+                  {canRevoke ? <th style={{ width: 100 }} /> : null}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((invite) => {
+                  const expiringSoon = new Date(invite.expiresAt).getTime() - Date.now() < 12 * 3600_000;
+                  return (
+                    <tr key={invite.id}>
+                      <td style={{ paddingLeft: 16 }}>{invite.email}</td>
+                      <td>
+                        <Chip>{invite.roleName}</Chip>
                       </td>
-                    ) : null}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Card>
+                      <td style={{ color: 'var(--tx-secondary)' }}>{invite.invitedByName ?? '—'}</td>
+                      <td
+                        style={{
+                          textAlign: 'right',
+                          fontSize: 12,
+                          color: expiringSoon ? 'var(--warn)' : 'var(--tx-secondary)',
+                        }}
+                      >
+                        <DateTime value={invite.expiresAt} />{' '}
+                        <span style={{ color: 'var(--tx-muted)' }}>
+                          (<RelativeTime value={invite.expiresAt} />)
+                        </span>
+                      </td>
+                      {canRevoke ? (
+                        <td style={{ textAlign: 'right' }}>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            loading={revoke.isPending}
+                            onClick={() => {
+                              if (window.confirm(`Revocare l'invito per ${invite.email}? Non si riapre.`)) {
+                                revoke.mutate(invite.id);
+                              }
+                            }}
+                          >
+                            Revoca
+                          </Button>
+                        </td>
+                      ) : null}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <PanelFooter>
+          <span>Un invito revocato non si riapre: se serve ancora, se ne emette uno nuovo.</span>
+        </PanelFooter>
+      </Panel>
+    </>
   );
 }

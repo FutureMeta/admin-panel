@@ -12,6 +12,7 @@
       "!dist",
       "!**/pnpm-lock.yaml",
       "!MetaMC Admin - standalone.html",
+      "!frontend",
       "!spikes",
       "!web/src/app.css"
     ]

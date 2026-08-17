@@ -290,23 +290,43 @@ export function SkeletonRows({ rows = 6 }: { rows?: number }) {
 
 // ---------------------------------------------------------------------------
 
-/** Iniziali per l'avatar, nello stile del prototipo (due lettere, mono). */
-export function Avatar({ name, size = 26 }: { name: string; size?: number }) {
-  const initials = name
-    .split(/\s+/)
-    .slice(0, 2)
-    .map((p) => p[0] ?? '')
-    .join('')
-    .toUpperCase();
+/**
+ * Iniziali per l'avatar, nello stile del prototipo (due lettere, mono).
+ * In tabella e' un quadrato con raggio piccolo; altrove e' tondo.
+ */
+export function Avatar({
+  name,
+  size = 26,
+  square = false,
+  fontSize,
+}: {
+  name: string;
+  size?: number;
+  square?: boolean;
+  /** Il prototipo non usa un rapporto fisso: 9px a 26, 8.5 a 22, 12 a 40. */
+  fontSize?: number;
+}) {
+  // Due lettere sempre: nel prototipo `Vally90` dà `VA`, non `V`. I nomi
+  // Minecraft sono una parola sola, quindi prendere l'iniziale di ogni parola
+  // dava una lettera sola a quasi tutti.
+  const initials = name.replace(/\s+/g, '').slice(0, 2).toUpperCase();
   // Tinta stabile per persona: due utenti diversi non devono avere lo stesso
   // colore per caso, e lo stesso utente non deve cambiarlo a ogni render.
-  const hues = ['#8B5E34', '#2478A1', '#57B8A6', '#B85A12', '#4B5F6B'];
+  // La tavolozza è quella del prototipo (campo `skin` di metamc-shared.js).
+  const hues = ['#8B5E34', '#2F6E8F', '#3E7C63', '#A8434F', '#6B5AA6'];
   const hue = hues[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % hues.length];
   return (
     <span
       className="avatar"
       aria-hidden="true"
-      style={{ width: size, height: size, background: hue, fontSize: size * 0.38 }}
+      style={{
+        width: size,
+        height: size,
+        background: hue,
+        fontSize: fontSize ?? Math.round(size * 0.35 * 2) / 2,
+        lineHeight: 1,
+        ...(square ? { borderRadius: 'var(--r-xs)' } : {}),
+      }}
     >
       {initials || '?'}
     </span>
@@ -372,12 +392,25 @@ export function Icon({ path, size = 17 }: { path: string; size?: number }) {
   );
 }
 
+/**
+ * I tracciati sono quelli di `frontend/metamc-shared.js` (oggetto `I`),
+ * copiati carattere per carattere. Erano stati reinventati, ed e' la ragione
+ * per cui la sidebar non somigliava: il registro aveva l'icona di un
+ * documento invece dell'orologio, gli utenti un gruppo diverso.
+ */
 export const ICONS = {
-  users: 'M16 19v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6m13 10v-2a4 4 0 0 0-3-3.9',
-  shield: 'M12 3 4 6v6c0 4.4 3.4 8.5 8 9.5 4.6-1 8-5.1 8-9.5V6z',
+  grid: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',
+  modes: 'M4 20V11M9.3 20V4M14.7 20v-6M20 20v-9',
+  report: 'M6 3h8l5 5v13H6zM14 3v5h5M9 13h7M9 17h5',
+  users:
+    'M16 20v-1.6a4 4 0 0 0-4-4H7.5a4 4 0 0 0-4 4V20M9.7 10.6a3.6 3.6 0 1 0 0-7.2 3.6 3.6 0 0 0 0 7.2M17 10.5a3 3 0 1 0 0-6M20.5 20v-1.6a4 4 0 0 0-2.8-3.8',
+  log: 'M12 7.5V12l3 1.8M21 12a9 9 0 1 1-9-9 9 9 0 0 1 9 9z',
+  search: 'M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16zM21 21l-4.3-4.3',
+  bell: 'M18.5 8.5a6.5 6.5 0 1 0-13 0c0 6.5-2.5 7.8-2.5 7.8h18s-2.5-1.3-2.5-7.8M13.8 20a2 2 0 0 1-3.6 0',
+  chevron: 'M9 6l6 6-6 6',
+  cal: 'M3.5 9h17M7.5 3.5v3.5M16.5 3.5v3.5M5 5.5h14v15H5z',
+  globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z',
+  shield: 'M12 21s7-3.2 7-9V5.6L12 3 5 5.6V12c0 5.8 7 9 7 9z',
+  panel: 'M4 4h16v16H4zM9.5 4v16',
   mail: 'M3 7h18v11H3zM3 7l9 6 9-6',
-  log: 'M5 4h11l4 4v12H5zM8 12h8M8 16h5',
-  search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16m10 2-4.3-4.3',
-  chevron: 'm9 6 6 6-6 6',
-  bell: 'M18 8a6 6 0 1 0-12 0c0 7-3 8-3 8h18s-3-1-3-8M13.7 21a2 2 0 0 1-3.4 0',
 } as const;

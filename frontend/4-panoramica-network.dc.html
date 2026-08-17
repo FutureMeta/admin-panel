@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --s-base:#0A161D; --s-surface:#0E1F28; --s-elevated:#132833; --s-overlay:#17313E; --s-inset:#071219;
+  --bd-subtle:rgba(255,255,255,.07); --bd-strong:rgba(255,255,255,.15); --bd-focus:#DB6E19;
+  --tx-primary:#E9F1F5; --tx-secondary:#A9BEC9; --tx-muted:#718996; --tx-disabled:#4B5F6B;
+  --ac:#DB6E19; --ac-hover:#EE7F2A; --ac-pressed:#B85A12; --ac-soft:rgba(219,110,25,.12); --ac-text:#F0913F;
+  --blu:#2478A1; --blu-viz:#3FA3D4; --blu-soft:rgba(63,163,212,.12);
+  --ok:#22C55E; --ok-soft:rgba(34,197,94,.12); --warn:#E0A32E; --warn-soft:rgba(224,163,46,.12);
+  --err:#DB3434; --err-soft:rgba(219,52,52,.12); --info:#3FA3D4; --info-soft:rgba(63,163,212,.12);
+  --grid:rgba(255,255,255,.05);
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:20px; --sp6:24px; --sp8:32px; --sp10:40px; --sp12:48px; --sp16:64px;
+  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+  --e1:0 1px 2px rgba(0,0,0,.45); --e2:0 4px 14px rgba(0,0,0,.38); --e3:0 18px 44px rgba(0,0,0,.55);
+  --ease:cubic-bezier(.2,.8,.3,1); --dur-fast:120ms; --dur:180ms; --dur-chart:400ms;
+  --font-ui:'Inter',system-ui,sans-serif; --font-display:'Montserrat',system-ui,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+[data-theme="light"]{
+  --s-base:#F4F6F7; --s-surface:#FFFFFF; --s-elevated:#FFFFFF; --s-overlay:#FFFFFF; --s-inset:#EDF1F3;
+  --bd-subtle:rgba(14,34,45,.10); --bd-strong:rgba(14,34,45,.20);
+  --tx-primary:#0E222D; --tx-secondary:#41606E; --tx-muted:#6C8593; --tx-disabled:#A3B4BD;
+  --ac:#C25E10; --ac-hover:#A94F09; --ac-pressed:#8C4207; --ac-soft:rgba(194,94,16,.10); --ac-text:#A94F09;
+  --blu:#1F6E95; --blu-viz:#1F6E95; --blu-soft:rgba(31,110,149,.10);
+  --ok:#15803D; --ok-soft:rgba(21,128,61,.10); --warn:#9A6700; --warn-soft:rgba(154,103,0,.10);
+  --err:#B91C1C; --err-soft:rgba(185,28,28,.10); --info:#1F6E95; --info-soft:rgba(31,110,149,.10);
+  --grid:rgba(14,34,45,.07);
+  --e1:0 1px 2px rgba(14,34,45,.08); --e2:0 4px 14px rgba(14,34,45,.10); --e3:0 18px 44px rgba(14,34,45,.16);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#071017;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--ac-text);text-decoration:none}
+a:hover{color:var(--ac-hover)}
+@keyframes mmShimmer{0%{background-position:-320px 0}100%{background-position:320px 0}}
+@keyframes mmRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+<script src="./metamc-shared.js"></script>
+</helmet>
+<div ref="{{ rootRef }}" data-theme="{{ theme }}" style="background:var(--s-base);color:var(--tx-primary);font-family:var(--font-ui);min-height:100vh">
+<div style="position:relative;display:flex;align-items:stretch;min-height:100vh;background:var(--s-base)">
+
+      <aside style="width:{{ sidebarW }};flex:none;align-self:stretch;background:var(--s-surface);border-right:1px solid var(--bd-subtle);padding:16px 12px;display:flex;flex-direction:column;gap:22px;transition:width var(--dur) var(--ease)">
+        <div style="display:flex;align-items:center;gap:10px;padding:0 4px">
+          <img src="uploads/logo.png" alt="MetaMC" style="width:28px;height:28px;object-fit:contain;flex:none">
+          <sc-if value="{{ showLabels }}" hint-placeholder-val="{{ true }}">
+            <div style="min-width:0">
+              <div style="font-family:var(--font-display);font-weight:700;font-size:13px;letter-spacing:.12em;text-transform:uppercase">MetaMC</div>
+              <div style="font-size:10.5px;color:var(--tx-muted);letter-spacing:.08em;text-transform:uppercase;margin-top:1px">Console</div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 9px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-muted)">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" style="flex:none"><path d="{{ iconSearch }}"></path></svg>
+          <sc-if value="{{ showLabels }}" hint-placeholder-val="{{ true }}">
+            <span style="font-size:12.5px">Cerca moduli</span>
+            <span style="margin-left:auto;font-family:var(--font-mono);font-size:10.5px;border:1px solid var(--bd-subtle);border-radius:var(--r-xs);padding:1px 5px">⌘K</span>
+          </sc-if>
+        </div>
+
+        <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="2">
+          <div>
+            <sc-if value="{{ showLabels }}" hint-placeholder-val="{{ true }}">
+              <div style="font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx-muted);padding:0 8px;margin-bottom:8px">{{ g.area }}</div>
+            </sc-if>
+            <div style="display:flex;flex-direction:column;gap:2px">
+              <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+                <a href="{{ it.href }}" title="{{ it.label }}" style="position:relative;display:flex;align-items:center;gap:11px;height:36px;padding:0 9px;border:none;border-radius:var(--r-sm);background:{{ it.bg }};color:{{ it.fg }};font-family:var(--font-ui);font-size:13px;font-weight:500;cursor:pointer;text-align:left;transition:background var(--dur) var(--ease)">
+                  <span style="position:absolute;left:0;top:8px;bottom:8px;width:2px;border-radius:2px;background:{{ it.bar }}"></span>
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="{{ it.icon }}"></path></svg>
+                  <sc-if value="{{ showLabels }}" hint-placeholder-val="{{ true }}">
+                    <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.label }}</span>
+                  </sc-if>
+                </a>
+              </sc-for>
+            </div>
+          </div>
+        </sc-for>
+
+      </aside>
+
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column">
+        <header style="position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;height:56px;padding:0 20px;background:rgba(14,31,40,.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--bd-subtle)">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--tx-muted);min-width:0">
+            <span>Console</span>
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="{{ iconChev }}"></path></svg>
+            <span style="color:var(--tx-primary);font-weight:600;white-space:nowrap">{{ breadcrumb }}</span>
+          </div>
+          <sc-if value="{{ showFilters }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:2px;margin-left:12px;padding:3px;background:var(--s-inset);border:1px solid var(--bd-subtle);border-radius:var(--r-sm)">
+              <sc-for list="{{ periods }}" as="p" hint-placeholder-count="5">
+                <button onClick="{{ p.go }}" style="border:none;border-radius:var(--r-xs);background:{{ p.bg }};color:{{ p.fg }};font-family:var(--font-ui);font-size:12px;font-weight:600;padding:5px 10px;cursor:pointer;transition:all var(--dur) var(--ease)">{{ p.label }}</button>
+              </sc-for>
+            </div>
+          </sc-if>
+          <div style="margin-left:auto;display:flex;align-items:center;gap:10px">
+            <div style="position:relative;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-secondary);cursor:pointer">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="{{ iconBell }}"></path></svg>
+              <span style="position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;padding:0 4px;border-radius:var(--r-full);background:var(--ac);color:#160A02;font-size:9.5px;font-weight:700;display:flex;align-items:center;justify-content:center">3</span>
+            </div>
+            <div style="position:relative">
+              <button onClick="{{ toggleUserMenu }}" style="display:flex;align-items:center;gap:8px;height:32px;padding:2px 10px 2px 2px;border:1px solid var(--bd-subtle);border-radius:var(--r-full);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-ui);cursor:pointer">
+                <div style="width:26px;height:26px;border-radius:var(--r-full);background:#8B5E34;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:rgba(255,255,255,.92)">VA</div>
+                <span style="font-size:12.5px;font-weight:600">Vally90</span>
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--tx-muted)" strokeWidth="1.5" style="transform:{{ userMenuRot }}"><path d="{{ iconChev }}"></path></svg>
+              </button>
+              <sc-if value="{{ userMenuOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:40px;right:0;z-index:50;width:280px;border:1px solid var(--bd-strong);border-radius:var(--r-md);background:var(--s-overlay);box-shadow:var(--e3);overflow:hidden">
+                  <div style="display:flex;align-items:center;gap:12px;padding:16px;border-bottom:1px solid var(--bd-subtle)">
+                    <div style="width:40px;height:40px;border-radius:var(--r-sm);background:#8B5E34;display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:12px;color:rgba(255,255,255,.92);flex:none">VA</div>
+                    <div style="min-width:0">
+                      <div style="font-family:var(--font-display);font-size:14px;font-weight:600">Vally90</div>
+                      <div style="font-size:12px;color:var(--tx-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">vally90@metamc.it</div>
+                    </div>
+                  </div>
+                  <div style="padding:14px 16px;display:flex;flex-direction:column;gap:9px;border-bottom:1px solid var(--bd-subtle)">
+                    <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--tx-muted)">Ruolo</span><span style="color:var(--ac-text);font-weight:600">Founder</span></div>
+                    <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--tx-muted)">Moduli</span><span>Tutti i moduli</span></div>
+                    <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--tx-muted)">2FA</span><span style="color:var(--ok)">Attiva</span></div>
+                    <div style="display:flex;justify-content:space-between;font-size:12.5px"><span style="color:var(--tx-muted)">Membro dal</span><span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">14/06/2022</span></div>
+                  </div>
+                  <div style="padding:6px">
+                    <button style="width:100%;text-align:left;padding:9px 10px;border:none;border-radius:var(--r-sm);background:transparent;color:var(--err);font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer" style-hover="background:var(--err-soft)">Esci</button>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+          </div>
+        </header>
+
+        <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;z-index:40;background:rgba(4,10,14,.62);display:flex;justify-content:center;padding-top:120px">
+            <div style="width:560px;height:fit-content;border:1px solid var(--bd-strong);border-radius:var(--r-lg);background:var(--s-overlay);box-shadow:var(--e3);overflow:hidden">
+              <div style="display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--bd-subtle)">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--tx-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="{{ iconSearch }}"></path></svg>
+                <span style="font-size:14px;color:var(--tx-muted)">Cerca moduli, giocatori, azioni…</span>
+                <span style="margin-left:auto;width:1px;height:16px;background:var(--ac)"></span>
+              </div>
+              <div style="padding:8px">
+                <div style="font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--tx-muted);padding:8px 8px 6px">Suggeriti</div>
+                <sc-for list="{{ paletteItems }}" as="p" hint-placeholder-count="5">
+                  <div style="display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:var(--r-sm);font-size:13px;color:var(--tx-secondary)">
+                    <span style="width:6px;height:6px;border-radius:2px;background:var(--tx-muted)"></span>
+                    <span>{{ p.label }}</span>
+                    <span style="margin-left:auto;font-family:var(--font-mono);font-size:10.5px;color:var(--tx-muted);border:1px solid var(--bd-subtle);border-radius:var(--r-xs);padding:1px 6px">{{ p.hint }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="padding:9px 16px;border-top:1px solid var(--bd-subtle);font-size:11px;color:var(--tx-muted);display:flex;gap:16px">
+                <span>↑↓ naviga</span><span>↵ esegui</span><span>esc chiudi</span>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <main style="flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;gap:24px">
+
+          
+
+                      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px">
+              <div>
+                <h2 style="font-family:var(--font-display);font-size:22px;line-height:30px;font-weight:700;letter-spacing:-.01em;margin:0 0 5px">Panoramica network</h2>
+                <div style="font-size:12.5px;color:var(--tx-muted)">Ultime 24 ore · fuso Europe/Rome · aggiornato <span style="font-family:var(--font-mono)">12s</span> fa</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+              <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+                <div style="padding:14px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);display:flex;flex-direction:column;gap:10px;animation:mmRise 400ms var(--ease) both">
+                  <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.label }}</div>
+                  <div style="display:flex;align-items:baseline;gap:5px">
+                    <span style="font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ k.value }}</span>
+                    <span style="font-size:11px;color:var(--tx-muted)">{{ k.unit }}</span>
+                  </div>
+                  <svg viewBox="0 0 86 30" preserveAspectRatio="none" style="width:100%;height:30px"><path d="{{ k.d }}" fill="none" stroke="var(--ac)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"></path></svg>
+                  <div style="display:flex;align-items:center;gap:7px">
+                    <span style="font-size:11.5px;font-weight:600;padding:2px 6px;border-radius:var(--r-xs);background:{{ k.soft }};color:{{ k.color }};font-variant-numeric:tabular-nums">{{ k.delta }}</span>
+                    <span style="font-size:11px;color:var(--tx-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ k.note }}</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);overflow:hidden">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:18px 20px 14px">
+                <div>
+                  <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Andamento online nel tempo</h3>
+                  <div style="font-size:12px;color:var(--tx-muted)">Giocatori connessi · 24h (00:00–23:12, Europe/Rome)</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:16px;padding:0 20px 6px;flex-wrap:wrap;align-items:center">
+                <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600"><span style="width:18px;height:3px;border-radius:2px;background:var(--ac)"></span>Totale network</div>
+                <sc-for list="{{ legend }}" as="l" hint-placeholder-count="5">
+                  <button onClick="{{ l.go }}" style="display:flex;align-items:center;gap:7px;border:none;background:none;padding:0;cursor:pointer;font-family:var(--font-ui);font-size:12px;color:var(--tx-secondary);opacity:{{ l.opacity }};transition:opacity var(--dur) var(--ease)">
+                    <span style="width:18px;height:3px;border-radius:2px;background:{{ l.color }}"></span>{{ l.name }}
+                  </button>
+                </sc-for>
+              </div>
+              <svg viewBox="0 0 1120 300" preserveAspectRatio="none" style="width:100%;height:320px;display:block">
+                <defs>
+                  <linearGradient id="mmArea" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="#DB6E19" stop-opacity="0.15"></stop>
+                    <stop offset="100%" stop-color="#DB6E19" stop-opacity="0"></stop>
+                  </linearGradient>
+                  <pattern id="mmGap" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
+                    <line x1="0" y1="0" x2="0" y2="7" stroke="rgba(255,255,255,.14)" strokeWidth="2"></line>
+                  </pattern>
+                </defs>
+                <sc-for list="{{ yTicks }}" as="t" hint-placeholder-count="5">
+                  <g>
+                    <line x1="56" x2="1108" y1="{{ t.y }}" y2="{{ t.y }}" stroke="var(--grid)" strokeWidth="1"></line>
+                    <text x="46" y="{{ t.y }}" textAnchor="end" dominantBaseline="middle" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">{{ t.label }}</text>
+                  </g>
+                </sc-for>
+                <rect x="{{ gapX }}" y="16" width="{{ gapW }}" height="252" fill="url(#mmGap)"></rect>
+                <text x="{{ gapX }}" y="286" fill="var(--tx-muted)" fontSize="10.5" fontFamily="Inter">dati non raccolti 04:00–05:59</text>
+                <path d="{{ chartTotalArea }}" fill="url(#mmArea)"></path>
+                <path d="{{ chartTotalLine }}" fill="none" stroke="var(--ac)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"></path>
+                <sc-for list="{{ modeSeries }}" as="m" hint-placeholder-count="5">
+                  <path d="{{ m.d }}" fill="none" stroke="{{ m.color }}" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="{{ m.opacity }}"></path>
+                </sc-for>
+                <sc-for list="{{ annos }}" as="a" hint-placeholder-count="2">
+                  <g>
+                    <line x1="{{ a.x }}" x2="{{ a.x }}" y1="16" y2="268" stroke="var(--bd-strong)" strokeWidth="1" strokeDasharray="3 4"></line>
+                    <text x="{{ a.xLabel }}" y="30" fill="var(--tx-muted)" fontSize="10.5" fontFamily="Inter">{{ a.label }}</text>
+                  </g>
+                </sc-for>
+                <circle cx="{{ peakX }}" cy="{{ peakY }}" r="4.5" fill="var(--ac)" stroke="var(--s-surface)" strokeWidth="2"></circle>
+                <text x="{{ peakX }}" y="{{ peakLabelY }}" textAnchor="middle" fill="var(--tx-primary)" fontSize="11.5" fontWeight="600" fontFamily="JetBrains Mono">1.204 · 21:47</text>
+                <sc-for list="{{ xTicks }}" as="t" hint-placeholder-count="9">
+                  <text x="{{ t.x }}" y="288" textAnchor="middle" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">{{ t.label }}</text>
+                </sc-for>
+              </svg>
+              <div style="display:flex;align-items:center;gap:12px;padding:6px 20px 18px">
+                <div style="flex:1;height:34px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);position:relative;overflow:hidden">
+                  <svg viewBox="0 0 1120 300" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;opacity:.5"><path d="{{ chartTotalArea }}" fill="var(--ac)" opacity="0.35"></path></svg>
+                  <div style="position:absolute;top:0;bottom:0;left:12%;right:4%;border-left:2px solid var(--ac);border-right:2px solid var(--ac);background:rgba(219,110,25,.08)"></div>
+                </div>
+                <span style="font-size:11.5px;color:var(--tx-muted);white-space:nowrap">trascina per zoomare</span>
+              </div>
+            </section>
+
+            <div style="display:grid;grid-template-columns:420px 1fr;gap:16px">
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:18px 20px">
+                <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Distribuzione per modalità</h3>
+                <div style="font-size:12px;color:var(--tx-muted);margin-bottom:16px">Popolazione corrente · 847 giocatori · 23:12. «Altre modalità» raccoglie i server non ancora tracciati.</div>
+                <div style="display:flex;align-items:center;gap:20px">
+                  <svg viewBox="0 0 180 180" style="width:180px;height:180px;flex:none">
+                    <sc-for list="{{ donut }}" as="s" hint-placeholder-count="5">
+                      <path d="{{ s.d }}" fill="{{ s.color }}"></path>
+                    </sc-for>
+                    <text x="90" y="86" textAnchor="middle" fill="var(--tx-primary)" fontSize="26" fontWeight="700" fontFamily="Montserrat">847</text>
+                    <text x="90" y="104" textAnchor="middle" fill="var(--tx-muted)" fontSize="11" fontFamily="Inter">online adesso</text>
+                  </svg>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:12px">
+                    <sc-for list="{{ dist }}" as="d" hint-placeholder-count="5">
+                      <div>
+                        <div style="display:flex;align-items:center;gap:8px">
+                          <span style="width:9px;height:9px;border-radius:2px;background:{{ d.color }};flex:none"></span>
+                          <span style="font-size:12.5px;font-weight:500">{{ d.name }}</span>
+                          <span style="margin-left:auto;font-family:var(--font-mono);font-size:12.5px;font-variant-numeric:tabular-nums">{{ d.online }}</span>
+                        </div>
+                        <div style="display:flex;gap:8px;margin-left:17px;margin-top:2px;font-size:11px;color:var(--tx-muted)"><span>{{ d.quota }}</span><span>{{ d.delta }}</span></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </section>
+
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:18px 20px">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
+                  <div>
+                    <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Heatmap di affluenza</h3>
+                    <div style="font-size:12px;color:var(--tx-muted)">Media giocatori online · 7 giorni × 24 ore · Europe/Rome</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--tx-muted)">
+                    <span>0</span>
+                    <span style="width:96px;height:8px;border-radius:4px;background:linear-gradient(90deg,#0F212A,#1E5670,#8A7147,#F0A63F)"></span>
+                    <span>1.310</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <sc-for list="{{ heat }}" as="r" hint-placeholder-count="7">
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <span style="width:28px;font-size:11px;color:var(--tx-muted);flex:none">{{ r.day }}</span>
+                      <div style="flex:1;display:grid;grid-template-columns:repeat(24,1fr);gap:3px">
+                        <sc-for list="{{ r.cells }}" as="c" hint-placeholder-count="24">
+                          <div title="{{ c.label }}" style="height:20px;border-radius:3px;background:{{ c.color }}"></div>
+                        </sc-for>
+                      </div>
+                    </div>
+                  </sc-for>
+                  <div style="display:flex;gap:8px;margin-top:4px">
+                    <span style="width:28px;flex:none"></span>
+                    <div style="flex:1;display:grid;grid-template-columns:repeat(8,1fr)">
+                      <sc-for list="{{ heatHours }}" as="h" hint-placeholder-count="8">
+                        <span style="font-family:var(--font-mono);font-size:10.5px;color:var(--tx-muted)">{{ h }}</span>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+                <div style="margin-top:14px;display:inline-flex;gap:10px;padding:8px 10px;border:1px solid var(--bd-strong);border-radius:var(--r-sm);background:var(--s-overlay);box-shadow:var(--e2);font-size:11.5px">
+                  <span style="color:var(--tx-muted)">Sab 21:00</span>
+                  <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">1.288 gioc.</span>
+                  <span style="color:var(--ok)">+18% vs media fascia</span>
+                </div>
+              </section>
+            </div>
+
+            <div>
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:18px 20px">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px">
+                  <div>
+                    <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Giocatori unici giornalieri</h3>
+                    <div style="font-size:12px;color:var(--tx-muted)">Ultimi 30 giorni · nuovi vs di ritorno · media mobile 7g</div>
+                  </div>
+                  <div style="display:flex;gap:14px;font-size:11.5px;color:var(--tx-secondary)">
+                    <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:#1F6E95"></span>Di ritorno</span>
+                    <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:2px;background:var(--ac)"></span>Nuovi</span>
+                    </div>
+                </div>
+                <svg viewBox="0 0 1000 240" preserveAspectRatio="none" style="width:100%;height:240px;display:block">
+                  <line x1="44" x2="1000" y1="210" y2="210" stroke="var(--grid)"></line>
+                  <line x1="44" x2="1000" y1="140" y2="140" stroke="var(--grid)"></line>
+                  <line x1="44" x2="1000" y1="70" y2="70" stroke="var(--grid)"></line>
+                  <text x="36" y="214" textAnchor="end" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">0</text>
+                  <text x="36" y="144" textAnchor="end" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">1.700</text>
+                  <text x="36" y="74" textAnchor="end" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">3.400</text>
+                  <sc-for list="{{ dBars }}" as="b" hint-placeholder-count="30">
+                    <g>
+                      <rect x="{{ b.x }}" y="{{ b.yRet }}" width="{{ b.w }}" height="{{ b.hRet }}" fill="#1F6E95" rx="2"></rect>
+                      <rect x="{{ b.x }}" y="{{ b.yNew }}" width="{{ b.w }}" height="{{ b.hNew }}" fill="#DB6E19" rx="2"></rect>
+                    </g>
+                  </sc-for>
+                  <path d="{{ maPath }}" fill="none" stroke="var(--tx-secondary)" strokeWidth="1.8" strokeLinecap="round"></path>
+                  <text x="44" y="232" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">18/07</text>
+                  <text x="980" y="232" textAnchor="end" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">16/08</text>
+                </svg>
+              </section>
+
+            </div>
+
+            <div>
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:18px 20px">
+                <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px">
+                  <div>
+                    <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Provenienza geografica</h3>
+                    <div style="font-size:12px;color:var(--tx-muted)">Giocatori unici oggi · scala per quantili, non lineare</div>
+                  </div>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 260px;gap:18px">
+                  <div style="border:1px dashed var(--bd-strong);border-radius:var(--r-md);background:repeating-linear-gradient(135deg,var(--s-inset) 0 8px,var(--s-elevated) 8px 16px);min-height:260px;display:flex;align-items:center;justify-content:center;text-align:center;padding:20px">
+                    <div style="font-family:var(--font-mono);font-size:11.5px;line-height:19px;color:var(--tx-muted)">mappa coropletica mondiale<br><span style="color:var(--tx-disabled)">segnaposto — richiede il layer geo</span></div>
+                  </div>
+                  <div>
+                    <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted);margin-bottom:10px">Primi 10 paesi</div>
+                    <div style="display:flex;flex-direction:column;gap:7px">
+                      <sc-for list="{{ countries }}" as="c" hint-placeholder-count="10">
+                        <div style="display:flex;align-items:center;gap:9px">
+                          <span style="width:8px;height:8px;border-radius:2px;background:{{ c.color }};flex:none"></span>
+                          <span style="font-size:12px;flex:1;white-space:nowrap">{{ c.name }}</span>
+                          <span style="font-family:var(--font-mono);font-size:11.5px;color:var(--tx-secondary);font-variant-numeric:tabular-nums">{{ c.val }}</span>
+                          <span style="font-family:var(--font-mono);font-size:11.5px;color:var(--tx-muted);width:46px;text-align:right;font-variant-numeric:tabular-nums">{{ c.pct }}</span>
+                        </div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+            </div>
+
+          
+
+          
+
+          
+
+        </main>
+      </div>
+    </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;tema&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Scuro&quot;,&quot;Chiaro&quot;],&quot;default&quot;:&quot;Scuro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;accento&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#DB6E19&quot;,&quot;#2478A1&quot;,&quot;#C0533B&quot;,&quot;#B08A2E&quot;],&quot;default&quot;:&quot;#DB6E19&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;sidebarCollassata&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  state = { screen:'panoramica', theme:null, collapsedOverride:null, loginState:'default',
+    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1' };
+
+  componentDidMount() { this.applyAccent(); this.waitShared(); }
+  componentDidUpdate() { this.applyAccent(); }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  /* metamc-shared.js viene caricato da <helmet>: se non è ancora pronto, ricontrolla */
+  waitShared() {
+    if (window.MetaMC) return;
+    this._t = setInterval(() => { if (window.MetaMC) { clearInterval(this._t); this.forceUpdate(); } }, 40);
+  }
+
+  applyAccent() {
+    const el = this.rootRef.current;
+    if (!el) return;
+    const a = this.props.accento || '#DB6E19';
+    el.style.setProperty('--ac', a);
+    el.style.setProperty('--ac-hover', 'color-mix(in oklab, ' + a + ' 82%, white)');
+    el.style.setProperty('--ac-pressed', 'color-mix(in oklab, ' + a + ' 84%, black)');
+    el.style.setProperty('--ac-soft', 'color-mix(in srgb, ' + a + ' 12%, transparent)');
+    el.style.setProperty('--ac-text', 'color-mix(in oklab, ' + a + ' 78%, white)');
+    el.style.setProperty('--bd-focus', a);
+  }
+
+  renderVals() {
+    const M = window.MetaMC;
+    if (!M) return { rootRef: this.rootRef, theme: 'dark' };
+    return M.baseVals(this, 'panoramica');
+  }
+}
+</script>
+</body>
+</html>

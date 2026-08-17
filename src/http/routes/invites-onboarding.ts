@@ -155,7 +155,33 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
       .select(['name'])
       .where('id', '=', state.roleId)
       .executeTakeFirst();
-    return reply.send({ email: state.emailLower, roleName: role?.name ?? null });
+
+    const invite = await ctx.db
+      .selectFrom('auth.invitation as i')
+      .leftJoin('auth.user as u', 'u.id', 'i.invited_by')
+      .select(['i.expires_at as expiresAt', 'u.name as invitedByName'])
+      .where('i.id', '=', state.inviteId)
+      .executeTakeFirst();
+
+    // I moduli che il ruolo apre davvero. Chi sta accettando li ricevera' fra
+    // pochi secondi: mostrarli ora non anticipa nulla che non sia gia' suo, e
+    // rende esplicito il perimetro invece di lasciarlo scoprire per tentativi.
+    const modules = await ctx.db
+      .selectFrom('auth.role_permissions as rp')
+      .innerJoin('auth.modules as m', 'm.id', 'rp.module_id')
+      .select(['m.key as key', 'm.name as name', 'rp.level as level'])
+      .where('rp.role_id', '=', state.roleId)
+      .where('rp.level', '>', 0)
+      .orderBy('m.sort_order')
+      .execute();
+
+    return reply.send({
+      email: state.emailLower,
+      roleName: role?.name ?? null,
+      expiresAt: invite?.expiresAt ?? null,
+      invitedByName: invite?.invitedByName ?? null,
+      modules,
+    });
   });
 
   // -------------------------------------------------------------------------

@@ -11,6 +11,10 @@
  */
 
 @import 'tailwindcss';
+/* Prima dei token: le regole @font-face devono esistere quando i token
+ * dichiarano le famiglie, altrimenti il browser rende tutto in system-ui —
+ * ed è la ragione per cui il pannello non somigliava al prototipo. */
+@import './fonts.css';
 @import '../../design/tokens.css';
 
 @theme inline {
@@ -57,6 +61,17 @@ body,
   height: 100%;
 }
 
+/* Il preflight di Tailwind mette `line-height: 1.5` su html, e il prototipo
+ * non imposta niente — quindi `normal`, cioè circa 1.2. Sembra un dettaglio e
+ * invece è la differenza più visibile di tutte: con 1.5 ogni riga di tabella
+ * era alta 58px invece di 53, ogni chip e ogni voce di menu spostati, e
+ * l'intera pagina più lunga del disegno. Le altezze esplicite (`.t-title`,
+ * `.t-lead`, i titoli) restano quelle dei token e non sono toccate. */
+html,
+body {
+  line-height: normal;
+}
+
 body {
   margin: 0;
   background: var(--s-base);
@@ -66,18 +81,38 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-a {
-  color: var(--ac-text);
-  text-decoration: none;
-}
-a:hover {
-  color: var(--ac-hover);
+/* Dentro `@layer base`, e non fuori da ogni livello.
+ *
+ * Una regola senza livello batte QUALSIASI regola dentro un livello, a
+ * prescindere dalla specificità. Con `a` non livellata, il colore accento
+ * vinceva su `.nav-item { color: var(--tx-secondary) }` e le due voci della
+ * sidebar erano arancioni anche da spente: era il colore fuori tema. */
+@layer base {
+  a {
+    color: var(--ac-text);
+    text-decoration: none;
+  }
+  a:hover {
+    color: var(--ac-hover);
+  }
 }
 
-:where(a, button, input, select, textarea, [tabindex]):focus-visible {
-  outline: 2px solid var(--bd-focus);
-  outline-offset: 2px;
-  border-radius: var(--r-xs);
+/* Un solo anello di fuoco, non due.
+ *
+ * Il trattamento è quello del prototipo: filo accento aderente più alone
+ * morbido, che segue il raggio dell'elemento invece di squadrarlo.
+ *
+ * Sta in `@layer base` per lo stesso motivo della regola `a`: fuori da ogni
+ * livello vincerebbe su qualunque cosa, e `.searchbox input:focus-visible`
+ * non riuscirebbe a spegnerlo — che è perché l'anello continuava a comparire
+ * anche DENTRO il riquadro di ricerca dopo averlo messo attorno. */
+@layer base {
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 1px var(--ac),
+      0 0 0 4px var(--ac-soft);
+  }
 }
 
 .tabular {
@@ -273,8 +308,10 @@ a:hover {
   .input:hover {
     border-color: var(--bd-strong);
   }
-  .input:focus {
-    border-color: var(--ac);
+  /* Il bordo NON cambia colore al fuoco: ci pensa già l'anello. Cambiarlo
+   * anche qui è ciò che faceva vedere due contorni arancioni. */
+  .input:focus-visible {
+    border-color: var(--bd-subtle);
   }
   .input[aria-invalid='true'] {
     border-color: var(--err);
@@ -489,6 +526,90 @@ a:hover {
     padding: 1px 5px;
   }
 
+  /* --- area di contenuto -------------------------------------------------- */
+  /* Padding e gap sono quelli del prototipo. Nessun `max-width` e nessun
+   * `margin: 0 auto`: il contenuto riempie la colonna accanto alla sidebar,
+   * invece di galleggiare al centro con due bande vuote ai lati. */
+  .app-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  /* `flex: none` sulle sezioni.
+   *
+   * `main` ha un'altezza limitata (il guscio è alto 100vh e non scorre), e un
+   * elemento flessibile per impostazione predefinita si RESTRINGE sotto la
+   * propria altezza naturale. Con i riquadri che hanno `overflow: hidden`, il
+   * restringimento tagliava le righe: su uno schermo basso si vedeva un utente
+   * su due, e la parte tagliata non era raggiungibile in alcun modo. Ora le
+   * sezioni tengono la loro altezza e a scorrere è `main`. */
+  .app-main > * {
+    flex: none;
+  }
+
+  /* --- barra di ricerca e filtri ------------------------------------------ */
+  /* Metriche del riquadro "Cerca per nome o email" del prototipo. */
+  .searchbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-sm);
+    background: var(--s-inset);
+    color: var(--tx-muted);
+  }
+  .searchbox input {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+    background: transparent;
+    color: var(--tx-primary);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    outline: none;
+  }
+  /* L'anello attorno al riquadro, non attorno al campo che ci sta dentro. */
+  .searchbox:focus-within {
+    box-shadow:
+      0 0 0 1px var(--ac),
+      0 0 0 4px var(--ac-soft);
+  }
+  .searchbox input:focus-visible {
+    box-shadow: none;
+  }
+
+  /* Le pastiglie del registro: 30px, fondo trasparente, freccia a destra. */
+  .filter-select {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    color: var(--tx-muted);
+  }
+  .filter-select select {
+    appearance: none;
+    height: 30px;
+    padding: 0 28px 0 10px;
+    border: 1px solid var(--bd-subtle);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--tx-secondary);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    cursor: pointer;
+    max-width: 200px;
+  }
+  .filter-select svg {
+    position: absolute;
+    right: 10px;
+    pointer-events: none;
+  }
+
   /* --- tabelle ------------------------------------------------------------ */
   .table {
     width: 100%;
@@ -496,25 +617,30 @@ a:hover {
     border-spacing: 0;
     font-size: 13px;
   }
+  /* Metriche di frontend/6-utenti-e-ruoli.dc.html: th 9px 12px con
+   * letter-spacing .08em, td 10px 12px. Erano 10/14 e .12em. */
   .table th {
     position: sticky;
     top: 0;
-    z-index: 1;
-    background: var(--s-surface);
+    z-index: 2;
+    background: var(--s-inset);
     border-bottom: 1px solid var(--bd-subtle);
-    padding: 10px 14px;
+    padding: 9px 12px;
     text-align: left;
     font-size: 10.5px;
     font-weight: 600;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--tx-muted);
     white-space: nowrap;
   }
+  /* Niente `vertical-align: middle`: il prototipo non lo imposta, e con
+   * l'allineamento alla linea di base la cella è alta 53px invece di 51.
+   * Sono due pixel per riga, che su una tabella diventano l'intera pagina
+   * sfalsata rispetto al disegno. */
   .table td {
-    padding: 11px 14px;
+    padding: 10px 12px;
     border-bottom: 1px solid var(--bd-subtle);
-    vertical-align: middle;
   }
   .table tbody tr:hover td {
     background: var(--s-elevated);

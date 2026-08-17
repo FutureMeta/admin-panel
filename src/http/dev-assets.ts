@@ -18,7 +18,12 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 
-const ASSETS_DIR = fileURLToPath(new URL('../../dist/assets/', import.meta.url));
+const DIST = new URL('../../dist/', import.meta.url);
+/** Le sole cartelle servibili. La chiave è anche il prefisso della rotta. */
+const DIRS: Record<string, string> = {
+  assets: fileURLToPath(new URL('assets/', DIST)),
+  fonts: fileURLToPath(new URL('fonts/', DIST)),
+};
 
 /** Un nome di file, non un percorso. Tutto il resto è 404. */
 const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
@@ -36,34 +41,37 @@ const CONTENT_TYPES: Record<string, string> = {
 export function registerDevAssets(app: FastifyInstance): void {
   const cache = new Map<string, Buffer>();
 
-  app.get('/assets/:name', async (request, reply) => {
-    const { name } = request.params as { name: string };
+  for (const [prefix, dir] of Object.entries(DIRS)) {
+    app.get(`/${prefix}/:name`, async (request, reply) => {
+      const { name } = request.params as { name: string };
 
-    if (!SAFE_NAME.test(name)) {
-      request.log.warn({ name }, 'nome di asset non canonico rifiutato');
-      return reply.code(404).send({ error: 'not_found' });
-    }
-
-    const dot = name.lastIndexOf('.');
-    const type = dot > 0 ? CONTENT_TYPES[name.slice(dot)] : undefined;
-    if (!type) return reply.code(404).send({ error: 'not_found' });
-
-    let body = cache.get(name);
-    if (!body) {
-      try {
-        // `join` con un nome gia' validato: non c'e' input che possa uscire
-        // dalla cartella.
-        body = readFileSync(join(ASSETS_DIR, name));
-        cache.set(name, body);
-      } catch {
+      if (!SAFE_NAME.test(name)) {
+        request.log.warn({ name }, 'nome di asset non canonico rifiutato');
         return reply.code(404).send({ error: 'not_found' });
       }
-    }
 
-    reply.header('Content-Type', type);
-    // In sviluppo NON si cacha: il file cambia a ogni build. In produzione
-    // nginx mette `immutable`, ed è sicuro perché il nome contiene l'hash.
-    reply.header('Cache-Control', 'no-store');
-    return reply.send(body);
-  });
+      const dot = name.lastIndexOf('.');
+      const type = dot > 0 ? CONTENT_TYPES[name.slice(dot)] : undefined;
+      if (!type) return reply.code(404).send({ error: 'not_found' });
+
+      const key = `${prefix}/${name}`;
+      let body = cache.get(key);
+      if (!body) {
+        try {
+          // `join` con un nome gia' validato: non c'e' input che possa uscire
+          // dalla cartella.
+          body = readFileSync(join(dir, name));
+          cache.set(key, body);
+        } catch {
+          return reply.code(404).send({ error: 'not_found' });
+        }
+      }
+
+      reply.header('Content-Type', type);
+      // In sviluppo NON si cacha: il file cambia a ogni build. In produzione
+      // nginx mette `immutable`, ed è sicuro perché il nome contiene l'hash.
+      reply.header('Cache-Control', 'no-store');
+      return reply.send(body);
+    });
+  }
 }

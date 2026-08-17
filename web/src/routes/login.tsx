@@ -1,64 +1,20 @@
-// Login. Composizione a due pannelli, sulle metriche del prototipo.
+// Login. A PIENA PAGINA, due pannelli.
 //
-// Il pannello di sinistra è costruito sul motivo esagonale del logo: un campo
-// di esagoni in SVG sopra il gradiente del brand, con il lockup, la frase e
-// tre affermazioni. È l'unico punto dell'applicazione in cui il brand parla —
-// ed è per questo che tutto il resto resta sobrio.
+// Nel prototipo questa schermata è dentro un riquadro con bordo e ombra, ma
+// quello è il telaio della vetrina — sopra ha l'intestazione "02 — Accesso" e
+// i bottoni per cambiare stato. La schermata vera occupa tutto il viewport:
+// niente cornice, niente raggio, niente `max-width` sul contenitore.
 //
 // SEC-20 — dopo il login si va a `/`, sempre. Nessun parametro di ritorno
 // viene letto dalla URL.
 
 import { Link, useNavigate } from '@tanstack/react-router';
-import { useMemo, useState } from 'react';
-import { Button, Field, Notice, Pill } from '../components/ui.tsx';
+import { useState } from 'react';
+import { HexField } from '../components/hex-field.tsx';
+import { Button, Field, Notice } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
 type Step = 'credenziali' | 'totp' | 'recovery';
-
-/** Campo di esagoni: stessa geometria del logo, opacità appena percettibile. */
-function HexField() {
-  const polygons = useMemo(() => {
-    const out: Array<{ points: string; fill: string }> = [];
-    const r = 46;
-    const w = Math.sqrt(3) * r;
-    const h = 1.5 * r;
-    for (let row = -1; row < 9; row += 1) {
-      for (let col = -1; col < 9; col += 1) {
-        const cx = col * w + (row % 2 === 0 ? 0 : w / 2);
-        const cy = row * h;
-        const pts: string[] = [];
-        for (let i = 0; i < 6; i += 1) {
-          const a = (Math.PI / 180) * (60 * i - 30);
-          pts.push(`${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`);
-        }
-        // Poche celle accese, decise da una regola: un pattern deterministico
-        // non cambia fra un render e l'altro.
-        const lit = (row * 7 + col * 3) % 11 === 0;
-        out.push({ points: pts.join(' '), fill: lit ? 'rgba(219,110,25,0.05)' : 'transparent' });
-      }
-    }
-    return out;
-  }, []);
-
-  return (
-    <svg
-      viewBox="0 0 720 840"
-      preserveAspectRatio="xMidYMid slice"
-      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}
-      aria-hidden="true"
-    >
-      {polygons.map((p) => (
-        <polygon
-          key={p.points}
-          points={p.points}
-          fill={p.fill}
-          stroke="rgba(255,255,255,0.045)"
-          strokeWidth="1"
-        />
-      ))}
-    </svg>
-  );
-}
 
 function BrandPanel() {
   const claims = [
@@ -135,7 +91,13 @@ function BrandPanel() {
         {claims.map((c) => (
           <div key={c.label}>
             <div
-              style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 700, color: '#E9F1F5' }}
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 20,
+                fontWeight: 700,
+                color: '#E9F1F5',
+                fontVariantNumeric: 'tabular-nums',
+              }}
             >
               {c.value}
             </div>
@@ -188,9 +150,7 @@ export function LoginPage() {
           body: 'Riprova fra qualche minuto: il blocco cresce a ogni errore.',
         };
       }
-      if (err.isOverloaded) {
-        return { title: 'Server sotto carico', body: 'Riprova fra un istante.' };
-      }
+      if (err.isOverloaded) return { title: 'Server sotto carico', body: 'Riprova fra un istante.' };
       if (err.status === 401 || err.status === 400) {
         // Credenziali sbagliate e account inesistente danno lo STESSO
         // messaggio: distinguerli direbbe quali email sono registrate (SEC-30).
@@ -274,226 +234,213 @@ export function LoginPage() {
     <main
       style={{
         minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 32,
+        display: 'grid',
+        gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1fr)',
+        background: 'var(--s-surface)',
       }}
     >
+      <BrandPanel />
+
       <div
         style={{
-          width: '100%',
-          maxWidth: 1080,
-          minHeight: 640,
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1fr)',
-          border: '1px solid var(--bd-subtle)',
-          borderRadius: 'var(--r-lg)',
-          overflow: 'hidden',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: 48,
           background: 'var(--s-surface)',
-          boxShadow: 'var(--e3)',
         }}
       >
-        <BrandPanel />
+        <div style={{ width: '100%', maxWidth: 372 }}>
+          {step === 'totp' ? (
+            <div
+              className="pill pill-ac"
+              style={{ marginBottom: 18, display: 'inline-flex', height: 24, gap: 8 }}
+            >
+              Passaggio 2 di 2
+            </div>
+          ) : null}
 
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 48,
-            background: 'var(--s-surface)',
-          }}
-        >
-          <div style={{ width: '100%', maxWidth: 372 }}>
-            {step === 'totp' ? (
-              <div style={{ marginBottom: 18 }}>
-                <Pill tone="ac">Passaggio 2 di 2</Pill>
-              </div>
-            ) : null}
+          <h1 className="t-title" style={{ marginBottom: 6 }}>
+            {step === 'credenziali'
+              ? 'Accedi alla console'
+              : step === 'totp'
+                ? 'Verifica in due passaggi'
+                : 'Codice di recupero'}
+          </h1>
 
-            <h1 className="t-title" style={{ marginBottom: 6 }}>
-              {step === 'credenziali'
-                ? 'Accedi alla console'
-                : step === 'totp'
-                  ? 'Verifica in due passaggi'
-                  : 'Codice di recupero'}
-            </h1>
-
-            <p className="t-lead" style={{ margin: '0 0 28px' }}>
-              {step === 'credenziali' ? (
-                'Usa le credenziali associate al tuo invito.'
-              ) : step === 'totp' ? (
-                <>
-                  Inserisci il codice a 6 cifre generato dall'app di autenticazione per{' '}
-                  <span className="mono" style={{ color: 'var(--tx-secondary)' }}>
-                    {email || 'il tuo account'}
-                  </span>
-                  .
-                </>
-              ) : (
-                'Usa uno dei codici salvati durante la configurazione. Ognuno vale una volta sola.'
-              )}
-            </p>
-
-            {error ? (
-              <div style={{ marginBottom: 20 }}>
-                <Notice tone="err" title={error.title} {...(error.body ? { description: error.body } : {})} />
-              </div>
-            ) : null}
-
+          <p className="t-lead" style={{ margin: '0 0 28px' }}>
             {step === 'credenziali' ? (
-              <form onSubmit={submitCredentials}>
-                <div style={{ marginBottom: 18 }}>
-                  <Field
-                    label="Email"
-                    type="email"
-                    name="email"
-                    autoComplete="username"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-                <div style={{ marginBottom: 24 }}>
-                  <Field
-                    label="Password"
-                    type="password"
-                    name="password"
-                    autoComplete="current-password"
-                    required
-                    minLength={12}
-                    className="input-mono"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    aside={
-                      <Link to="/password-dimenticata" style={{ fontSize: 12 }}>
-                        Password dimenticata?
-                      </Link>
-                    }
-                  />
-                </div>
-                <Button type="submit" variant="primary" size="lg" block loading={busy}>
-                  Continua
-                </Button>
-              </form>
+              'Usa le credenziali associate al tuo invito.'
             ) : step === 'totp' ? (
-              <form onSubmit={submitTotp}>
-                <div style={{ position: 'relative', marginBottom: 22 }}>
-                  <OtpCells value={code} />
-                  {/* Il campo vero copre le celle ed è trasparente: le sei
-                      caselle sono la rappresentazione, non il controllo. Così
-                      restano incolla-e-vai e leggibili dallo screen reader. */}
-                  <input
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    pattern="[0-9]{6}"
-                    maxLength={6}
-                    required
-                    aria-label="Codice a sei cifre"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                    style={{
-                      position: 'absolute',
-                      inset: 0,
-                      width: '100%',
-                      height: '100%',
-                      opacity: 0,
-                      border: 0,
-                      background: 'transparent',
-                      cursor: 'text',
-                    }}
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  block
-                  loading={busy}
-                  disabled={code.length !== 6}
-                >
-                  Verifica e accedi
-                </Button>
-                <div
+              <>
+                Inserisci il codice a 6 cifre generato dall'app di autenticazione per{' '}
+                <span className="mono" style={{ color: 'var(--tx-secondary)' }}>
+                  {email || 'il tuo account'}
+                </span>
+                .
+              </>
+            ) : (
+              'Usa uno dei codici salvati durante la configurazione. Ognuno vale una volta sola.'
+            )}
+          </p>
+
+          {error ? (
+            <div style={{ marginBottom: 20 }}>
+              <Notice tone="err" title={error.title} {...(error.body ? { description: error.body } : {})} />
+            </div>
+          ) : null}
+
+          {step === 'credenziali' ? (
+            <form onSubmit={submitCredentials}>
+              <div style={{ marginBottom: 18 }}>
+                <Field
+                  label="Email"
+                  type="email"
+                  name="email"
+                  autoComplete="username"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div style={{ marginBottom: 24 }}>
+                <Field
+                  label="Password"
+                  type="password"
+                  name="password"
+                  autoComplete="current-password"
+                  required
+                  minLength={12}
+                  className="input-mono"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  aside={
+                    <Link to="/password-dimenticata" style={{ fontSize: 12 }}>
+                      Password dimenticata?
+                    </Link>
+                  }
+                />
+              </div>
+              <Button type="submit" variant="primary" size="lg" block loading={busy}>
+                Continua
+              </Button>
+            </form>
+          ) : step === 'totp' ? (
+            <form onSubmit={submitTotp}>
+              <div style={{ position: 'relative', marginBottom: 22 }}>
+                <OtpCells value={code} />
+                {/* Il campo vero copre le celle ed è trasparente: le sei
+                    caselle sono la rappresentazione, non il controllo. Così
+                    restano incolla-e-vai e leggibili dallo screen reader. */}
+                <input
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                  aria-label="Codice a sei cifre"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    gap: 12,
-                    marginTop: 16,
-                    fontSize: 12,
-                    color: 'var(--tx-muted)',
+                    position: 'absolute',
+                    inset: 0,
+                    width: '100%',
+                    height: '100%',
+                    opacity: 0,
+                    border: 0,
+                    background: 'transparent',
+                    cursor: 'text',
+                  }}
+                />
+              </div>
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                block
+                loading={busy}
+                disabled={code.length !== 6}
+              >
+                Verifica e accedi
+              </Button>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  marginTop: 16,
+                  fontSize: 12,
+                  color: 'var(--tx-muted)',
+                }}
+              >
+                <button
+                  type="button"
+                  style={{ ...linkButton, color: 'var(--tx-secondary)' }}
+                  onClick={() => {
+                    setStep('credenziali');
+                    setCode('');
+                    setError(undefined);
                   }}
                 >
+                  ← Torna indietro
+                </button>
+                <span>
+                  Codice non funzionante?{' '}
                   <button
                     type="button"
-                    style={{ ...linkButton, color: 'var(--tx-secondary)' }}
+                    style={{ ...linkButton, color: 'var(--ac-text)' }}
                     onClick={() => {
-                      setStep('credenziali');
-                      setCode('');
+                      setStep('recovery');
                       setError(undefined);
                     }}
                   >
-                    ← Torna indietro
+                    Usa un codice di recupero
                   </button>
-                  <span>
-                    Codice non funzionante?{' '}
-                    <button
-                      type="button"
-                      style={{ ...linkButton, color: 'var(--ac-text)' }}
-                      onClick={() => {
-                        setStep('recovery');
-                        setError(undefined);
-                      }}
-                    >
-                      Usa un codice di recupero
-                    </button>
-                  </span>
-                </div>
-              </form>
-            ) : (
-              <form onSubmit={submitRecovery}>
-                <div style={{ marginBottom: 24 }}>
-                  <Field
-                    label="Codice di recupero"
-                    hint="26 caratteri. I trattini sono facoltativi."
-                    className="input-mono"
-                    required
-                    value={recoveryCode}
-                    onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
-                  />
-                </div>
-                <Button type="submit" variant="primary" size="lg" block loading={busy}>
-                  Entra
-                </Button>
-                <div style={{ marginTop: 16 }}>
-                  <button
-                    type="button"
-                    style={{ ...linkButton, color: 'var(--tx-secondary)' }}
-                    onClick={() => {
-                      setStep('totp');
-                      setError(undefined);
-                    }}
-                  >
-                    ← Torna al codice dell'app
-                  </button>
-                </div>
-              </form>
-            )}
+                </span>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={submitRecovery}>
+              <div style={{ marginBottom: 24 }}>
+                <Field
+                  label="Codice di recupero"
+                  hint="26 caratteri. I trattini sono facoltativi."
+                  className="input-mono"
+                  required
+                  value={recoveryCode}
+                  onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
+                />
+              </div>
+              <Button type="submit" variant="primary" size="lg" block loading={busy}>
+                Entra
+              </Button>
+              <div style={{ marginTop: 16 }}>
+                <button
+                  type="button"
+                  style={{ ...linkButton, color: 'var(--tx-secondary)' }}
+                  onClick={() => {
+                    setStep('totp');
+                    setError(undefined);
+                  }}
+                >
+                  ← Torna al codice dell'app
+                </button>
+              </div>
+            </form>
+          )}
 
-            <div
-              style={{
-                marginTop: 30,
-                paddingTop: 20,
-                borderTop: '1px solid var(--bd-subtle)',
-                fontSize: 12,
-                lineHeight: '19px',
-                color: 'var(--tx-muted)',
-              }}
-            >
-              L'accesso alla console è riservato allo staff ed è possibile solo su invito. Se ti serve un
-              accesso, chiedilo a un owner indicando ruolo e moduli necessari.
-            </div>
+          <div
+            style={{
+              marginTop: 30,
+              paddingTop: 20,
+              borderTop: '1px solid var(--bd-subtle)',
+              fontSize: 12,
+              lineHeight: '19px',
+              color: 'var(--tx-muted)',
+            }}
+          >
+            L'accesso alla console è riservato allo staff ed è possibile solo su invito. Se ti serve un
+            accesso, chiedilo a un owner indicando ruolo e moduli necessari.
           </div>
         </div>
       </div>

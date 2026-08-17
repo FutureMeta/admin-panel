@@ -122,6 +122,27 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       byUser.set(r.user_id, list);
     }
 
+    // Quanti moduli vede davvero ciascuno. Non e' la somma dei ruoli: la vista
+    // dei permessi effettivi tiene gia' conto degli override individuali e del
+    // livello piu' alto quando due ruoli si sovrappongono (§7).
+    // Ultimo accesso = la sessione toccata piu' di recente. Non e' un campo
+    // sull'utente apposta: se lo fosse, andrebbe aggiornato a ogni richiesta,
+    // cioe' una scrittura per pageview su una tabella che si legge sempre.
+    const lastSeen = await ctx.db
+      .selectFrom('auth.session')
+      .select(({ fn }) => ['userId', fn.max('updatedAt').as('lastSeenAt')])
+      .groupBy('userId')
+      .execute();
+    const lastSeenByUser = new Map(lastSeen.map((s) => [s.userId, s.lastSeenAt]));
+
+    const moduleCounts = await ctx.db
+      .selectFrom('auth.effective_permissions')
+      .select(({ fn }) => ['user_id', fn.countAll<string>().as('modules')])
+      .where('level', '>', 0)
+      .groupBy('user_id')
+      .execute();
+    const modulesByUser = new Map(moduleCounts.map((m) => [m.user_id, Number(m.modules)]));
+
     return reply.send({
       users: rows.map((u) => ({
         id: u.id,
@@ -133,6 +154,8 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         banExpires: u.ban_expires,
         createdAt: u.createdAt,
         roles: byUser.get(u.id) ?? [],
+        modules: modulesByUser.get(u.id) ?? 0,
+        lastSeenAt: lastSeenByUser.get(u.id) ?? null,
       })),
     });
   });

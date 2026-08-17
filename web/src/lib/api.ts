@@ -128,6 +128,10 @@ export type UserRow = {
   banExpires: string | null;
   createdAt: string;
   roles: Array<{ key: string; name: string; isSystem: boolean }>;
+  /** Quanti moduli l'utente vede davvero, override individuali inclusi. */
+  modules: number;
+  /** Sessione toccata più di recente. `null` se non è mai entrato. */
+  lastSeenAt: string | null;
 };
 
 export type UserDetail = {

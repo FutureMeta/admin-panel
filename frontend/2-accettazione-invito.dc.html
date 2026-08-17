@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --s-base:#0A161D; --s-surface:#0E1F28; --s-elevated:#132833; --s-overlay:#17313E; --s-inset:#071219;
+  --bd-subtle:rgba(255,255,255,.07); --bd-strong:rgba(255,255,255,.15); --bd-focus:#DB6E19;
+  --tx-primary:#E9F1F5; --tx-secondary:#A9BEC9; --tx-muted:#718996; --tx-disabled:#4B5F6B;
+  --ac:#DB6E19; --ac-hover:#EE7F2A; --ac-pressed:#B85A12; --ac-soft:rgba(219,110,25,.12); --ac-text:#F0913F;
+  --blu:#2478A1; --blu-viz:#3FA3D4; --blu-soft:rgba(63,163,212,.12);
+  --ok:#22C55E; --ok-soft:rgba(34,197,94,.12); --warn:#E0A32E; --warn-soft:rgba(224,163,46,.12);
+  --err:#DB3434; --err-soft:rgba(219,52,52,.12); --info:#3FA3D4; --info-soft:rgba(63,163,212,.12);
+  --grid:rgba(255,255,255,.05);
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:20px; --sp6:24px; --sp8:32px; --sp10:40px; --sp12:48px; --sp16:64px;
+  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+  --e1:0 1px 2px rgba(0,0,0,.45); --e2:0 4px 14px rgba(0,0,0,.38); --e3:0 18px 44px rgba(0,0,0,.55);
+  --ease:cubic-bezier(.2,.8,.3,1); --dur-fast:120ms; --dur:180ms; --dur-chart:400ms;
+  --font-ui:'Inter',system-ui,sans-serif; --font-display:'Montserrat',system-ui,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+[data-theme="light"]{
+  --s-base:#F4F6F7; --s-surface:#FFFFFF; --s-elevated:#FFFFFF; --s-overlay:#FFFFFF; --s-inset:#EDF1F3;
+  --bd-subtle:rgba(14,34,45,.10); --bd-strong:rgba(14,34,45,.20);
+  --tx-primary:#0E222D; --tx-secondary:#41606E; --tx-muted:#6C8593; --tx-disabled:#A3B4BD;
+  --ac:#C25E10; --ac-hover:#A94F09; --ac-pressed:#8C4207; --ac-soft:rgba(194,94,16,.10); --ac-text:#A94F09;
+  --blu:#1F6E95; --blu-viz:#1F6E95; --blu-soft:rgba(31,110,149,.10);
+  --ok:#15803D; --ok-soft:rgba(21,128,61,.10); --warn:#9A6700; --warn-soft:rgba(154,103,0,.10);
+  --err:#B91C1C; --err-soft:rgba(185,28,28,.10); --info:#1F6E95; --info-soft:rgba(31,110,149,.10);
+  --grid:rgba(14,34,45,.07);
+  --e1:0 1px 2px rgba(14,34,45,.08); --e2:0 4px 14px rgba(14,34,45,.10); --e3:0 18px 44px rgba(14,34,45,.16);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#071017;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--ac-text);text-decoration:none}
+a:hover{color:var(--ac-hover)}
+@keyframes mmShimmer{0%{background-position:-320px 0}100%{background-position:320px 0}}
+@keyframes mmRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+<script src="./metamc-shared.js"></script>
+</helmet>
+<div ref="{{ rootRef }}" data-theme="{{ theme }}" style="background:var(--s-base);color:var(--tx-primary);font-family:var(--font-ui);min-height:100vh">
+<div style="max-width:1440px;margin:0 auto 20px">
+      <div style="margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ac-text)">03 — Onboarding</div>
+      <h1 style="font-family:var(--font-display);font-size:24px;line-height:32px;font-weight:700;letter-spacing:-.01em;margin:0">Accettazione invito</h1>
+    </div>
+    <div style="max-width:1440px;margin:0 auto;min-height:840px;display:flex;align-items:center;justify-content:center;padding:56px 32px;border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-base);position:relative;overflow:hidden">
+      <svg viewBox="0 0 1440 840" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;opacity:.5">
+        <sc-for list="{{ hexField }}" as="h" hint-placeholder-count="40">
+          <polygon points="{{ h.points }}" fill="{{ h.fill }}" stroke="{{ h.stroke }}" stroke-width="1"></polygon>
+        </sc-for>
+      </svg>
+      <div style="position:relative;width:100%;max-width:940px;display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);box-shadow:var(--e3);overflow:hidden">
+        <div style="padding:40px;border-right:1px solid var(--bd-subtle)">
+          <img src="uploads/logo.png" alt="MetaMC" style="width:34px;height:34px;object-fit:contain;margin-bottom:22px">
+          <h2 style="font-family:var(--font-display);font-size:24px;line-height:32px;font-weight:700;margin:0 0 8px;letter-spacing:-.01em">Ciao Kryos,<br>sei stato invitato.</h2>
+          <p style="margin:0 0 24px;font-size:13.5px;line-height:21px;color:var(--tx-secondary)">Invito da <span style="color:var(--tx-primary);font-weight:600">Vally90</span> · scade il <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">23/08/2026 alle 18:00</span> (Europe/Rome).</p>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid rgba(219,110,25,.35);background:var(--ac-soft);border-radius:var(--r-sm);margin-bottom:26px">
+            <span style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ac-text)">Ruolo</span>
+            <span style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--tx-primary)">Analista dati</span>
+          </div>
+          <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted);margin-bottom:12px">Moduli inclusi</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <sc-for list="{{ inviteModules }}" as="m" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-elevated)">
+                <span style="font-size:13px;font-weight:500">{{ m.name }}</span>
+                <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:var(--r-full);background:{{ m.soft }};color:{{ m.color }}">{{ m.level }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <p style="margin:20px 0 0;font-size:12px;line-height:19px;color:var(--tx-muted)">I moduli non elencati non compaiono nel pannello. Un owner può ampliare l'accesso in qualsiasi momento.</p>
+        </div>
+        <div style="padding:40px">
+          <h3 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 20px">Attiva il tuo accesso</h3>
+          <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Email</label>
+          <input value="kryos@metamc.it" disabled="{{ true }}" style="width:100%;height:38px;padding:0 12px;margin-bottom:18px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-disabled);font-family:var(--font-ui);font-size:13.5px">
+          <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Nuova password</label>
+          <input type="password" value="••••••••••••••" readOnly="{{ true }}" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--ac);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-mono);font-size:13.5px;box-shadow:0 0 0 3px var(--ac-soft)">
+          <div style="display:flex;gap:4px;margin:10px 0 8px">
+            <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
+            <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
+            <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
+            <div style="height:3px;flex:1;border-radius:2px;background:var(--bd-subtle)"></div>
+          </div>
+          <div style="font-size:11.5px;color:var(--tx-muted);margin-bottom:18px">Robusta · minimo 12 caratteri, una maiuscola, un numero</div>
+          <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Conferma password</label>
+          <input type="password" value="••••••••••••••" readOnly="{{ true }}" style="width:100%;height:38px;padding:0 12px;margin-bottom:26px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-mono);font-size:13.5px">
+
+          <div style="padding:16px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-elevated);margin-bottom:24px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+              <div style="font-size:13px;font-weight:600">Autenticazione a due fattori</div>
+              <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:var(--r-full);background:var(--err-soft);color:var(--err)">Obbligatoria</span>
+            </div>
+            <div style="display:flex;gap:16px;align-items:center">
+              <div style="width:96px;height:96px;border-radius:var(--r-sm);background:var(--s-inset);border:1px solid var(--bd-subtle);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--tx-muted);text-align:center;flex:none">QR<br>setup</div>
+              <div style="min-width:0">
+                <div style="font-size:12px;line-height:19px;color:var(--tx-secondary)">Scansiona con Google Authenticator, 1Password o Authy, poi inserisci il primo codice.</div>
+                <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted);margin-top:8px;word-break:break-all">JBSW Y3DP EHPK 3PXP</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:7px;margin-top:14px">
+              <sc-for list="{{ otpCells }}" as="c" hint-placeholder-count="6">
+                <div style="flex:1;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid {{ c.bd }};border-radius:var(--r-xs);background:var(--s-inset);font-family:var(--font-mono);font-size:16px;color:var(--tx-primary)">{{ c.v }}</div>
+              </sc-for>
+            </div>
+          </div>
+          <button style="width:100%;height:40px;border:none;border-radius:var(--r-sm);background:var(--ac);color:#160A02;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer">Attiva account ed entra</button>
+          <p style="margin:14px 0 0;font-size:11.5px;line-height:18px;color:var(--tx-muted);text-align:center">Attivando l'account accetti il regolamento interno dello staff.</p>
+        </div>
+      </div>
+    </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;tema&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Scuro&quot;,&quot;Chiaro&quot;],&quot;default&quot;:&quot;Scuro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;accento&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#DB6E19&quot;,&quot;#2478A1&quot;,&quot;#C0533B&quot;,&quot;#B08A2E&quot;],&quot;default&quot;:&quot;#DB6E19&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;sidebarCollassata&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  state = { screen:'invito', theme:null, collapsedOverride:null, loginState:'default',
+    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1' };
+
+  componentDidMount() { this.applyAccent(); this.waitShared(); }
+  componentDidUpdate() { this.applyAccent(); }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  /* metamc-shared.js viene caricato da <helmet>: se non è ancora pronto, ricontrolla */
+  waitShared() {
+    if (window.MetaMC) return;
+    this._t = setInterval(() => { if (window.MetaMC) { clearInterval(this._t); this.forceUpdate(); } }, 40);
+  }
+
+  applyAccent() {
+    const el = this.rootRef.current;
+    if (!el) return;
+    const a = this.props.accento || '#DB6E19';
+    el.style.setProperty('--ac', a);
+    el.style.setProperty('--ac-hover', 'color-mix(in oklab, ' + a + ' 82%, white)');
+    el.style.setProperty('--ac-pressed', 'color-mix(in oklab, ' + a + ' 84%, black)');
+    el.style.setProperty('--ac-soft', 'color-mix(in srgb, ' + a + ' 12%, transparent)');
+    el.style.setProperty('--ac-text', 'color-mix(in oklab, ' + a + ' 78%, white)');
+    el.style.setProperty('--bd-focus', a);
+  }
+
+  renderVals() {
+    const M = window.MetaMC;
+    if (!M) return { rootRef: this.rootRef, theme: 'dark' };
+    return M.baseVals(this, 'invito');
+  }
+}
+</script>
+</body>
+</html>

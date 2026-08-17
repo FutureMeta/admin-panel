@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --s-base:#0A161D; --s-surface:#0E1F28; --s-elevated:#132833; --s-overlay:#17313E; --s-inset:#071219;
+  --bd-subtle:rgba(255,255,255,.07); --bd-strong:rgba(255,255,255,.15); --bd-focus:#DB6E19;
+  --tx-primary:#E9F1F5; --tx-secondary:#A9BEC9; --tx-muted:#718996; --tx-disabled:#4B5F6B;
+  --ac:#DB6E19; --ac-hover:#EE7F2A; --ac-pressed:#B85A12; --ac-soft:rgba(219,110,25,.12); --ac-text:#F0913F;
+  --blu:#2478A1; --blu-viz:#3FA3D4; --blu-soft:rgba(63,163,212,.12);
+  --ok:#22C55E; --ok-soft:rgba(34,197,94,.12); --warn:#E0A32E; --warn-soft:rgba(224,163,46,.12);
+  --err:#DB3434; --err-soft:rgba(219,52,52,.12); --info:#3FA3D4; --info-soft:rgba(63,163,212,.12);
+  --grid:rgba(255,255,255,.05);
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:20px; --sp6:24px; --sp8:32px; --sp10:40px; --sp12:48px; --sp16:64px;
+  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+  --e1:0 1px 2px rgba(0,0,0,.45); --e2:0 4px 14px rgba(0,0,0,.38); --e3:0 18px 44px rgba(0,0,0,.55);
+  --ease:cubic-bezier(.2,.8,.3,1); --dur-fast:120ms; --dur:180ms; --dur-chart:400ms;
+  --font-ui:'Inter',system-ui,sans-serif; --font-display:'Montserrat',system-ui,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+[data-theme="light"]{
+  --s-base:#F4F6F7; --s-surface:#FFFFFF; --s-elevated:#FFFFFF; --s-overlay:#FFFFFF; --s-inset:#EDF1F3;
+  --bd-subtle:rgba(14,34,45,.10); --bd-strong:rgba(14,34,45,.20);
+  --tx-primary:#0E222D; --tx-secondary:#41606E; --tx-muted:#6C8593; --tx-disabled:#A3B4BD;
+  --ac:#C25E10; --ac-hover:#A94F09; --ac-pressed:#8C4207; --ac-soft:rgba(194,94,16,.10); --ac-text:#A94F09;
+  --blu:#1F6E95; --blu-viz:#1F6E95; --blu-soft:rgba(31,110,149,.10);
+  --ok:#15803D; --ok-soft:rgba(21,128,61,.10); --warn:#9A6700; --warn-soft:rgba(154,103,0,.10);
+  --err:#B91C1C; --err-soft:rgba(185,28,28,.10); --info:#1F6E95; --info-soft:rgba(31,110,149,.10);
+  --grid:rgba(14,34,45,.07);
+  --e1:0 1px 2px rgba(14,34,45,.08); --e2:0 4px 14px rgba(14,34,45,.10); --e3:0 18px 44px rgba(14,34,45,.16);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#071017;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--ac-text);text-decoration:none}
+a:hover{color:var(--ac-hover)}
+@keyframes mmShimmer{0%{background-position:-320px 0}100%{background-position:320px 0}}
+@keyframes mmRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+<script src="./metamc-shared.js"></script>
+</helmet>
+<div ref="{{ rootRef }}" data-theme="{{ theme }}" style="background:var(--s-base);color:var(--tx-primary);font-family:var(--font-ui);min-height:100vh">
+<div style="max-width:1180px;margin:0 auto;padding:48px 32px 96px">
+    <div style="margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ac-text)">01 — Fondamenta</div>
+    <h1 style="font-family:var(--font-display);font-size:34px;line-height:40px;font-weight:700;letter-spacing:-.02em;margin:0 0 10px">Design system</h1>
+    <p style="max-width:620px;margin:0 0 48px;font-size:14px;line-height:22px;color:var(--tx-secondary)">Token pronti all'uso come variabili CSS. Il tema chiaro deriva dagli stessi nomi: cambia il valore, non la gerarchia. L'arancio resta riservato ad azione primaria, stato attivo, serie dati principale e focus.</p>
+
+    <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 4px">Superfici e bordi</h2>
+    <p style="margin:0 0 18px;font-size:13px;color:var(--tx-muted)">Quattro livelli. La profondità viene dai bordi hairline, non dalle ombre.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;margin-bottom:44px">
+      <sc-for list="{{ surfaces }}" as="c" hint-placeholder-count="5">
+        <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);overflow:hidden;background:var(--s-surface)">
+          <div style="height:64px;background:{{ c.val }};border-bottom:1px solid var(--bd-subtle)"></div>
+          <div style="padding:10px 12px">
+            <div style="font-size:13px;font-weight:600">{{ c.name }}</div>
+            <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted);margin-top:2px">{{ c.token }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 4px">Testo, accento, semantici</h2>
+    <p style="margin:0 0 18px;font-size:13px;color:var(--tx-muted)">Ogni colore semantico ha la sua variante soft al 10–12% per i fondi di badge e banner.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:44px">
+      <sc-for list="{{ roleColors }}" as="c" hint-placeholder-count="12">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-surface)">
+          <div style="width:26px;height:26px;border-radius:var(--r-xs);background:{{ c.val }};border:1px solid var(--bd-subtle);flex:none"></div>
+          <div style="min-width:0">
+            <div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</div>
+            <div style="font-family:var(--font-mono);font-size:10px;color:var(--tx-muted)">{{ c.token }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+
+    <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 4px">Palette data-viz</h2>
+    <p style="margin:0 0 18px;font-size:13px;color:var(--tx-muted)">Un colore per modalità, identico in tutta l'app. Le luminosità sono distanziate per restare leggibili in scala di grigi; ogni serie ha anche una forma di marker dedicata.</p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px">
+      <sc-for list="{{ modes }}" as="m" hint-placeholder-count="4">
+        <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:14px">
+          <div style="display:flex;align-items:center;gap:9px">
+            <span style="width:12px;height:12px;border-radius:3px;background:{{ m.color }};flex:none"></span>
+            <span style="font-size:14px;font-weight:600">{{ m.name }}</span>
+          </div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted);margin-top:8px">{{ m.color }}</div>
+          <div style="display:flex;gap:6px;margin-top:12px">
+            <div style="height:6px;flex:1;border-radius:3px;background:{{ m.color }}"></div>
+            <div style="height:6px;flex:1;border-radius:3px;background:{{ m.gray }}"></div>
+          </div>
+          <div style="margin-top:8px;font-size:11px;color:var(--tx-muted)">marker: {{ m.marker }}</div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-bottom:44px">
+      <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:14px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Categorici estesi</div>
+        <div style="display:flex;height:28px;border-radius:var(--r-xs);overflow:hidden">
+          <sc-for list="{{ categorical }}" as="c" hint-placeholder-count="8">
+            <div style="flex:1;background:{{ c }}"></div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:14px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Sequenziale — heatmap, mappa</div>
+        <div style="display:flex;height:28px;border-radius:var(--r-xs);overflow:hidden">
+          <sc-for list="{{ ramp }}" as="c" hint-placeholder-count="7">
+            <div style="flex:1;background:{{ c }}"></div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:14px">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px">Divergente — delta</div>
+        <div style="display:flex;height:28px;border-radius:var(--r-xs);overflow:hidden">
+          <sc-for list="{{ diverging }}" as="c" hint-placeholder-count="7">
+            <div style="flex:1;background:{{ c }}"></div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 4px">Tipografia</h2>
+    <p style="margin:0 0 18px;font-size:13px;color:var(--tx-muted)">Montserrat per titoli, KPI e lockup. Inter per corpo, tabelle e UI densa. JetBrains Mono per ID, UUID, IP e comandi.</p>
+    <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);overflow:hidden;margin-bottom:44px">
+      <sc-for list="{{ typeScale }}" as="t" hint-placeholder-count="8">
+        <div style="display:grid;grid-template-columns:110px 1fr 230px;gap:16px;align-items:baseline;padding:14px 16px;border-bottom:1px solid var(--bd-subtle)">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--ac-text)">{{ t.token }}</div>
+          <div style="font-family:{{ t.family }};font-size:{{ t.size }};line-height:{{ t.lh }};font-weight:{{ t.weight }};letter-spacing:{{ t.ls }};color:var(--tx-primary)">{{ t.sample }}</div>
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted);text-align:right">{{ t.spec }}</div>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:44px">
+      <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:14px">Spacing — base 4px</div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <sc-for list="{{ spacing }}" as="s" hint-placeholder-count="8">
+            <div style="display:flex;align-items:center;gap:12px">
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted);width:64px">{{ s.token }}</div>
+              <div style="height:10px;width:{{ s.val }};background:var(--ac-soft);border-left:2px solid var(--ac)"></div>
+              <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted)">{{ s.val }}</div>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:16px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:14px">Raggi ed elevazioni</div>
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+          <sc-for list="{{ radii }}" as="r" hint-placeholder-count="5">
+            <div style="text-align:center">
+              <div style="width:52px;height:44px;background:var(--s-elevated);border:1px solid var(--bd-strong);border-radius:{{ r.val }}"></div>
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--tx-muted);margin-top:6px">{{ r.val }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:12px">
+          <sc-for list="{{ elevations }}" as="e" hint-placeholder-count="3">
+            <div style="flex:1;text-align:center">
+              <div style="height:44px;background:var(--s-elevated);border:1px solid var(--bd-subtle);border-radius:var(--r-md);box-shadow:{{ e.val }}"></div>
+              <div style="font-family:var(--font-mono);font-size:10px;color:var(--tx-muted);margin-top:6px">{{ e.token }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:18px;font-size:12px;color:var(--tx-secondary);line-height:20px">Motion: <span style="font-family:var(--font-mono);color:var(--tx-primary)">120–180ms</span> ease-out per hover e stati, <span style="font-family:var(--font-mono);color:var(--tx-primary)">400ms</span> per l'ingresso dei grafici. Nessun rimbalzo.</div>
+      </div>
+    </div>
+
+    <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 4px">Componenti</h2>
+    <p style="margin:0 0 18px;font-size:13px;color:var(--tx-muted)">Inventario di base. Le taglie sono tre: 28, 32, 38px di altezza.</p>
+    <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:20px;display:flex;flex-direction:column;gap:22px;margin-bottom:24px">
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted);margin-bottom:12px">Bottoni</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <button style="height:32px;padding:0 14px;border:none;border-radius:var(--r-sm);background:var(--ac);color:#160A02;font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer">Primario</button>
+          <button style="height:32px;padding:0 14px;border:1px solid var(--bd-strong);border-radius:var(--r-sm);background:var(--s-elevated);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px;font-weight:500;cursor:pointer">Secondario</button>
+          <button style="height:32px;padding:0 14px;border:1px solid transparent;border-radius:var(--r-sm);background:transparent;color:var(--tx-secondary);font-family:var(--font-ui);font-size:13px;font-weight:500;cursor:pointer">Ghost</button>
+          <button style="height:32px;padding:0 14px;border:1px solid rgba(219,52,52,.4);border-radius:var(--r-sm);background:var(--err-soft);color:var(--err);font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer">Elimina</button>
+          <button style="height:32px;padding:0 14px;border:none;border-radius:var(--r-sm);background:var(--ac);color:#160A02;font-family:var(--font-ui);font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;cursor:progress"><span style="width:12px;height:12px;border:2px solid rgba(22,10,2,.35);border-top-color:#160A02;border-radius:50%;display:inline-block"></span>Salvataggio</button>
+          <button disabled="{{ true }}" style="height:32px;padding:0 14px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-disabled);font-family:var(--font-ui);font-size:13px;font-weight:500">Disabilitato</button>
+          <button style="height:32px;padding:0 14px;border:1px solid var(--bd-strong);border-radius:var(--r-sm);background:var(--s-elevated);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px;font-weight:500;box-shadow:0 0 0 2px var(--s-surface),0 0 0 4px var(--ac)">Focus</button>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted);margin-bottom:12px">Campi</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
+          <input placeholder="Cerca giocatore" style="height:32px;width:200px;padding:0 12px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px">
+          <input value="dev@metamc.it" readOnly="{{ true }}" style="height:32px;width:200px;padding:0 12px;border:1px solid var(--ac);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px;box-shadow:0 0 0 3px var(--ac-soft)">
+          <select style="height:32px;padding:0 10px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px"><option>Ultimi 7 giorni</option></select>
+          <div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 12px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);font-family:var(--font-mono);font-size:12px;color:var(--tx-secondary)">01/08/2026 → 16/08/2026</div>
+          <div style="width:38px;height:22px;border-radius:var(--r-full);background:var(--ac);position:relative"><span style="position:absolute;top:3px;left:19px;width:16px;height:16px;border-radius:50%;background:#0E0603"></span></div>
+          <div style="width:16px;height:16px;border-radius:var(--r-xs);background:var(--ac);display:flex;align-items:center;justify-content:center;color:#160A02;font-size:11px;font-weight:700">✓</div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted);margin-bottom:12px">Badge, pill, tab</div>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <sc-for list="{{ badges }}" as="b" hint-placeholder-count="5">
+            <span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:var(--r-full);background:{{ b.soft }};color:{{ b.color }};font-size:11px;font-weight:600"><span style="width:5px;height:5px;border-radius:50%;background:{{ b.color }}"></span>{{ b.label }}</span>
+          </sc-for>
+          <div style="display:flex;gap:2px;padding:3px;background:var(--s-inset);border-radius:var(--r-sm);border:1px solid var(--bd-subtle)">
+            <span style="padding:5px 12px;border-radius:var(--r-xs);background:var(--s-overlay);color:var(--tx-primary);font-size:12px;font-weight:600">Attivi</span>
+            <span style="padding:5px 12px;border-radius:var(--r-xs);color:var(--tx-muted);font-size:12px;font-weight:500">Sospesi</span>
+            <span style="padding:5px 12px;border-radius:var(--r-xs);color:var(--tx-muted);font-size:12px;font-weight:500">Inviti</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted);margin-bottom:12px">Overlay</div>
+        <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+          <div style="padding:8px 10px;border-radius:var(--r-sm);background:var(--s-overlay);border:1px solid var(--bd-strong);box-shadow:var(--e2);font-size:12px;color:var(--tx-primary)">Tooltip · <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">1.204 gioc.</span></div>
+          <div style="width:190px;padding:6px;border-radius:var(--r-md);background:var(--s-overlay);border:1px solid var(--bd-strong);box-shadow:var(--e2);display:flex;flex-direction:column;gap:2px">
+            <div style="padding:7px 9px;border-radius:var(--r-xs);background:var(--s-elevated);font-size:12.5px">Esporta CSV</div>
+            <div style="padding:7px 9px;border-radius:var(--r-xs);font-size:12.5px;color:var(--tx-secondary)">Esporta PNG</div>
+            <div style="padding:7px 9px;border-radius:var(--r-xs);font-size:12.5px;color:var(--tx-secondary)">Apri in dettaglio</div>
+          </div>
+          <div style="width:240px;padding:12px;border-radius:var(--r-md);background:var(--s-elevated);border:1px solid var(--bd-subtle);box-shadow:var(--e2);display:flex;gap:10px;align-items:flex-start">
+            <span style="width:6px;height:6px;border-radius:50%;background:var(--ok);margin-top:6px;flex:none"></span>
+            <div><div style="font-size:12.5px;font-weight:600">Ruolo aggiornato</div><div style="font-size:11.5px;color:var(--tx-muted);margin-top:2px">Le modifiche sono attive.</div></div>
+          </div>
+          <div style="width:190px;height:72px;border-radius:var(--r-md);border:1px solid var(--bd-subtle);background:linear-gradient(90deg,var(--s-elevated) 0%,var(--s-overlay) 50%,var(--s-elevated) 100%);background-size:320px 100%;animation:mmShimmer 1.4s linear infinite"></div>
+        </div>
+      </div>
+    </div>
+
+    <h2 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:44px 0 4px">Stati di sistema</h2>
+    <p style="margin:0 0 18px;font-size:13px;color:var(--tx-muted)">I quattro casi che l'utente incontra davvero. Il feed realtime non blocca mai la pagina.</p>
+    <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:flex;gap:10px;padding:12px 14px;border:1px solid rgba(224,163,46,.35);background:var(--warn-soft);border-radius:var(--r-md);align-items:center">
+              <span style="width:7px;height:7px;border-radius:50%;background:var(--warn);flex:none"></span>
+              <div style="font-size:12.5px;color:var(--tx-secondary)">Connessione al feed realtime persa. I dati mostrati risalgono alle <span style="font-family:var(--font-mono)">22:58</span> — <span style="color:var(--tx-primary)">nuovo tentativo tra 8s</span>.</div>
+              <button style="margin-left:auto;height:28px;padding:0 11px;border:1px solid var(--bd-strong);border-radius:var(--r-sm);background:var(--s-elevated);color:var(--tx-primary);font-family:var(--font-ui);font-size:12px;font-weight:500;cursor:pointer">Riprova ora</button>
+              <button style="width:28px;height:28px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:transparent;color:var(--tx-muted);cursor:pointer;font-size:13px;line-height:1">×</button>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:44px 40px;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-height:260px">
+                <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;color:var(--ac-text)">403</span>
+                <h3 style="font-family:var(--font-display);font-size:19px;font-weight:700;margin:0">Non hai accesso a questo modulo</h3>
+                <p style="margin:0;font-size:13px;line-height:21px;color:var(--tx-secondary);max-width:380px">Il modulo <strong style="color:var(--tx-primary)">Utenti &amp; Ruoli</strong> richiede almeno il livello di lettura. Chiedi a un owner di aggiornare il tuo ruolo: la richiesta finisce nel registro attività.</p>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <button style="height:34px;padding:0 14px;border:1px solid transparent;border-radius:var(--r-sm);background:var(--ac);color:#150A02;font-family:var(--font-ui);font-size:13px;font-weight:600;cursor:pointer">Richiedi accesso</button>
+                  <button style="height:34px;padding:0 14px;border:1px solid var(--bd-strong);border-radius:var(--r-sm);background:var(--s-elevated);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px;cursor:pointer">Torna alla panoramica</button>
+                </div>
+              </section>
+
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:44px 40px;display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-height:260px">
+                <span style="font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;color:var(--tx-muted)">404</span>
+                <h3 style="font-family:var(--font-display);font-size:19px;font-weight:700;margin:0">Pagina non trovata</h3>
+                <p style="margin:0;font-size:13px;line-height:21px;color:var(--tx-secondary);max-width:380px">L'indirizzo <span style="font-family:var(--font-mono);font-size:12px">/moduli/economia</span> non esiste o è stato spostato. Se cercavi un modulo nuovo, potrebbe non essere ancora attivo sul tuo account.</p>
+                <div style="display:flex;gap:8px;margin-top:6px">
+                  <button style="height:34px;padding:0 14px;border:1px solid var(--bd-strong);border-radius:var(--r-sm);background:var(--s-elevated);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px;cursor:pointer">Torna indietro</button>
+                  <button style="height:34px;padding:0 14px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:transparent;color:var(--tx-secondary);font-family:var(--font-ui);font-size:13px;cursor:pointer">Apri ⌘K</button>
+                </div>
+              </section>
+
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:24px;display:flex;flex-direction:column;gap:14px">
+                <div style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted)">Widget in errore</div>
+                <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-base);padding:18px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+                  <span style="width:32px;height:32px;border-radius:var(--r-full);background:var(--err-soft);color:var(--err);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700">!</span>
+                  <div style="font-size:13px;font-weight:600">Serie parziale</div>
+                  <div style="font-size:12px;line-height:19px;color:var(--tx-muted);max-width:300px">Tra le 03:10 e le 04:40 la raccolta si è fermata. Il buco è mostrato tratteggiato, non interpolato.</div>
+                  <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-disabled)">gap_collector · 90 min</div>
+                </div>
+              </section>
+
+              <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:24px;display:flex;flex-direction:column;gap:14px">
+                <div style="font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted)">Manutenzione</div>
+                <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-base);padding:22px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center">
+                  <img src="uploads/logo.png" alt="MetaMC" style="width:34px;height:34px;object-fit:contain;opacity:.8" />
+                  <div style="font-family:var(--font-display);font-size:15px;font-weight:600">Console in manutenzione</div>
+                  <div style="font-size:12.5px;line-height:20px;color:var(--tx-secondary);max-width:340px">Aggiornamento della pipeline statistiche. Rientro previsto alle <span style="font-family:var(--font-mono)">02:30</span> del 17/08/2026. I server di gioco non sono interessati.</div>
+                  <span style="display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 10px;border-radius:var(--r-full);background:var(--warn-soft);color:var(--warn);font-size:11.5px"><span style="width:5px;height:5px;border-radius:50%;background:var(--warn)"></span>Network di gioco online</span>
+                </div>
+              </section>
+            </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;tema&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Scuro&quot;,&quot;Chiaro&quot;],&quot;default&quot;:&quot;Scuro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;accento&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#DB6E19&quot;,&quot;#2478A1&quot;,&quot;#C0533B&quot;,&quot;#B08A2E&quot;],&quot;default&quot;:&quot;#DB6E19&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;sidebarCollassata&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  state = { screen:'sistema', theme:null, collapsedOverride:null, loginState:'default',
+    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1' };
+
+  componentDidMount() { this.applyAccent(); this.waitShared(); }
+  componentDidUpdate() { this.applyAccent(); }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  /* metamc-shared.js viene caricato da <helmet>: se non è ancora pronto, ricontrolla */
+  waitShared() {
+    if (window.MetaMC) return;
+    this._t = setInterval(() => { if (window.MetaMC) { clearInterval(this._t); this.forceUpdate(); } }, 40);
+  }
+
+  applyAccent() {
+    const el = this.rootRef.current;
+    if (!el) return;
+    const a = this.props.accento || '#DB6E19';
+    el.style.setProperty('--ac', a);
+    el.style.setProperty('--ac-hover', 'color-mix(in oklab, ' + a + ' 82%, white)');
+    el.style.setProperty('--ac-pressed', 'color-mix(in oklab, ' + a + ' 84%, black)');
+    el.style.setProperty('--ac-soft', 'color-mix(in srgb, ' + a + ' 12%, transparent)');
+    el.style.setProperty('--ac-text', 'color-mix(in oklab, ' + a + ' 78%, white)');
+    el.style.setProperty('--bd-focus', a);
+  }
+
+  renderVals() {
+    const M = window.MetaMC;
+    if (!M) return { rootRef: this.rootRef, theme: 'dark' };
+    return M.baseVals(this, 'sistema');
+  }
+}
+</script>
+</body>
+</html>

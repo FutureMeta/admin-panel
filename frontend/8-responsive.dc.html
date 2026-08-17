@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Montserrat:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --s-base:#0A161D; --s-surface:#0E1F28; --s-elevated:#132833; --s-overlay:#17313E; --s-inset:#071219;
+  --bd-subtle:rgba(255,255,255,.07); --bd-strong:rgba(255,255,255,.15); --bd-focus:#DB6E19;
+  --tx-primary:#E9F1F5; --tx-secondary:#A9BEC9; --tx-muted:#718996; --tx-disabled:#4B5F6B;
+  --ac:#DB6E19; --ac-hover:#EE7F2A; --ac-pressed:#B85A12; --ac-soft:rgba(219,110,25,.12); --ac-text:#F0913F;
+  --blu:#2478A1; --blu-viz:#3FA3D4; --blu-soft:rgba(63,163,212,.12);
+  --ok:#22C55E; --ok-soft:rgba(34,197,94,.12); --warn:#E0A32E; --warn-soft:rgba(224,163,46,.12);
+  --err:#DB3434; --err-soft:rgba(219,52,52,.12); --info:#3FA3D4; --info-soft:rgba(63,163,212,.12);
+  --grid:rgba(255,255,255,.05);
+  --sp1:4px; --sp2:8px; --sp3:12px; --sp4:16px; --sp5:20px; --sp6:24px; --sp8:32px; --sp10:40px; --sp12:48px; --sp16:64px;
+  --r-xs:4px; --r-sm:6px; --r-md:8px; --r-lg:12px; --r-xl:16px; --r-full:999px;
+  --e1:0 1px 2px rgba(0,0,0,.45); --e2:0 4px 14px rgba(0,0,0,.38); --e3:0 18px 44px rgba(0,0,0,.55);
+  --ease:cubic-bezier(.2,.8,.3,1); --dur-fast:120ms; --dur:180ms; --dur-chart:400ms;
+  --font-ui:'Inter',system-ui,sans-serif; --font-display:'Montserrat',system-ui,sans-serif; --font-mono:'JetBrains Mono',ui-monospace,monospace;
+}
+[data-theme="light"]{
+  --s-base:#F4F6F7; --s-surface:#FFFFFF; --s-elevated:#FFFFFF; --s-overlay:#FFFFFF; --s-inset:#EDF1F3;
+  --bd-subtle:rgba(14,34,45,.10); --bd-strong:rgba(14,34,45,.20);
+  --tx-primary:#0E222D; --tx-secondary:#41606E; --tx-muted:#6C8593; --tx-disabled:#A3B4BD;
+  --ac:#C25E10; --ac-hover:#A94F09; --ac-pressed:#8C4207; --ac-soft:rgba(194,94,16,.10); --ac-text:#A94F09;
+  --blu:#1F6E95; --blu-viz:#1F6E95; --blu-soft:rgba(31,110,149,.10);
+  --ok:#15803D; --ok-soft:rgba(21,128,61,.10); --warn:#9A6700; --warn-soft:rgba(154,103,0,.10);
+  --err:#B91C1C; --err-soft:rgba(185,28,28,.10); --info:#1F6E95; --info-soft:rgba(31,110,149,.10);
+  --grid:rgba(14,34,45,.07);
+  --e1:0 1px 2px rgba(14,34,45,.08); --e2:0 4px 14px rgba(14,34,45,.10); --e3:0 18px 44px rgba(14,34,45,.16);
+}
+*{box-sizing:border-box}
+body{margin:0;background:#071017;font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--ac-text);text-decoration:none}
+a:hover{color:var(--ac-hover)}
+@keyframes mmShimmer{0%{background-position:-320px 0}100%{background-position:320px 0}}
+@keyframes mmRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+</style>
+<script src="./metamc-shared.js"></script>
+</helmet>
+<div ref="{{ rootRef }}" data-theme="{{ theme }}" style="background:var(--s-base);color:var(--tx-primary);font-family:var(--font-ui);min-height:100vh">
+<div style="max-width:1440px;margin:0 auto">
+      <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.01em;margin:0 0 6px">Responsive</h2>
+      <p style="margin:0 0 28px;font-size:13.5px;line-height:21px;color:var(--tx-secondary);max-width:680px">1440 è il riferimento primario, 1280 il minimo denso: sotto i 1280 la griglia passa da 12 a 8 colonne e i widget larghi occupano l'intera riga. Sotto i 900 la sidebar diventa un drawer. Su mobile i grafici sono ripensati: niente area chart compressa, ma valori diretti e liste ordinate.</p>
+
+      <div style="display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+
+        <div style="flex:none">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+            <span style="font-family:var(--font-display);font-size:13px;font-weight:600">Tablet</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted)">768 × 1024</span>
+          </div>
+          <div style="width:384px;border:1px solid var(--bd-strong);border-radius:var(--r-lg);background:var(--s-base);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:8px;padding:9px 10px;border-bottom:1px solid var(--bd-subtle);background:var(--s-surface)">
+              <span style="width:16px;height:12px;border-left:2px solid var(--tx-muted);border-top:2px solid var(--tx-muted);border-bottom:2px solid var(--tx-muted);border-radius:2px 0 0 2px"></span>
+              <span style="font-family:var(--font-display);font-size:10px;font-weight:700;letter-spacing:.1em">METAMC</span>
+              <span style="margin-left:auto;display:flex;gap:5px">
+                <span style="height:18px;padding:0 7px;border-radius:var(--r-xs);background:var(--s-inset);font-size:9px;color:var(--tx-secondary);display:flex;align-items:center">24h</span>
+                <span style="height:18px;padding:0 7px;border-radius:var(--r-xs);background:var(--ac-soft);color:var(--ac-text);font-size:9px;display:flex;align-items:center">Globale</span>
+              </span>
+            </div>
+            <div style="padding:10px;display:flex;flex-direction:column;gap:8px">
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+                <sc-for list="{{ respKpis }}" as="k" hint-placeholder-count="6">
+                  <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-surface);padding:7px 8px">
+                    <div style="font-size:7.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx-muted)">{{ k.label }}</div>
+                    <div style="font-family:var(--font-display);font-size:15px;font-weight:700;margin-top:3px;font-variant-numeric:tabular-nums">{{ k.value }}</div>
+                    <div style="font-family:var(--font-mono);font-size:8px;color:{{ k.dc }}">{{ k.delta }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-surface);padding:9px 10px">
+                <div style="font-size:9.5px;font-weight:600;margin-bottom:2px">Andamento online</div>
+                <div style="font-size:8px;color:var(--tx-muted);margin-bottom:6px">24h · Europe/Rome</div>
+                <svg viewBox="0 0 340 90" preserveAspectRatio="none" style="width:100%;height:76px;display:block">
+                  <path d="M0,72 L28,78 L57,82 L85,84 L113,80 L142,72 L170,63 L198,55 L227,44 L255,32 L283,20 L312,12 L340,30 L340,90 L0,90 Z" fill="rgba(219,110,25,.13)"></path>
+                  <path d="M0,72 L28,78 L57,82 L85,84 L113,80 L142,72 L170,63 L198,55 L227,44 L255,32 L283,20 L312,12 L340,30" fill="none" stroke="#DB6E19" strokeWidth="1.6"></path>
+                </svg>
+              </div>
+              <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-surface);padding:9px 10px">
+                <div style="font-size:9.5px;font-weight:600;margin-bottom:7px">Distribuzione per modalità</div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <sc-for list="{{ respModes }}" as="m" hint-placeholder-count="5">
+                    <div style="display:flex;align-items:center;gap:7px">
+                      <span style="width:7px;height:7px;border-radius:2px;background:{{ m.color }};flex:none"></span>
+                      <span style="font-size:9.5px;width:70px">{{ m.name }}</span>
+                      <span style="flex:1;height:4px;border-radius:2px;background:var(--s-inset)"><span style="display:block;height:4px;width:{{ m.w }};border-radius:2px;background:{{ m.color }}"></span></span>
+                      <span style="font-family:var(--font-mono);font-size:9px;font-variant-numeric:tabular-nums">{{ m.online }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+            <span style="font-family:var(--font-display);font-size:13px;font-weight:600">Mobile · Panoramica</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted)">390 × 844</span>
+          </div>
+          <div style="width:390px;border:1px solid var(--bd-strong);border-radius:26px;background:var(--s-base);overflow:hidden">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px 10px;border-bottom:1px solid var(--bd-subtle);background:var(--s-surface)">
+              <div style="display:flex;align-items:center;gap:9px">
+                <span style="width:22px;height:22px;border-radius:6px;border:1px solid var(--bd-strong);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--tx-secondary)">≡</span>
+                <span style="font-family:var(--font-display);font-size:13px;font-weight:700">Panoramica</span>
+              </div>
+              <span style="display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border-radius:var(--r-full);background:var(--ok-soft);color:var(--ok);font-size:11px"><span style="width:5px;height:5px;border-radius:50%;background:var(--ok)"></span>Online</span>
+            </div>
+            <div style="display:flex;gap:8px;padding:12px 16px;overflow:hidden">
+              <span style="height:32px;padding:0 14px;border-radius:var(--r-full);background:var(--ac-soft);color:var(--ac-text);font-size:12.5px;font-weight:600;display:flex;align-items:center;flex:none">Globale</span>
+              <span style="height:32px;padding:0 14px;border-radius:var(--r-full);border:1px solid var(--bd-subtle);color:var(--tx-secondary);font-size:12.5px;display:flex;align-items:center;flex:none">Vanilla War</span>
+              <span style="height:32px;padding:0 14px;border-radius:var(--r-full);border:1px solid var(--bd-subtle);color:var(--tx-secondary);font-size:12.5px;display:flex;align-items:center;flex:none">Survival</span>
+            </div>
+            <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:12px">
+              <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:16px">
+                <div style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted)">Online adesso</div>
+                <div style="display:flex;align-items:baseline;gap:10px;margin-top:6px">
+                  <span style="font-family:var(--font-display);font-size:38px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">847</span>
+                  <span style="font-family:var(--font-mono);font-size:13px;color:var(--ok)">+6,4%</span>
+                </div>
+                <div style="font-size:11.5px;color:var(--tx-muted);margin-top:2px">vs stessa ora ieri · 23:12 CEST</div>
+                <svg viewBox="0 0 340 60" preserveAspectRatio="none" style="width:100%;height:54px;display:block;margin-top:10px">
+                  <path d="M0,48 L34,52 L68,54 L102,50 L136,44 L170,36 L204,28 L238,20 L272,12 L306,7 L340,18" fill="none" stroke="#DB6E19" strokeWidth="2"></path>
+                </svg>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <sc-for list="{{ respKpisMob }}" as="k" hint-placeholder-count="4">
+                  <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:12px 13px">
+                    <div style="font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--tx-muted)">{{ k.label }}</div>
+                    <div style="font-family:var(--font-display);font-size:20px;font-weight:700;margin-top:5px;font-variant-numeric:tabular-nums">{{ k.value }}</div>
+                    <div style="font-family:var(--font-mono);font-size:11px;color:{{ k.dc }};margin-top:2px">{{ k.delta }}</div>
+                  </div>
+                </sc-for>
+              </div>
+              <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:14px">
+                <div style="font-size:12.5px;font-weight:600;margin-bottom:3px">Per modalità</div>
+                <div style="font-size:11px;color:var(--tx-muted);margin-bottom:12px">Popolazione corrente · somma 847</div>
+                <div style="display:flex;flex-direction:column;gap:11px">
+                  <sc-for list="{{ respModes }}" as="m" hint-placeholder-count="5">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span style="width:8px;height:8px;border-radius:2px;background:{{ m.color }};flex:none"></span>
+                      <span style="font-size:12.5px;width:92px">{{ m.name }}</span>
+                      <span style="flex:1;height:6px;border-radius:3px;background:var(--s-inset)"><span style="display:block;height:6px;width:{{ m.w }};border-radius:3px;background:{{ m.color }}"></span></span>
+                      <span style="font-family:var(--font-mono);font-size:12px;font-variant-numeric:tabular-nums;width:34px;text-align:right">{{ m.online }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:14px">
+                <div style="font-size:12.5px;font-weight:600;margin-bottom:3px">Fasce di affluenza</div>
+                <div style="font-size:11px;color:var(--tx-muted);margin-bottom:11px">La heatmap 7×24 diventa una classifica: su 390px una griglia da 168 celle non è leggibile.</div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <sc-for list="{{ respBands }}" as="b" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;justify-content:space-between;font-size:12.5px">
+                      <span style="font-family:var(--font-mono);color:var(--tx-secondary)">{{ b.h }}</span>
+                      <span style="flex:1;margin:0 12px;height:6px;border-radius:3px;background:var(--s-inset)"><span style="display:block;height:6px;width:{{ b.w }};border-radius:3px;background:{{ b.c }}"></span></span>
+                      <span style="font-family:var(--font-mono);font-variant-numeric:tabular-nums">{{ b.v }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;border-top:1px solid var(--bd-subtle);background:var(--s-surface)">
+              <sc-for list="{{ respTabs }}" as="t" hint-placeholder-count="4">
+                <div style="flex:1;height:56px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px;color:{{ t.fg }}">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="{{ t.icon }}"></path></svg>
+                  <span style="font-size:10px">{{ t.label }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:none">
+          <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+            <span style="font-family:var(--font-display);font-size:13px;font-weight:600">Mobile · Registro</span>
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted)">390 × 844</span>
+          </div>
+          <div style="width:390px;border:1px solid var(--bd-strong);border-radius:26px;background:var(--s-base);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:9px;padding:12px 16px 10px;border-bottom:1px solid var(--bd-subtle);background:var(--s-surface)">
+              <span style="width:22px;height:22px;border-radius:6px;border:1px solid var(--bd-strong);display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--tx-secondary)">≡</span>
+              <span style="font-family:var(--font-display);font-size:13px;font-weight:700">Registro attività</span>
+              <span style="margin-left:auto;font-size:11px;color:var(--tx-muted)">1.284</span>
+            </div>
+            <div style="display:flex;gap:8px;padding:12px 16px">
+              <span style="height:32px;padding:0 12px;border-radius:var(--r-full);border:1px solid var(--bd-subtle);color:var(--tx-secondary);font-size:12px;display:flex;align-items:center;gap:6px;flex:none">Utente ▾</span>
+              <span style="height:32px;padding:0 12px;border-radius:var(--r-full);border:1px solid var(--bd-subtle);color:var(--tx-secondary);font-size:12px;display:flex;align-items:center;gap:6px;flex:none">Azione ▾</span>
+            </div>
+            <div style="padding:0 16px 16px;display:flex;flex-direction:column;gap:10px">
+              <sc-for list="{{ logs }}" as="l" hint-placeholder-count="5">
+                <div style="border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);padding:13px 14px">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="width:26px;height:26px;border-radius:var(--r-xs);background:{{ l.skin }};display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:9px;color:rgba(255,255,255,.92);flex:none">{{ l.ini }}</span>
+                    <span style="font-size:13px;font-weight:500">{{ l.actor }}</span>
+                    <span style="margin-left:auto;font-family:var(--font-mono);font-size:11.5px;color:var(--tx-muted);font-variant-numeric:tabular-nums">{{ l.t }}</span>
+                  </div>
+                  <div style="font-size:13px;margin-top:9px">{{ l.act }}</div>
+                  <div style="font-size:12px;color:var(--tx-secondary);margin-top:3px">{{ l.obj }}</div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:9px">
+                    <span style="margin-left:auto;font-size:11.5px;color:var(--ac-text)">Dettaglio ›</span>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;tema&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Scuro&quot;,&quot;Chiaro&quot;],&quot;default&quot;:&quot;Scuro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;accento&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#DB6E19&quot;,&quot;#2478A1&quot;,&quot;#C0533B&quot;,&quot;#B08A2E&quot;],&quot;default&quot;:&quot;#DB6E19&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;sidebarCollassata&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef();
+  state = { screen:'responsive', theme:null, collapsedOverride:null, loginState:'default',
+    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1' };
+
+  componentDidMount() { this.applyAccent(); this.waitShared(); }
+  componentDidUpdate() { this.applyAccent(); }
+  componentWillUnmount() { clearInterval(this._t); }
+
+  /* metamc-shared.js viene caricato da <helmet>: se non è ancora pronto, ricontrolla */
+  waitShared() {
+    if (window.MetaMC) return;
+    this._t = setInterval(() => { if (window.MetaMC) { clearInterval(this._t); this.forceUpdate(); } }, 40);
+  }
+
+  applyAccent() {
+    const el = this.rootRef.current;
+    if (!el) return;
+    const a = this.props.accento || '#DB6E19';
+    el.style.setProperty('--ac', a);
+    el.style.setProperty('--ac-hover', 'color-mix(in oklab, ' + a + ' 82%, white)');
+    el.style.setProperty('--ac-pressed', 'color-mix(in oklab, ' + a + ' 84%, black)');
+    el.style.setProperty('--ac-soft', 'color-mix(in srgb, ' + a + ' 12%, transparent)');
+    el.style.setProperty('--ac-text', 'color-mix(in oklab, ' + a + ' 78%, white)');
+    el.style.setProperty('--bd-focus', a);
+  }
+
+  renderVals() {
+    const M = window.MetaMC;
+    if (!M) return { rootRef: this.rootRef, theme: 'dark' };
+    return M.baseVals(this, 'responsive');
+  }
+}
+</script>
+</body>
+</html>

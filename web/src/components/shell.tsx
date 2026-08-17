@@ -7,15 +7,32 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Me, ModuleKey } from '../lib/api.ts';
-import { Avatar, ICONS, Icon, Pill } from './ui.tsx';
+import { Avatar, ICONS, Icon } from './ui.tsx';
 
-/** Voci di navigazione. Solo quelle con una schermata vera: un link che porta
- *  a un 404 è peggio di un link assente, perché dice che qualcosa esiste. */
-const NAV: Array<{ module: ModuleKey; label: string; to: string; area: string; icon: string }> = [
-  { module: 'utenti', label: 'Utenti', to: '/utenti', area: 'Accessi', icon: ICONS.users },
-  { module: 'ruoli', label: 'Ruoli e permessi', to: '/ruoli', area: 'Accessi', icon: ICONS.shield },
-  { module: 'inviti', label: 'Inviti', to: '/inviti', area: 'Accessi', icon: ICONS.mail },
-  { module: 'audit', label: 'Registro attività', to: '/registro', area: 'Controllo', icon: ICONS.log },
+/**
+ * Voci di navigazione: quelle di `frontend/metamc-shared.js` (`NAV`), meno il
+ * gruppo "Analisi" che è la fase 2.
+ *
+ * "Utenti & Ruoli" è UNA voce, non tre: nel prototipo utenti, matrice dei
+ * permessi e inviti stanno sulla stessa schermata. Una voce compare se
+ * l'utente ha accesso ad almeno uno dei moduli che quella schermata mostra —
+ * e la schermata poi disegna solo le sezioni che gli competono.
+ */
+const NAV: Array<{ modules: ModuleKey[]; label: string; to: string; area: string; icon: string }> = [
+  {
+    modules: ['utenti', 'ruoli', 'inviti'],
+    label: 'Utenti & Ruoli',
+    to: '/utenti',
+    area: 'Amministrazione',
+    icon: ICONS.users,
+  },
+  {
+    modules: ['audit'],
+    label: 'Registro attività',
+    to: '/registro',
+    area: 'Amministrazione',
+    icon: ICONS.log,
+  },
 ];
 
 export function Sidebar({
@@ -32,7 +49,7 @@ export function Sidebar({
   // `me.modules` arriva già filtrato dal server: il client non decide chi vede
   // cosa, lo disegna e basta.
   const groups = useMemo(() => {
-    const visible = NAV.filter((n) => me.modules.includes(n.module));
+    const visible = NAV.filter((n) => n.modules.some((m) => me.modules.includes(m)));
     const map = new Map<string, typeof visible>();
     for (const item of visible) {
       const list = map.get(item.area) ?? [];
@@ -46,7 +63,7 @@ export function Sidebar({
     <aside
       aria-label="Moduli"
       style={{
-        width: collapsed ? 64 : 232,
+        width: collapsed ? 68 : 248,
         flex: 'none',
         alignSelf: 'stretch',
         background: 'var(--s-surface)',
@@ -295,6 +312,21 @@ export function CommandPalette({
 
 // ---------------------------------------------------------------------------
 
+/** Il quadrato da 32px della topbar: campanella e comando della sidebar. */
+const SQUARE_CONTROL = {
+  width: 32,
+  height: 32,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  border: '1px solid var(--bd-subtle)',
+  borderRadius: 'var(--r-sm)',
+  background: 'var(--s-inset)',
+  color: 'var(--tx-secondary)',
+  cursor: 'pointer',
+  flex: 'none',
+} as const;
+
 export function Topbar({
   me,
   breadcrumb,
@@ -326,16 +358,6 @@ export function Topbar({
         borderBottom: '1px solid var(--bd-subtle)',
       }}
     >
-      <button
-        type="button"
-        className="btn btn-ghost btn-sm"
-        onClick={onToggleSidebar}
-        aria-label="Comprimi il menu"
-        style={{ padding: '0 6px' }}
-      >
-        <Icon path="M4 7h16M4 12h16M4 17h16" size={16} />
-      </button>
-
       <div
         style={{
           display: 'flex',
@@ -354,15 +376,39 @@ export function Topbar({
       </div>
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
-        {feedDisconnected ? (
-          <Pill tone="warn" dot>
-            Feed disconnesso
-          </Pill>
-        ) : (
-          <Pill tone="ok" dot>
-            Operativo
-          </Pill>
-        )}
+        {/* Il prototipo mette la campanella in un quadrato da 32px con un
+            contatore. Il contatore qui non c'è: non abbiamo notifiche, e un
+            "3" finto sarebbe l'unica cosa dell'interfaccia che mente. Al suo
+            posto il quadrato porta il solo segnale che abbiamo davvero, cioè
+            se il feed del registro è vivo. */}
+        <button
+          type="button"
+          onClick={onToggleSidebar}
+          aria-label="Comprimi o espandi il menu"
+          style={SQUARE_CONTROL}
+        >
+          <Icon path={ICONS.panel} size={16} />
+        </button>
+
+        <div
+          title={feedDisconnected ? 'Feed del registro disconnesso' : 'Feed del registro attivo'}
+          style={{ ...SQUARE_CONTROL, position: 'relative', cursor: 'default' }}
+        >
+          <Icon path={ICONS.bell} size={16} />
+          <span
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              top: -3,
+              right: -3,
+              width: 9,
+              height: 9,
+              borderRadius: 'var(--r-full)',
+              border: '2px solid var(--s-surface)',
+              background: feedDisconnected ? 'var(--warn)' : 'var(--ok)',
+            }}
+          />
+        </div>
 
         <div style={{ position: 'relative' }}>
           <button

@@ -92,16 +92,32 @@ const DOMAIN_TERMS = new Set([
   'moderatore',
 ]);
 
-function stripJsxText(source: string): string {
+const NEWLINE = String.fromCharCode(10);
+
+/** Svuota il corpo di una corrispondenza tenendo i delimitatori e le newline. */
+function blankBetween(match: string): string {
+  const kept = [...match.slice(1, -1)].filter((c) => c === NEWLINE).join('');
+  return `${match[0]}${kept}${match[match.length - 1]}`;
+}
+
+function stripJsxText(source: string, isTsx: boolean): string {
   // Il testo fra > e < e' contenuto visibile, non un identificatore: le
   // etichette dell'interfaccia sono in italiano di proposito.
+  //
+  // Nei .tsx il testo confina anche con le graffe di un'interpolazione:
+  // `Vengono mostrati{' '}` e `{rows.length} risultati` sono etichette quanto
+  // il testo fra due tag, e senza questa estensione l'apostrofo di una parola
+  // italiana apre una stringa fantasma che manda in confusione tutto il resto
+  // del file.
+  //
   // La sostituzione preserva le newline: senza, i numeri di riga riportati
   // scivolerebbero e indicherebbero il punto sbagliato.
-  const NEWLINE = String.fromCharCode(10);
-  return source.replace(/>[^<>{}]+</g, (match) => {
-    const kept = [...match].filter((c) => c === NEWLINE).join('');
-    return `>${kept}<`;
-  });
+  if (!isTsx) return source.replace(/>[^<>{}]+</g, blankBetween);
+
+  // Due passate: la prima consuma i delimitatori, e un segmento adiacente
+  // resterebbe fuori se non si ripassasse.
+  const pattern = /[>}][^<>{}]+[<{]/g;
+  return source.replace(pattern, blankBetween).replace(pattern, blankBetween);
 }
 
 function stripCommentsAndStrings(source: string): string {
@@ -124,12 +140,16 @@ function stripCommentsAndStrings(source: string): string {
     if (c === "'" || c === '"' || c === '`') {
       const quote = c;
       i += 1;
+      let newlines = '';
       while (i < n && source[i] !== quote) {
         if (source[i] === '\\') i += 1;
+        // Un template letterale sta su piu' righe per davvero: le newline
+        // vanno riportate, o i numeri di riga da qui in poi scivolano.
+        if (source[i] === NEWLINE) newlines += NEWLINE;
         i += 1;
       }
       i += 1;
-      out += '""';
+      out += `""${newlines}`;
       continue;
     }
     out += c;
@@ -167,7 +187,7 @@ function main(): void {
     // apostrofo dentro una frase italiana ("l'ha fatta") aprirebbe una
     // stringa che si chiude molto piu' avanti, e tutto cio' che sta in mezzo
     // sparirebbe dall'analisi o vi entrerebbe per sbaglio.
-    const code = stripCommentsAndStrings(stripJsxText(readFileSync(file, 'utf8')));
+    const code = stripCommentsAndStrings(stripJsxText(readFileSync(file, 'utf8'), rel.endsWith('.tsx')));
     code.split('\n').forEach((line, idx) => {
       for (const match of line.matchAll(pattern)) {
         if (DOMAIN_TERMS.has(match[0].toLowerCase())) continue;

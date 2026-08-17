@@ -135,14 +135,17 @@ function main(): void {
       written += 1;
     }
 
+    // Virgolette doppie: e' la forma in cui Biome riscrive il CSS, e con gli
+    // apici semplici il file usciva sempre "modificato" appena dopo essere
+    // stato generato.
     out.push('@font-face {');
-    out.push(`  font-family: '${family}';`);
+    out.push(`  font-family: "${family}";`);
     out.push(`  font-style: ${style};`);
     out.push(`  font-weight: ${weight};`);
     // `swap` e non `block`: un pannello che resta muto finche' non arriva un
     // font e' peggio di uno che riflow-a una volta.
     out.push('  font-display: swap;');
-    out.push(`  src: url('/fonts/${file}') format('woff2');`);
+    out.push(`  src: url("/fonts/${file}") format("woff2");`);
     if (range) out.push(`  unicode-range: ${range};`);
     out.push('}');
     out.push('');

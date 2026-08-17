@@ -1,0 +1,47 @@
+# Cosa NON entra nel contesto di build.
+#
+# L'immagine che gira copia gia' solo dist, src, scripts e migrations: qui si
+# taglia prima, al contesto, che e' cio' che viene spedito al demone Docker e
+# che finisce nei livelli intermedi dello stadio di build (`COPY . .`).
+#
+# La riga che conta davvero e' `.env`: senza, il file dei segreti — MASTER_KEY,
+# credenziali del database, chiave Resend — verrebbe copiato in un livello
+# dell'immagine di build. Non arriva al runtime, ma un livello intermedio e'
+# comunque leggibile da chi ha l'immagine o la cache del registro.
+
+# Segreti
+.env
+.env.*
+!.env.example
+
+# Prodotti di build e dipendenze: si ricostruiscono dentro l'immagine
+node_modules/
+dist/
+.vite/
+.vitest/
+coverage/
+
+# Storia e strumenti di sviluppo
+.git/
+.github/
+.claude/
+
+# Il prototipo di riferimento: e' materiale di progettazione, non codice.
+# Circa 1,4 MB fra l'export a file unico e le schermate divise, e in
+# produzione non serve a niente.
+frontend/
+MetaMC Admin - standalone.html
+
+# Anteprima delle schermate: gira solo sotto `vite dev`, e la build ha un solo
+# input (index.html), quindi non entrerebbe comunque in dist.
+web/preview.html
+web/src/preview.tsx
+
+# Test e spike
+tests/
+spikes/
+vitest.config.ts
+
+# Log e file temporanei
+*.log
+*.tmp

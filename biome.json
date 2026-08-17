@@ -14,7 +14,8 @@
       "!MetaMC Admin - standalone.html",
       "!frontend",
       "!spikes",
-      "!web/src/app.css"
+      "!web/src/app.css",
+      "!web/src/fonts.css"
     ]
   },
   "formatter": {

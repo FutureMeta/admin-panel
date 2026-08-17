@@ -341,7 +341,17 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
         });
 
         const link = `${ctx.env.APP_ORIGIN}/reset?t=${token}`;
-        const tpl = passwordChangedNotice({ kind: 'reset-requested', link, expiresAt });
+        const tpl = passwordChangedNotice({
+          kind: 'reset-requested',
+          link,
+          expiresAt,
+          requestedAt: new Date(),
+          userName: user.name,
+          userEmail: user.email,
+          // L'IP nel piede dell'email non e' decorazione: e' cio' che permette
+          // a chi NON ha chiesto il reset di capire da dove e' partito.
+          ip: ips.ip,
+        });
         await ctx.mailer.send({
           to: user.email,
           subject: tpl.subject,
@@ -453,7 +463,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
 
       await ctx.store.invalidate(userId);
 
-      const tpl = passwordChangedNotice({ kind: 'reset-completed' });
+      const tpl = passwordChangedNotice({ kind: 'reset-completed', at: new Date() });
       await ctx.mailer.send({
         to: user.email,
         subject: tpl.subject,

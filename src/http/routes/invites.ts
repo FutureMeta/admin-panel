@@ -41,6 +41,13 @@ const createInviteSchema = {
   },
 } as const;
 
+/** Le etichette dei livelli, le stesse che mostra il pannello. */
+const LEVEL_LABELS: Record<number, string> = {
+  1: 'Lettura',
+  2: 'Scrittura',
+  3: 'Gestione',
+};
+
 export async function registerInviteRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   // -------------------------------------------------------------------------
   // POST /api/invites — emissione
@@ -128,11 +135,35 @@ export async function registerInviteRoutes(app: FastifyInstance, ctx: AppContext
       // hash si serializzerebbe sulla latenza di Resend e ogni azione di ogni
       // admin si accoderebbe dietro un'email.
       const link = `${ctx.env.APP_ORIGIN}/accept?t=${created.token}`;
+
+      // Ruolo e moduli per il riquadro dell'email. Sono gli stessi che la
+      // pagina di accettazione mostrera': dirli qui non anticipa nulla che non
+      // sia gia' suo, e rende esplicito il perimetro prima ancora di entrare.
+      const role = await ctx.db
+        .selectFrom('auth.roles')
+        .select('name')
+        .where('id', '=', body.roleId)
+        .executeTakeFirst();
+      const modules = await ctx.db
+        .selectFrom('auth.role_permissions as rp')
+        .innerJoin('auth.modules as m', 'm.id', 'rp.module_id')
+        .select(['m.name as name', 'rp.level as level'])
+        .where('rp.role_id', '=', body.roleId)
+        .where('rp.level', '>', 0)
+        .orderBy('m.sort_order')
+        .execute();
+
       const template = inviteEmail({
-        // SEC-44 — nessun campo di testo libero: l'unica variabile e' il link,
-        // e il nome dell'invitante e' gia' normalizzato in scrittura.
+        // SEC-44 — nessun valore arriva da chi ricevera' il messaggio. Nome e
+        // indirizzo li ha scritti chi invita, ruolo e moduli vengono dal
+        // database, e tutto passa comunque dall'escaping del layout.
+        inviteeName: displayName,
+        inviteeEmail: emailLower,
         inviterName: sanitizeDisplayName(actor.actorDisplayName),
+        roleName: role?.name ?? 'ruolo',
+        modules: modules.map((m) => ({ name: m.name, level: LEVEL_LABELS[m.level] ?? String(m.level) })),
         link,
+        createdAt: new Date(),
         expiresAt: created.expiresAt,
       });
 

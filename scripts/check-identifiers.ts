@@ -137,18 +137,68 @@ function stripCommentsAndStrings(source: string): string {
       continue;
     }
     const c = source[i];
-    if (c === "'" || c === '"' || c === '`') {
+    if (c === "'" || c === '"') {
       const quote = c;
       i += 1;
       let newlines = '';
       while (i < n && source[i] !== quote) {
         if (source[i] === '\\') i += 1;
-        // Un template letterale sta su piu' righe per davvero: le newline
-        // vanno riportate, o i numeri di riga da qui in poi scivolano.
         if (source[i] === NEWLINE) newlines += NEWLINE;
         i += 1;
       }
       i += 1;
+      out += `""${newlines}`;
+      continue;
+    }
+
+    // Template letterale.
+    //
+    // Va trattato a parte perche' `${...}` contiene CODICE, e quel codice puo'
+    // contenere un altro template letterale. Cercare il backtick successivo
+    // chiuderebbe sul backtick interno, e da li' in poi il resto del file
+    // verrebbe letto invertito: le stringhe come codice e il codice come
+    // stringhe. E' cosi' che quattro etichette italiane dentro `invite.ts`
+    // risultavano identificatori.
+    if (c === '`') {
+      i += 1;
+      let newlines = '';
+      while (i < n) {
+        if (source[i] === '\\') {
+          i += 2;
+          continue;
+        }
+        if (source[i] === '`') {
+          i += 1;
+          break;
+        }
+        // Interpolazione: si esce dalla stringa e si copia il codice fino alla
+        // graffa che chiude, tenendo il conto di quelle annidate.
+        if (source.slice(i, i + 2) === '${') {
+          out += `""${newlines}`;
+          newlines = '';
+          i += 2;
+          let depth = 1;
+          let inner = '';
+          while (i < n && depth > 0) {
+            const ch = source[i];
+            if (ch === '{') depth += 1;
+            else if (ch === '}') {
+              depth -= 1;
+              if (depth === 0) {
+                i += 1;
+                break;
+              }
+            }
+            inner += ch;
+            i += 1;
+          }
+          // Ricorsione: dentro l'interpolazione puo' esserci di tutto.
+          out += stripCommentsAndStrings(inner);
+          continue;
+        }
+        if (source[i] === NEWLINE) newlines += NEWLINE;
+        i += 1;
+      }
       out += `""${newlines}`;
       continue;
     }

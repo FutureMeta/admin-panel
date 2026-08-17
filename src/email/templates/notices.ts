@@ -1,10 +1,28 @@
 // Email di avviso: reset password, cambio email, recovery code in esaurimento.
 //
-// SEC-44 — nessun campo di text libero. Le uniche variabili sono link,
-// scadenze e un indirizzo email, tutti prodotti dal server.
+// Tutte usano l'impalcatura di layout.ts, quella di frontend/email-*.html.
+// Due email dello stesso sistema che arrivano con due aspetti diversi sono un
+// invito a non fidarsi di nessuna delle due: il riconoscimento visivo e' parte
+// di come una persona distingue un messaggio vero da uno finto.
+//
+// SEC-44 — nessun campo di testo libero. Le variabili sono link, scadenze,
+// nomi gia' normalizzati in scrittura e indirizzi prodotti dal server, e
+// passano comunque dall'escaping dei costruttori.
 
 import { escapeHtml } from './escape.ts';
 import type { EmailTemplate } from './invite.ts';
+import {
+  box,
+  button,
+  eyebrow,
+  heading,
+  linkFallback,
+  mono,
+  paragraph,
+  render,
+  strong,
+  warning,
+} from './layout.ts';
 
 function formatDate(d: Date): string {
   return new Intl.DateTimeFormat('it-IT', {
@@ -14,85 +32,114 @@ function formatDate(d: Date): string {
   }).format(d);
 }
 
-function shell(title: string, body: string): string {
-  return `<!doctype html>
-<html lang="it">
-  <body style="margin:0;padding:24px;background:#0A161D;font-family:Inter,system-ui,sans-serif;color:#E9F1F5">
-    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto">
-      <tr><td style="padding:0 0 24px">
-        <span style="font:700 20px/28px Montserrat,system-ui,sans-serif;color:#DB6E19">MetaMC</span>
-        <span style="font:600 20px/28px Montserrat,system-ui,sans-serif;color:#2478A1"> Admin</span>
-      </td></tr>
-      <tr><td style="background:#0E1F28;border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:24px">
-        <p style="margin:0 0 16px;font:600 15px/22px Inter,system-ui,sans-serif">${escapeHtml(title)}</p>
-        ${body}
-      </td></tr>
-      <tr><td style="padding:24px 0 0;font:400 12px/18px Inter,system-ui,sans-serif;color:#718996">
-        Non rispondere a questa email.
-      </td></tr>
-    </table>
-  </body>
-</html>`;
+function formatShort(d: Date): string {
+  return new Intl.DateTimeFormat('it-IT', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Europe/Rome',
+  }).format(d);
 }
 
-function button(link: string, text: string): string {
-  return `<a href="${escapeHtml(link)}" style="display:inline-block;background:#DB6E19;color:#0A161D;text-decoration:none;font:600 14px/20px Inter,system-ui,sans-serif;padding:12px 20px;border-radius:8px">${escapeHtml(text)}</a>`;
-}
-
-function paragraph(text: string): string {
-  return `<p style="margin:0 0 16px;font:400 14px/22px Inter,system-ui,sans-serif;color:#A9BEC9">${escapeHtml(text)}</p>`;
-}
+const FOOTER_TAIL = 'MetaMC Network · metamc.it · Email di servizio inviata allo staff della console.';
 
 // ---------------------------------------------------------------------------
 
 export type PasswordNoticeInput =
-  | { kind: 'reset-requested'; link: string; expiresAt: Date }
-  | { kind: 'reset-completed' }
-  | { kind: 'changed' };
+  | {
+      kind: 'reset-requested';
+      link: string;
+      expiresAt: Date;
+      requestedAt: Date;
+      userName: string;
+      userEmail: string;
+      /** IP da cui e' partita la richiesta. `null` se non determinabile. */
+      ip: string | null;
+    }
+  | { kind: 'reset-completed'; at: Date }
+  | { kind: 'changed'; at: Date };
 
 export function passwordChangedNotice(input: PasswordNoticeInput): EmailTemplate {
   if (input.kind === 'reset-requested') {
-    const title = 'Reimposta la tua password';
-    const body =
-      paragraph(`Il link vale fino al ${formatDate(input.expiresAt)} e funziona una volta sola.`) +
-      button(input.link, 'Reimposta la password') +
-      paragraph(
-        'Dopo averla reimpostata dovrai comunque accedere con il tuo secondo fattore: ' +
-          'il reset della password non lo sostituisce.',
-      ) +
-      paragraph('Se non hai chiesto tu il reset, ignora questo messaggio: senza il link non succede nulla.');
+    const minutes = Math.max(
+      1,
+      Math.round((input.expiresAt.getTime() - input.requestedAt.getTime()) / 60_000),
+    );
+    const validity = `${minutes} minuti`;
+
+    const html = render({
+      title: 'Reimposta la password della console MetaMC',
+      preheaderText: `Link per reimpostare la password della console MetaMC. Valido ${validity}, un solo utilizzo.`,
+      sections: [
+        eyebrow('Sicurezza account') +
+          heading('Reimposta la password') +
+          paragraph(
+            `Ciao ${escapeHtml(input.userName)},<br>abbiamo ricevuto una richiesta di reimpostazione della password per l'account ${mono(input.userEmail)}.`,
+            16,
+          ) +
+          paragraph(`Il link vale ${strong(validity)} e può essere usato una volta sola.`, 28),
+        button(input.link, 'Scegli una nuova password'),
+        linkFallback(input.link),
+        warning(
+          'Non hai richiesto tu il reset?',
+          'Ignora questa email: la password resta quella attuale. La richiesta è registrata nel registro attività della console — se si ripete, avvisa un owner.',
+        ),
+      ],
+      footerLines: [
+        `Richiesta partita il ${formatShort(input.requestedAt)} (Europe/Rome)${input.ip ? ` da IP ${escapeHtml(input.ip)}` : ''}.`,
+        `${FOOTER_TAIL}<br>La reimpostazione non modifica la verifica in due passaggi.`,
+      ],
+    });
+
     return {
-      subject: 'Reimposta la password di MetaMC Admin',
-      html: shell(title, body),
+      subject: 'Reimposta la password della console MetaMC',
+      html,
       text: [
-        title,
+        `Ciao ${input.userName},`,
+        `abbiamo ricevuto una richiesta di reimpostazione della password per ${input.userEmail}.`,
         '',
+        'Scegli una nuova password aprendo questo indirizzo:',
         input.link,
         '',
-        `Il link vale fino al ${formatDate(input.expiresAt)} e funziona una volta sola.`,
-        'Dopo il reset dovrai comunque accedere con il secondo fattore.',
+        `Il link vale ${validity} e può essere usato una volta sola.`,
+        'La reimpostazione non modifica la verifica in due passaggi.',
         '',
-        'Se non hai chiesto tu il reset, ignora questo messaggio.',
+        'Non hai richiesto tu il reset? Ignora questa email: la password resta quella attuale.',
+        'La richiesta è registrata nel registro attività della console.',
       ].join('\n'),
     };
   }
 
-  const title =
-    input.kind === 'reset-completed'
-      ? 'La tua password è stata reimpostata'
-      : 'La tua password è stata cambiata';
-  const body =
-    paragraph('Tutte le sessioni aperte sono state chiuse: dovrai accedere di nuovo.') +
-    paragraph(
-      'Se non sei stato tu, contatta subito un owner: qualcuno ha accesso alla tua casella di posta.',
-    );
+  const title = input.kind === 'reset-completed' ? 'Password reimpostata' : 'Password cambiata';
+  const html = render({
+    title,
+    preheaderText: `${title} il ${formatShort(input.at)}. Tutte le altre sessioni sono state chiuse.`,
+    sections: [
+      eyebrow('Sicurezza account') +
+        heading(title) +
+        paragraph(
+          `La nuova password è attiva dal ${mono(formatShort(input.at))}. Tutte le sessioni aperte sono state chiuse: dovrai accedere di nuovo.`,
+          0,
+        ),
+      warning(
+        'Non sei stato tu?',
+        'Contatta subito un owner: significa che qualcuno ha accesso alla tua casella di posta.',
+      ),
+    ],
+    footerLines: [
+      `Modifica registrata il ${formatShort(input.at)} (Europe/Rome).`,
+      `${FOOTER_TAIL}<br>La modifica della password non tocca la verifica in due passaggi.`,
+    ],
+  });
+
   return {
     subject: `MetaMC Admin — ${title.toLowerCase()}`,
-    html: shell(title, body),
+    html,
     text: [
       title,
       '',
+      `Attiva dal ${formatShort(input.at)}.`,
       'Tutte le sessioni aperte sono state chiuse.',
+      '',
       'Se non sei stato tu, contatta subito un owner.',
     ].join('\n'),
   };
@@ -107,25 +154,46 @@ export type EmailChangeInput =
 export function emailChangeNotice(input: EmailChangeInput): EmailTemplate {
   if (input.kind === 'confirm') {
     const title = 'Conferma il tuo nuovo indirizzo';
-    const body =
-      paragraph(`Il link vale fino al ${formatDate(input.expiresAt)}.`) +
-      button(input.link, "Conferma l'indirizzo") +
-      paragraph('Fino alla conferma il tuo indirizzo di accesso resta quello di prima.');
     return {
       subject: 'Conferma il nuovo indirizzo per MetaMC Admin',
-      html: shell(title, body),
+      html: render({
+        title,
+        preheaderText: `Conferma il nuovo indirizzo. Il link vale fino al ${formatDate(input.expiresAt)}.`,
+        sections: [
+          eyebrow('Sicurezza account') +
+            heading(title) +
+            paragraph(
+              `Il link vale fino al ${strong(formatDate(input.expiresAt))}. Fino alla conferma il tuo indirizzo di accesso resta quello di prima.`,
+              0,
+            ),
+          button(input.link, "Conferma l'indirizzo"),
+          linkFallback(input.link),
+        ],
+        footerLines: [`${FOOTER_TAIL}`],
+      }),
       text: [title, '', input.link, '', `Il link vale fino al ${formatDate(input.expiresAt)}.`].join('\n'),
     };
   }
 
   const title = 'Richiesta di cambio indirizzo';
-  const body =
-    paragraph(`È stato richiesto di spostare il tuo accesso su ${input.newEmail}.`) +
-    paragraph(`Se non sei stato tu, ANNULLA subito: il link vale fino al ${formatDate(input.expiresAt)}.`) +
-    button(input.link, 'Annulla il cambio');
   return {
     subject: 'MetaMC Admin — richiesta di cambio indirizzo',
-    html: shell(title, body),
+    html: render({
+      title,
+      preheaderText: `È stato richiesto di spostare il tuo accesso su ${input.newEmail}.`,
+      sections: [
+        eyebrow('Sicurezza account') +
+          heading(title) +
+          paragraph(`È stato richiesto di spostare il tuo accesso su ${mono(input.newEmail)}.`, 0),
+        warning(
+          'Non sei stato tu?',
+          `Annulla subito con il pulsante qui sotto: il link vale fino al ${formatDate(input.expiresAt)}.`,
+        ),
+        button(input.link, 'Annulla il cambio'),
+        linkFallback(input.link),
+      ],
+      footerLines: [`${FOOTER_TAIL}`],
+    }),
     text: [
       title,
       '',
@@ -143,14 +211,24 @@ export function emailChangeNotice(input: EmailChangeInput): EmailTemplate {
 
 export function recoveryCodesLowNotice(input: { remaining: number }): EmailTemplate {
   const title = 'Ti restano pochi codici di recupero';
-  const body =
-    paragraph(
-      `Ne hai ancora ${input.remaining}. Quando finiscono, l'unico modo di rientrare è la procedura ` +
-        'assistita, che richiede due owner e ventiquattro ore.',
-    ) + paragraph('Rigenerali dal pannello, nella sezione del tuo account.');
   return {
     subject: 'MetaMC Admin — pochi codici di recupero rimasti',
-    html: shell(title, body),
+    html: render({
+      title,
+      preheaderText: `Ne restano ${input.remaining}. Rigenerali dal pannello.`,
+      sections: [
+        eyebrow('Sicurezza account') +
+          heading(title) +
+          paragraph(
+            `Ne hai ancora ${strong(String(input.remaining))}. Quando finiscono, l'unico modo di rientrare è la procedura assistita, che richiede due owner e ventiquattro ore.`,
+            0,
+          ),
+        box(
+          `<span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#9db1bc;">Rigenerali dal pannello, nella sezione del tuo account. I vecchi codici smettono di funzionare nello stesso istante.</span>`,
+        ),
+      ],
+      footerLines: [`${FOOTER_TAIL}`],
+    }),
     text: [
       title,
       '',
@@ -165,14 +243,21 @@ export function recoveryCodesLowNotice(input: { remaining: number }): EmailTempl
 
 export function offboardingNotice(input: { who: string; by: string }): EmailTemplate {
   const title = 'Offboarding eseguito';
-  const body =
-    paragraph(`${input.who} è stato disattivato da ${input.by}.`) +
-    paragraph(
-      'Sessioni chiuse, ruoli e permessi rimossi, inviti pendenti emessi da quella persona revocati.',
-    );
   return {
     subject: 'MetaMC Admin — offboarding eseguito',
-    html: shell(title, body),
+    html: render({
+      title,
+      preheaderText: `${input.who} è stato disattivato da ${input.by}.`,
+      sections: [
+        eyebrow('Amministrazione') +
+          heading(title) +
+          paragraph(`${strong(input.who)} è stato disattivato da ${strong(input.by)}.`, 0),
+        box(
+          `<span style="font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#9db1bc;">Sessioni chiuse, ruoli e permessi rimossi, inviti pendenti emessi da quella persona revocati.</span>`,
+        ),
+      ],
+      footerLines: [`${FOOTER_TAIL}`],
+    }),
     text: [title, '', `${input.who} disattivato da ${input.by}.`].join('\n'),
   };
 }

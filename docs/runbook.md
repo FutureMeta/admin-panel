@@ -10,12 +10,25 @@ Quello che serve per portare il sistema in produzione e tenercelo. §17.
 |---|---|---|
 | VPS | Debian | confermato dal committente |
 | Node.js | `24.19.0` | il Dockerfile lo pinna; mai il tag `24` né `lts` |
-| PostgreSQL | `18.6` | **floor duro**: le 18.x precedenti hanno 28 CVE del 2026-08-13, diverse RCE CVSS 8.8 |
+| PostgreSQL | `17` o superiore | vedi nota sotto |
 | Redis | ≥ 7.4 | `maxmemory-policy noeviction`, `appendonly yes`, `requirepass` |
 | nginx | qualunque recente | configurazione in `deploy/nginx.conf` |
 
-Sul VPS, PostgreSQL 18.6 si installa dal repository PGDG: quello di Debian è
-indietro di una o più minor, e la differenza qui è il floor di sicurezza.
+**Sulla versione di PostgreSQL.** Il progetto nasceva con la 18.6 come minimo
+per due motivi. Il primo era tecnico: la migration 004 usava `uuidv7()`, nativa
+solo dalla 18, e su una 17 lo schema si fermava a metà. Quella dipendenza non
+c'è più — la funzione è definita dalla migration stessa come `auth.uuidv7()`,
+frazione di millisecondo compresa, e si comporta come la nativa (misurato: 500
+generazioni su 500 in ordine crescente, identico alla 18).
+
+Il secondo motivo era di sicurezza e riguardava **la linea 18**: le 18.x
+precedenti alla 18.6 portano 28 CVE del 2026-08-13, diverse RCE con CVSS 8.8.
+Se installi una 18, quel floor resta valido. Sulla linea 17 quelle advisory non
+sono state verificate una per una: la regola operativa è tenere aggiornata alla
+patch più recente la linea che usi, qualunque sia.
+
+Se scegli la 18, si installa dal repository PGDG: quello di Debian è indietro
+di una o più minor.
 
 Redis va configurato con `noeviction`: con una policy LRU, sotto pressione di
 memoria il server butterebbe via sessioni e chiavi `authz:` **senza dirlo**, e

@@ -9,7 +9,7 @@ import type { Transaction } from 'kysely';
 import type { Database } from '#src/db/pool.ts';
 import type { DB } from '#src/db/types.ts';
 
-export const INVITE_TTL_HOURS = 72;
+export const INVITE_TTL_HOURS = 12;
 /** La sessione di onboarding vive 15 minuti: e' il tempo di scegliere una password e inquadrare un QR. */
 export const ONBOARDING_TTL_SECONDS = 900;
 

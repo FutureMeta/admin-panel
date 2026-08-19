@@ -54,7 +54,7 @@ function formatDateTime(date: Date): string {
   }).format(date);
 }
 
-/** «tra 72 ore», «tra 2 ore», «tra 40 minuti»: quanto vale, non quando scade. */
+/** «tra 12 ore», «tra 2 ore», «tra 40 minuti»: quanto vale, non quando scade. */
 function humanizeWindow(from: Date, to: Date): string {
   const minutes = Math.max(1, Math.round((to.getTime() - from.getTime()) / 60_000));
   if (minutes < 90) return `tra ${minutes} minuti`;

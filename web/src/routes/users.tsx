@@ -649,7 +649,7 @@ function InviteDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   return (
     <Modal
       title="Invita utente"
-      subtitle="L'invito arriva via email, vale 72 ore e funziona una volta sola."
+      subtitle="L'invito arriva via email, vale 12 ore e funziona una volta sola."
       onClose={onClose}
       footer={
         done ? undefined : (

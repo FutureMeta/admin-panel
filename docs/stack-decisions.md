@@ -379,7 +379,7 @@ CREATE TABLE auth.invitation (
   role_id         smallint NOT NULL REFERENCES auth.roles(id),
   invited_by      text NOT NULL REFERENCES auth."user"(id),
   created_at      timestamptz NOT NULL DEFAULT now(),
-  expires_at      timestamptz NOT NULL,           -- created_at + 72h
+  expires_at      timestamptz NOT NULL,           -- created_at + 12h
   consumed_at     timestamptz,
   consumed_user_id text REFERENCES auth."user"(id),
   revoked_at      timestamptz,
@@ -586,7 +586,11 @@ Nessuno concede ciò che non ha. Il ruolo `owner` (`is_system = true`) **non è 
 1. `POST /api/invites` — richiede `can(actor,'inviti',2)`, la concedibilità del ruolo (§7), e **step-up** se il ruolo concede livello 3 su almeno un modulo.
 2. Rifiuto se: esiste già un utente con quella email (`lower(email)`), esiste già un invito pendente per quella email, l'email coincide con una già collegata all'attore.
 3. `token = crypto.randomBytes(32).toString('base64url')` (256 bit). In tabella va **solo** `sha256(token)`.
-4. Riga `invitation` con `email_lower`, `role_id`, `invited_by`, `expires_at = now() + 72h`.
+4. Riga `invitation` con `email_lower`, `role_id`, `invited_by`, `expires_at = now() + 12h`.
+   *(Era 72h nella decisione iniziale. Ridotta a 12h su richiesta del
+   committente il 2026-08-19: è un restringimento, e la finestra più corta
+   riduce il tempo in cui un link finito nella casella sbagliata resta
+   spendibile. Il valore vive in `INVITE_TTL_HOURS`, in un posto solo.)*
 5. **INSERT nell'audit log nella stessa transazione.** COMMIT.
 6. **Fuori dalla transazione**: invio Resend con `Idempotency-Key: invite:{id}:1`, click tracking **disattivato**, link `https://admin.metamc.it/accept?t=<token>`.
 7. `GET /accept?t=...` — pagina servita con `Referrer-Policy: no-referrer`, `Cache-Control: no-store`. Il server valida il token e **immediatamente** fa `302` verso `/accept` senza token, avendo scambiato il token con una sessione di onboarding di 15 minuti (aal=0, nessun permesso).

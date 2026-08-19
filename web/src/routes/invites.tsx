@@ -48,7 +48,7 @@ export function InvitesPage({ me }: { me: Me }) {
     <>
       <PageHeader
         title="Inviti pendenti"
-        sub="Il link vale 72 ore e funziona una volta sola. Non è recuperabile da qui: esiste solo nell'email."
+        sub="Il link vale 12 ore e funziona una volta sola. Non è recuperabile da qui: esiste solo nell'email."
       />
 
       {error ? <Banner tone="err" title={error} /> : null}

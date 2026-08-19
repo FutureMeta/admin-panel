@@ -5,7 +5,7 @@
 // `fetch` verso HIBP, perche' una suite non deve chiamare un servizio terzo, e
 // il mailer, perche' non deve spedire email.
 
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { type AppContext, buildContext } from '#src/app-context.ts';
 import { parseEnv } from '#src/config/env.ts';
@@ -30,6 +30,8 @@ export type TestApp = {
   mailer: InMemoryMailer;
   /** Esito impostabile dai test per il controllo HIBP. */
   hibp: { mode: 'clean' | 'compromised' | 'down'; calls: number };
+  /** Il finto Mojang: `calls` sono le URL uscite, in ordine. */
+  minecraft: MinecraftStub;
   close: () => Promise<void>;
 };
 
@@ -39,6 +41,42 @@ export type TestAppOptions = {
   stepUpSeconds?: number;
   idleSeconds?: number;
 };
+
+/**
+ * Il finto Mojang.
+ *
+ * Registra ogni URL richiesta perche' meta' delle proprieta' da verificare
+ * riguardano le chiamate che NON devono partire: un nome non valido non deve
+ * uscire in rete, e la seconda richiesta dello stesso nome nemmeno.
+ */
+export type MinecraftStub = {
+  calls: string[];
+  /** false: Mojang risponde 404, il giocatore non esiste. */
+  known: boolean;
+  /** true: ogni chiamata fallisce, come con la rete giu'. */
+  down: boolean;
+  /** true: la texture torna piu' grande del limite accettato. */
+  oversized: boolean;
+  reset: () => void;
+};
+
+/** Un PNG minimo valido: firma piu' IHDR. */
+const TEST_SKIN = Buffer.from(
+  '89504e470d0a1a0a0000000d49484452000000400000004008060000008fb6ba60',
+  'hex',
+);
+
+/**
+ * UUID e hash della texture DERIVATI dal nome, non costanti.
+ *
+ * La cache delle skin vive in Redis e sopravvive fra un test e l'altro nello
+ * stesso file. Con un solo UUID per tutti, il secondo test troverebbe in
+ * cache i byte del primo e non chiamerebbe niente — e la verifica «ha
+ * interrogato i tre host» passerebbe o fallirebbe a seconda dell'ordine.
+ * Derivandoli, ogni nome ha la sua voce e i test restano indipendenti.
+ */
+const uuidFor = (name: string) => createHash('sha256').update(name).digest('hex').slice(0, 32);
+const textureFor = (uuid: string) => createHash('sha256').update(uuid).digest('hex');
 
 export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> {
   const db = await createTestDatabase(opts.label ?? 'app');
@@ -60,6 +98,62 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
         ? `${'0'.repeat(35)}:1\n`
         : '0018A45C4D1DEF81644B54AB7F969B88D65:1\n00D4F6E8FA6EECAD2A3AA415EEC418D38EC:2\n';
     return new Response(body, { status: 200, headers: { 'content-type': 'text/plain' } });
+  };
+
+  const minecraft: MinecraftStub = {
+    calls: [],
+    known: true,
+    down: false,
+    oversized: false,
+    reset: () => {
+      minecraft.calls.length = 0;
+      minecraft.known = true;
+      minecraft.down = false;
+      minecraft.oversized = false;
+    },
+  };
+
+  const minecraftFetch: typeof fetch = async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    minecraft.calls.push(url);
+    if (minecraft.down) throw new Error('Mojang non raggiungibile (simulato)');
+
+    if (url.startsWith('https://api.mojang.com/users/profiles/minecraft/')) {
+      if (!minecraft.known) return new Response('', { status: 404 });
+      const name = decodeURIComponent(url.slice(url.lastIndexOf('/') + 1));
+      return new Response(JSON.stringify({ id: uuidFor(name), name }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+
+    if (url.startsWith('https://sessionserver.mojang.com/session/minecraft/profile/')) {
+      // Mojang restituisce davvero la URL della texture in `http`, non in
+      // `https`: il client deve promuoverla, e il test lo verifica.
+      const uuid = url.slice(url.lastIndexOf('/') + 1);
+      const textures = Buffer.from(
+        JSON.stringify({
+          textures: {
+            SKIN: { url: `http://textures.minecraft.net/texture/${textureFor(uuid)}` },
+          },
+        }),
+      ).toString('base64');
+      return new Response(
+        JSON.stringify({
+          id: uuid,
+          name: 'giocatore',
+          properties: [{ name: 'textures', value: textures }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+
+    if (url.startsWith('https://textures.minecraft.net/texture/')) {
+      const body = minecraft.oversized ? Buffer.alloc(300_000) : TEST_SKIN;
+      return new Response(body, { status: 200, headers: { 'content-type': 'image/png' } });
+    }
+
+    throw new Error(`fetch non atteso nei test: ${url}`);
   };
 
   const env = parseEnv({
@@ -88,6 +182,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     mailer,
     indexHtml: prepareIndexHtml(TEST_INDEX_HTML),
     hibpFetch,
+    minecraftFetch,
     // mini-redis non implementa EVAL e rate-limiter-flexible su Redis gira uno
     // script Lua: nei test il contatore sta in memoria, la politica e' la stessa.
     rateLimitInMemory: !redis.real,
@@ -103,6 +198,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     redis,
     mailer,
     hibp,
+    minecraft,
     close: async () => {
       await app.close().catch(() => undefined);
       await ctx.close();

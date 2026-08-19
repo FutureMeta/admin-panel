@@ -124,6 +124,43 @@ modo diverso.
 
 ---
 
+## 4bis. Avatar Minecraft — traffico in uscita
+
+Le facce degli utenti sono le skin dei loro account Minecraft, e passano dal
+**nostro** server: la CSP dichiara `img-src 'self'`, e allargarla a un CDN di
+skin gli regalerebbe l'IP di chi guarda e il nome di chi viene guardato, riga
+per riga del registro.
+
+Il server deve poter raggiungere in uscita, su HTTPS, tre soli host:
+
+| Host | A cosa serve |
+|---|---|
+| `api.mojang.com` | nome del giocatore → UUID |
+| `sessionserver.mojang.com` | UUID → profilo con la URL della texture |
+| `textures.minecraft.net` | i byte della skin |
+
+**Se l'uscita è bloccata non si rompe niente**: il pannello mostra le iniziali
+colorate, come faceva prima. Vale la pena saperlo prima di andare a cercare un
+guasto che non c'è.
+
+Due limiti da conoscere:
+
+- `sessionserver` accetta **una richiesta al minuto per profilo**. Per questo
+  gli esiti stanno in Redis (24 ore i positivi, 6 ore i negativi) e le
+  richieste in volo per lo stesso nome vengono unite. Le chiavi sono `mc:`.
+- La rotta `/api/avatars/:name.png` è autenticata ma **non ha un limitatore
+  suo**. Una sessione rubata potrebbe chiedere molti nomi diversi e far
+  superare la quota al nostro IP; l'effetto sarebbe che per qualche minuto le
+  facce tornano iniziali. Se un giorno lo staff cresce oltre la dozzina, il
+  posto giusto per il limite è il **cache miss**, non la richiesta: la
+  navigazione normale non deve pagarlo.
+
+Il nome usato è quello dell'utente nel pannello. Se non rispetta le regole di
+Mojang — lettere, cifre e trattino basso, 3-16 caratteri — non parte nessuna
+richiesta e restano le iniziali.
+
+---
+
 ## 5. Backup e restore
 
 Il buco più grave sarebbe progettare una catena hash tamper-evident sopra un

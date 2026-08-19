@@ -19,7 +19,7 @@ import { actorOf } from '../request-context.ts';
 
 /**
  * SEC-37 — allowlist dei filtri. Il client puo' nominare SOLO queste chiavi,
- * e ognuna e' mappata to una colonna scritta qui dentro, mai composta.
+ * e ognuna e' mappata a una colonna scritta qui dentro, mai composta.
  */
 const FILTERABLE = {
   actor: 'actor_user_id',

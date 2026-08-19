@@ -6,6 +6,7 @@
 // user agent e payload jsonb, cioè stringhe controllate da terzi.
 
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
+import { useState } from 'react';
 
 // ---------------------------------------------------------------------------
 
@@ -294,6 +295,33 @@ export function SkeletonRows({ rows = 6 }: { rows?: number }) {
  * Iniziali per l'avatar, nello stile del prototipo (due lettere, mono).
  * In tabella e' un quadrato con raggio piccolo; altrove e' tondo.
  */
+/**
+ * Le stesse regole di Mojang: lettere, cifre e trattino basso, 3-16 caratteri.
+ *
+ * Il controllo e' qui e non solo sul server, e serve a non chiedere niente.
+ * Una pagina del registro ha cinquanta righe, e attori come `anonimo` o
+ * `sistema` non sono account Minecraft: senza questo, ogni ricarica
+ * spedirebbe decine di richieste destinate a un 404.
+ */
+const MINECRAFT_NAME = /^[A-Za-z0-9_]{3,16}$/;
+
+/**
+ * La faccia del giocatore, ritagliata dalla skin.
+ *
+ * Il ritaglio lo fa il browser, non il server. Una skin e' un atlante 64x64
+ * (o 64x32 nelle vecchie): la faccia sta ai pixel 8-15 su entrambi gli assi,
+ * e il cappello ai pixel 40-47 in orizzontale. Ingrandendo l'immagine di otto
+ * volte e spostandola, la finestra da `size` pixel inquadra esattamente la
+ * faccia — senza libreria di immagini sul server e senza dipendere da un
+ * servizio di rendering di terze parti.
+ *
+ * `height: auto` non e' pigrizia: forzare un quadrato schiaccerebbe le skin
+ * 64x32, che sono ancora in giro. Con la larghezza sola, la scala resta la
+ * stessa sui due assi e gli scarti valgono per entrambi i formati.
+ *
+ * Sotto restano sempre le iniziali colorate: si vedono mentre l'immagine
+ * arriva, e restano se non arriva affatto.
+ */
 export function Avatar({
   name,
   size = 26,
@@ -306,20 +334,43 @@ export function Avatar({
   /** Il prototipo non usa un rapporto fisso: 9px a 26, 8.5 a 22, 12 a 40. */
   fontSize?: number;
 }) {
-  // Due lettere sempre: nel prototipo `Vally90` dà `VA`, non `V`. I nomi
+  const [failed, setFailed] = useState(false);
+
+  // Due lettere sempre: nel prototipo `Vally90` da' `VA`, non `V`. I nomi
   // Minecraft sono una parola sola, quindi prendere l'iniziale di ogni parola
   // dava una lettera sola a quasi tutti.
-  const initials = name.replace(/\s+/g, '').slice(0, 2).toUpperCase();
+  const initials = name.replace(/s+/g, '').slice(0, 2).toUpperCase();
   // Tinta stabile per persona: due utenti diversi non devono avere lo stesso
   // colore per caso, e lo stesso utente non deve cambiarlo a ogni render.
-  // La tavolozza è quella del prototipo (campo `skin` di metamc-shared.js).
+  // La tavolozza e' quella del prototipo (campo `skin` di metamc-shared.js).
   const hues = ['#8B5E34', '#2F6E8F', '#3E7C63', '#A8434F', '#6B5AA6'];
   const hue = hues[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % hues.length];
+
+  const skin = !failed && MINECRAFT_NAME.test(name)
+    ? `/api/avatars/${encodeURIComponent(name)}.png`
+    : null;
+
+  const layer = (left: number): React.CSSProperties => ({
+    position: 'absolute',
+    left: -left * size,
+    top: -size,
+    width: size * 8,
+    height: 'auto',
+    // La preflight di Tailwind mette `max-width: 100%` su ogni <img>. Qui
+    // l'immagine DEVE debordare: e' larga otto volte la finestra, ed e' cosi'
+    // che la finestra inquadra un solo riquadro. Senza questa riga la skin
+    // viene schiacciata a `size` pixel e si vede un pixel e mezzo di faccia.
+    maxWidth: 'none',
+    imageRendering: 'pixelated',
+  });
+
   return (
     <span
       className="avatar"
       aria-hidden="true"
       style={{
+        position: 'relative',
+        overflow: 'hidden',
         width: size,
         height: size,
         background: hue,
@@ -329,6 +380,15 @@ export function Avatar({
       }}
     >
       {initials || '?'}
+      {skin ? (
+        <>
+          {/* Stessa URL per i due strati: il browser fa una richiesta sola. */}
+          <img src={skin} alt="" style={layer(1)} onError={() => setFailed(true)} />
+          {/* Il cappello sopra la faccia. Nelle skin che non ce l'hanno e'
+              trasparente, quindi non copre niente. */}
+          <img src={skin} alt="" style={layer(5)} />
+        </>
+      ) : null}
     </span>
   );
 }

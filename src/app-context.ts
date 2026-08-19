@@ -11,6 +11,7 @@ import type pg from 'pg';
 import type { Logger } from 'pino';
 import { type Auth, createAuth } from '#src/auth/auth.ts';
 import { HibpClient } from '#src/auth/hibp.ts';
+import { MinecraftSkins } from '#src/minecraft/skins.ts';
 import { PasswordService } from '#src/auth/password.ts';
 import { HashSemaphore } from '#src/auth/semaphore.ts';
 import { TotpReplayGuard } from '#src/auth/totp.ts';
@@ -40,6 +41,8 @@ export type AppContext = {
   authz: AuthzMiddleware;
   rateLimit: RateLimitService;
   hibp: HibpClient;
+  /** Skin Minecraft: le facce passano dal nostro dominio, non dal CDN. */
+  skins: MinecraftSkins;
   totpGuard: TotpReplayGuard;
   mailer: Mailer;
   /** Fase 2: la cache vera si scrive dietro questa interfaccia (§16.4). */
@@ -58,6 +61,7 @@ export type BuildOptions = {
   logger?: Logger;
   /** Iniettabili nei test: nessuna chiamata reale esce durante la suite. */
   hibpFetch?: typeof fetch;
+  minecraftFetch?: typeof fetch;
   /**
    * Nei test il rate limiter gira in memoria: mini-redis non implementa EVAL,
    * e rate-limiter-flexible su Redis usa uno script Lua. La POLITICA e' la
@@ -106,6 +110,10 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
 
   const rateLimit = new RateLimitService(opts.rateLimitInMemory ? {} : { redis });
   const hibp = new HibpClient(opts.hibpFetch ? { fetchImpl: opts.hibpFetch } : {});
+  const skins = new MinecraftSkins({
+    redis,
+    ...(opts.minecraftFetch ? { fetchImpl: opts.minecraftFetch } : {}),
+  });
   const totpGuard = new TotpReplayGuard(redis, db);
 
   const shuttingDown = { value: false };
@@ -124,6 +132,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     authz,
     rateLimit,
     hibp,
+    skins,
     totpGuard,
     mailer: opts.mailer,
     cache: new PassthroughCache(),

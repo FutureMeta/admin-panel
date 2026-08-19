@@ -3,6 +3,13 @@
    Non ridefinire questi valori nei componenti: consumali sempre come var(--nome). */
 
 :root {
+  /* La tendina aperta di una <select>, la barra di scorrimento e i selettori
+   * di data li disegna il browser, non questo foglio di stile: l'unica cosa
+   * che ascolta e' `color-scheme`. Senza, il menu apriva con il fondo chiaro
+   * di sistema mentre il testo ereditava il nostro `--tx-primary`, cioe'
+   * bianco su bianco. */
+  color-scheme: dark;
+
   /* Superfici — 4 livelli. La profondità viene dai bordi hairline, non dalle ombre. */
   --s-base: #0a161d;
   --s-surface: #0e1f28;
@@ -83,6 +90,7 @@
 }
 
 [data-theme="light"] {
+  color-scheme: light;
   --s-base: #f4f6f7;
   --s-surface: #ffffff;
   --s-elevated: #ffffff;

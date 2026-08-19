@@ -609,6 +609,15 @@ body {
     position: relative;
     display: inline-flex;
   }
+  /* `color-scheme: dark` basta a Chrome e Firefox su Windows e Linux; su
+   * macOS la tendina e' un menu di sistema e ignora tutto. Questi due valori
+   * sono la cintura oltre alle bretelle: dove vengono ascoltati, il menu ha
+   * gli stessi colori del pannello invece di quelli predefiniti del browser. */
+  .filter-select select option,
+  .select-field select option {
+    background-color: var(--s-elevated);
+    color: var(--tx-primary);
+  }
   .filter-select-face {
     display: inline-flex;
     align-items: center;

@@ -89,10 +89,7 @@ export function AuditPage_() {
 
   return (
     <>
-      <PageHeader
-        title="Registro attività"
-        sub="Ogni azione rilevante del pannello · fuso Europe/Rome"
-      />
+      <PageHeader title="Registro attività" sub="Ogni azione rilevante del pannello · fuso Europe/Rome" />
 
       <Panel>
         <PanelBar>
@@ -106,19 +103,22 @@ export function AuditPage_() {
             width={200}
           />
           <FilterSelect
-            label="Tutti i moduli"
+            label="Filtra per modulo"
+            emptyLabel="Tutti i moduli"
             value={filters.module}
             onChange={(v) => changeFilters((f) => ({ ...f, module: v }))}
             options={(vocab.data?.modules ?? []).map((m) => ({ value: m.key, label: m.name }))}
           />
           <FilterSelect
-            label="Tutte le azioni"
+            label="Filtra per azione"
+            emptyLabel="Tutte le azioni"
             value={filters.action}
             onChange={(v) => changeFilters((f) => ({ ...f, action: v }))}
             options={(vocab.data?.actions ?? []).map((a) => ({ value: a, label: a }))}
           />
           <FilterSelect
-            label="Tutti gli esiti"
+            label="Filtra per esito"
+            emptyLabel="Tutti gli esiti"
             value={filters.outcome}
             onChange={(v) => changeFilters((f) => ({ ...f, outcome: v }))}
             options={[
@@ -175,9 +175,7 @@ export function AuditPage_() {
         )}
 
         <PanelFooter>
-          <span>
-            {entries.length === 0 ? 'Nessuna azione' : `${first}–${last} azioni`}
-          </span>
+          <span>{entries.length === 0 ? 'Nessuna azione' : `${first}–${last} azioni`}</span>
           <span style={{ display: 'flex', gap: 6 }}>
             <PageArrow
               glyph="‹"

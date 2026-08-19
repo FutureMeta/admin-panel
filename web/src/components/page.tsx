@@ -135,18 +135,34 @@ export function SearchBox({
  * il menu resta quello del sistema operativo: nessuna tendina reimplementata,
  * nessuna tastiera da rifare.
  */
+/**
+ * La tendina a pastiglia.
+ *
+ * `emptyLabel` distingue i due usi, e non e' un dettaglio di stile. Un FILTRO
+ * ha uno stato «nessun filtro», e quella voce va nella lista: «Tutti i
+ * moduli». Un SELETTORE — quale ruolo sto modificando — non ce l'ha: qualcosa
+ * e' sempre scelto, e offrire una voce vuota significa offrire di scegliere il
+ * nulla. Prima la stessa stringa faceva da etichetta accessibile e da voce
+ * vuota, per cui il selettore del ruolo mostrava «Ruolo da modificare» fra le
+ * opzioni e sceglierla passava `Number('')`, cioe' `NaN`, come id.
+ *
+ * Quindi: `label` e' solo il nome per chi usa uno screen reader, e la voce
+ * vuota esiste soltanto se qualcuno la chiede.
+ */
 export function FilterSelect({
   value,
   onChange,
   label,
+  emptyLabel,
   options,
 }: {
   value: string;
   onChange: (v: string) => void;
   label: string;
+  emptyLabel?: string;
   options: Array<{ value: string; label: string }>;
 }) {
-  const current = options.find((o) => o.value === value)?.label ?? label;
+  const current = options.find((o) => o.value === value)?.label ?? emptyLabel ?? label;
   return (
     <span className="filter-select">
       <span className="filter-select-face" aria-hidden="true">
@@ -154,7 +170,7 @@ export function FilterSelect({
         <Icon path="m6 9 6 6 6-6" size={12} />
       </span>
       <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{label}</option>
+        {emptyLabel ? <option value="">{emptyLabel}</option> : null}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

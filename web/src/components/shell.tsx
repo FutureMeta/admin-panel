@@ -76,17 +76,17 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
           style={{ objectFit: 'contain', flex: 'none' }}
         />
         <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontWeight: 700,
-                fontSize: 13,
-                letterSpacing: '.12em',
-                textTransform: 'uppercase',
-              }}
-            >
-              MetaMC
-            </div>
+          <div
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontWeight: 700,
+              fontSize: 13,
+              letterSpacing: '.12em',
+              textTransform: 'uppercase',
+            }}
+          >
+            MetaMC
+          </div>
           <div
             style={{
               fontSize: 10.5,

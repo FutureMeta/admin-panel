@@ -23,7 +23,7 @@
 
 import { useNavigate } from '@tanstack/react-router';
 import qrcode from 'qrcode-generator';
-import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { HexField } from '../components/hex-field.tsx';
 import { Button, Field, Notice, StrengthMeter } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
@@ -57,20 +57,12 @@ export function AcceptPage() {
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [totpUri, setTotpUri] = useState<string | undefined>();
-  const [preparing, setPreparing] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
-
-  /**
-   * L'accettazione non e' idempotente: la seconda chiamata troverebbe
-   * l'account gia' creato. Il flag impedisce che una battitura in piu' la
-   * faccia partire due volte, e torna false solo se e' fallita davvero.
-   */
-  const accepting = useRef(false);
-  const accepted = totpUri !== undefined;
 
   useEffect(() => {
     api<Onboarding>('/api/invites/onboarding')
@@ -83,39 +75,45 @@ export function AcceptPage() {
 
   const passwordReady = password.length >= MIN_PASSWORD && password === confirm;
 
-  // Appena le due password coincidono si crea l'account e arriva il segreto.
-  // Mezzo secondo di attesa: senza, chi digita la conferma un carattere alla
-  // volta la farebbe partire su una coincidenza di passaggio.
-  useEffect(() => {
-    if (!passwordReady || accepted || accepting.current) return;
-    const timer = setTimeout(() => {
-      accepting.current = true;
-      setPreparing(true);
-      setError(undefined);
-      api<{ totpURI: string | null }>('/api/invites/accept', {
+  /**
+   * Il passo 1 NON e' reversibile, ed e' il motivo per cui non c'e' un
+   * pulsante per tornare indietro dal passo 2.
+   *
+   * Il segreto TOTP lo conia better-auth, e per coniarlo gli serve la
+   * password: il QR del passo 2 non puo' esistere prima che l'account esista.
+   * Quindi «Continua» crea l'account e consuma l'invito. Da li' in poi la
+   * password e' impostata, e nessuna schermata di questa pagina puo' piu'
+   * cambiarla.
+   */
+  async function submitPassword(e: FormEvent) {
+    e.preventDefault();
+    if (!passwordReady) return;
+    setError(undefined);
+    setBusy(true);
+    try {
+      const res = await api<{ totpURI: string | null }>('/api/invites/accept', {
         method: 'POST',
         body: { password },
-      })
-        .then((res) => setTotpUri(res.totpURI ?? ''))
-        .catch((err: unknown) => {
-          accepting.current = false;
-          if (err instanceof ApiError && err.code === 'PASSWORD_COMPROMISED') {
-            setError('Questa password compare in una violazione nota. Scegline un’altra.');
-          } else if (err instanceof ApiError && err.code === 'HIBP_UNAVAILABLE') {
-            // Fail-closed dichiarato: si spiega perche' non si prosegue,
-            // invece di accettare una password non verificata (§8.6).
-            setError(
-              'Non riusciamo a verificare che la password non sia compromessa. ' +
-                'Per sicurezza non proseguiamo: riprova fra qualche minuto.',
-            );
-          } else {
-            setError('Non è stato possibile impostare la password. Riprova.');
-          }
-        })
-        .finally(() => setPreparing(false));
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [passwordReady, accepted, password]);
+      });
+      setTotpUri(res.totpURI ?? '');
+      setStep(2);
+    } catch (err) {
+      if (err instanceof ApiError && err.code === 'PASSWORD_COMPROMISED') {
+        setError('Questa password compare in una violazione nota. Scegline un’altra.');
+      } else if (err instanceof ApiError && err.code === 'HIBP_UNAVAILABLE') {
+        // Fail-closed dichiarato: si spiega perche' non si prosegue, invece
+        // di accettare una password non verificata (§8.6).
+        setError(
+          'Non riusciamo a verificare che la password non sia compromessa. ' +
+            'Per sicurezza non proseguiamo: riprova fra qualche minuto.',
+        );
+      } else {
+        setError('Non è stato possibile impostare la password. Riprova.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function activate(e: FormEvent) {
     e.preventDefault();
@@ -322,7 +320,21 @@ export function AcceptPage() {
             >
               Moduli inclusi
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {/* Oltre tre moduli la colonna scorre invece di allungare la card:
+                150px sono tre righe da 42 piu' i due spazi. Il padding a
+                destra piu' il margine negativo tengono la barra staccata dalle
+                righe senza restringerle — senza, la barra ci finisce sopra. */}
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+                maxHeight: 150,
+                overflowY: 'auto',
+                paddingRight: 10,
+                marginRight: -10,
+              }}
+            >
               {(invite?.modules ?? []).map((m) => {
                 const tone = LEVEL_TONE[m.level] ?? LEVEL_TONE[0];
                 return (
@@ -361,13 +373,9 @@ export function AcceptPage() {
             </p>
           </div>
 
-          {/* Colonna destra: tutto quello che devi fare, in una volta. */}
-          <form onSubmit={activate} style={{ padding: 40 }}>
-            <h2
-              style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, margin: '0 0 20px' }}
-            >
-              Attiva il tuo accesso
-            </h2>
+          {/* Colonna destra: l'unica parte che cambia fra i due passi. */}
+          <div style={{ padding: 40 }}>
+            <StepBar step={step} />
 
             {error ? (
               <div style={{ marginBottom: 18 }}>
@@ -375,128 +383,161 @@ export function AcceptPage() {
               </div>
             ) : null}
 
-            <div className="field" style={{ marginBottom: 18 }}>
-              <label className="label" htmlFor="accept-email">
-                Email
-              </label>
-              {/* L'indirizzo viene dalla riga invito e non è modificabile: il
-                  campo lo mostra, non lo raccoglie (§8.1.9). */}
-              <input id="accept-email" className="input" value={invite?.email ?? ''} disabled />
-            </div>
-
-            <Field
-              label="Nuova password"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={MIN_PASSWORD}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              // Impostata la password, l'account esiste: lasciare il campo
-              // modificabile prometterebbe un cambio che questa pagina non fa
-              // piu'.
-              disabled={accepted}
-            />
-            <StrengthMeter password={password} />
-            <Field
-              label="Conferma password"
-              type="password"
-              autoComplete="new-password"
-              required
-              minLength={MIN_PASSWORD}
-              value={confirm}
-              onChange={(e) => setConfirm(e.target.value)}
-              disabled={accepted}
-              {...(confirm.length > 0 && confirm !== password
-                ? { hint: 'Le due password non coincidono.' }
-                : {})}
-            />
-
-            <div
-              style={{
-                padding: 16,
-                border: '1px solid var(--bd-subtle)',
-                borderRadius: 'var(--r-md)',
-                background: 'var(--s-elevated)',
-                margin: '26px 0 24px',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 14,
-                }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 600 }}>Autenticazione a due fattori</div>
-                <span
+            {step === 1 ? (
+              <form onSubmit={submitPassword}>
+                <h2
                   style={{
-                    fontSize: 11,
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 18,
                     fontWeight: 600,
-                    padding: '3px 8px',
-                    borderRadius: 'var(--r-full)',
-                    background: 'var(--err-soft)',
-                    color: 'var(--err)',
+                    margin: '0 0 20px',
                   }}
                 >
-                  Obbligatoria
-                </span>
-              </div>
+                  Imposta la password
+                </h2>
 
-              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                <QrBox uri={totpUri} preparing={preparing} />
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, lineHeight: '19px', color: 'var(--tx-secondary)' }}>
-                    {accepted
-                      ? 'Scansiona con Google Authenticator, 1Password o Authy, poi inserisci il primo codice.'
-                      : 'Scegli la password qui sopra: il codice QR compare appena è impostata.'}
-                  </div>
-                  {secret ? (
-                    <div
-                      className="mono"
+                <div className="field" style={{ marginBottom: 18 }}>
+                  <label className="label" htmlFor="accept-email">
+                    Email
+                  </label>
+                  {/* L'indirizzo viene dalla riga invito e non è modificabile:
+                      il campo lo mostra, non lo raccoglie (§8.1.9). */}
+                  <input id="accept-email" className="input" value={invite?.email ?? ''} disabled />
+                </div>
+
+                <Field
+                  label="Nuova password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={MIN_PASSWORD}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <StrengthMeter password={password} />
+                <Field
+                  label="Conferma password"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={MIN_PASSWORD}
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  {...(confirm.length > 0 && confirm !== password
+                    ? { hint: 'Le due password non coincidono.' }
+                    : {})}
+                />
+
+                <div style={{ marginTop: 28 }}>
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    loading={busy}
+                    disabled={!passwordReady}
+                    block
+                  >
+                    Continua
+                  </Button>
+                </div>
+                <Footnote>
+                  Al passo successivo attivi la verifica a due fattori, obbligatoria per tutto lo staff.
+                </Footnote>
+              </form>
+            ) : (
+              <form onSubmit={activate}>
+                <h2
+                  style={{
+                    fontFamily: 'var(--font-display)',
+                    fontSize: 18,
+                    fontWeight: 600,
+                    margin: '0 0 20px',
+                  }}
+                >
+                  Attiva la verifica a due fattori
+                </h2>
+
+                <div
+                  style={{
+                    padding: 16,
+                    border: '1px solid var(--bd-subtle)',
+                    borderRadius: 'var(--r-md)',
+                    background: 'var(--s-elevated)',
+                    marginBottom: 24,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 14,
+                    }}
+                  >
+                    <div style={{ fontSize: 13, fontWeight: 600 }}>Autenticazione a due fattori</div>
+                    <span
                       style={{
                         fontSize: 11,
-                        color: 'var(--tx-muted)',
-                        marginTop: 8,
-                        wordBreak: 'break-all',
+                        fontWeight: 600,
+                        padding: '3px 8px',
+                        borderRadius: 'var(--r-full)',
+                        background: 'var(--err-soft)',
+                        color: 'var(--err)',
                       }}
                     >
-                      {/* La chiave in chiaro non è ridondante: se la fotocamera
-                          non collabora, è l'unico modo di aggiungere l'account
-                          a mano. */}
-                      {groupsOf(secret, 4)}
+                      Obbligatoria
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                    <QrBox uri={totpUri} preparing={busy && !totpUri} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, lineHeight: '19px', color: 'var(--tx-secondary)' }}>
+                        Scansiona con Google Authenticator, 1Password o Authy, poi inserisci il primo codice.
+                      </div>
+                      {secret ? (
+                        <div
+                          className="mono"
+                          style={{
+                            fontSize: 11,
+                            color: 'var(--tx-muted)',
+                            marginTop: 8,
+                            wordBreak: 'break-all',
+                          }}
+                        >
+                          {/* La chiave in chiaro non è ridondante: se la
+                              fotocamera non collabora, è l'unico modo di
+                              aggiungere l'account a mano. */}
+                          {groupsOf(secret, 4)}
+                        </div>
+                      ) : null}
                     </div>
-                  ) : null}
+                  </div>
+
+                  <OtpCells value={code} onChange={setCode} disabled={!totpUri} />
                 </div>
-              </div>
 
-              <OtpCells value={code} onChange={setCode} disabled={!accepted} />
-            </div>
-
-            <Button
-              type="submit"
-              variant="primary"
-              size="lg"
-              loading={busy}
-              disabled={!accepted || code.length !== 6}
-              block
-            >
-              Attiva account ed entra
-            </Button>
-
-            <p
-              style={{
-                margin: '14px 0 0',
-                fontSize: 11.5,
-                lineHeight: '18px',
-                color: 'var(--tx-muted)',
-                textAlign: 'center',
-              }}
-            >
-              Attivando l'account accetti il regolamento interno dello staff.
-            </p>
-          </form>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  loading={busy}
+                  disabled={code.length !== 6}
+                  block
+                >
+                  Attiva account ed entra
+                </Button>
+                {/* Il disegno mette qui «← Torna alla password». Non c'è, e
+                    non è una dimenticanza: il passo 1 non è reversibile.
+                    Premendo «Continua» l'account viene creato e l'invito
+                    consumato — è l'unico modo di avere il segreto TOTP da cui
+                    nasce il QR. Un pulsante che riportasse indietro
+                    troverebbe la password già impostata e non potrebbe
+                    cambiarla: prometterebbe un ritorno che non esiste. */}
+                <Footnote>Attivando l'account accetti il regolamento interno dello staff.</Footnote>
+              </form>
+            )}
+          </div>
         </Shell>
       )}
     </main>
@@ -689,5 +730,87 @@ function Title({ children }: { children: ReactNode }) {
     >
       {children}
     </h1>
+  );
+}
+
+/**
+ * L'indicatore dei due passi.
+ *
+ * Colori e simboli sono quelli del disegno: il passo fatto diventa un segno
+ * di spunta verde, quello corrente e' arancione, quello che deve ancora
+ * venire resta spento. Serve a dire quanto manca — due passi, non tre — prima
+ * che qualcuno si chieda quanto durera'.
+ */
+function StepBar({ step }: { step: 1 | 2 }) {
+  const dot = (background: string, color: string, mark: string) => (
+    <span
+      style={{
+        width: 20,
+        height: 20,
+        borderRadius: '50%',
+        background,
+        color,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: 11,
+        flex: 'none',
+      }}
+    >
+      {mark}
+    </span>
+  );
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 22 }}>
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          fontSize: 12,
+          fontWeight: 600,
+          color: step === 1 ? 'var(--tx-primary)' : 'var(--tx-muted)',
+        }}
+      >
+        {dot(step > 1 ? 'var(--ok)' : 'var(--ac)', 'var(--on-ac)', step > 1 ? '✓' : '1')}
+        Password
+      </span>
+      <span style={{ flex: 1, height: 1, background: 'var(--bd-subtle)' }} />
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          fontSize: 12,
+          fontWeight: 600,
+          color: step === 2 ? 'var(--tx-primary)' : 'var(--tx-muted)',
+        }}
+      >
+        {dot(
+          step === 2 ? 'var(--ac)' : 'var(--s-elevated)',
+          step === 2 ? 'var(--on-ac)' : 'var(--tx-muted)',
+          '2',
+        )}
+        Verifica a due fattori
+      </span>
+    </div>
+  );
+}
+
+/** La riga sotto il pulsante, centrata e smorzata. */
+function Footnote({ children }: { children: ReactNode }) {
+  return (
+    <p
+      style={{
+        margin: '14px 0 0',
+        fontSize: 11.5,
+        lineHeight: '18px',
+        color: 'var(--tx-muted)',
+        textAlign: 'center',
+      }}
+    >
+      {children}
+    </p>
   );
 }

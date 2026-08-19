@@ -44,15 +44,16 @@ a{color:var(--ac-text);text-decoration:none}
 a:hover{color:var(--ac-hover)}
 @keyframes mmShimmer{0%{background-position:-320px 0}100%{background-position:320px 0}}
 @keyframes mmRise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.mm-scroll::-webkit-scrollbar{width:6px}
+.mm-scroll::-webkit-scrollbar-track{background:transparent}
+.mm-scroll::-webkit-scrollbar-thumb{background:var(--bd-strong);border-radius:var(--r-full)}
+.mm-scroll::-webkit-scrollbar-thumb:hover{background:var(--tx-disabled)}
+.mm-scroll{scrollbar-width:thin;scrollbar-color:var(--bd-strong) transparent}
 </style>
 <script src="./metamc-shared.js"></script>
 </helmet>
 <div ref="{{ rootRef }}" data-theme="{{ theme }}" style="background:var(--s-base);color:var(--tx-primary);font-family:var(--font-ui);min-height:100vh">
-<div style="max-width:1440px;margin:0 auto 20px">
-      <div style="margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ac-text)">03 — Onboarding</div>
-      <h1 style="font-family:var(--font-display);font-size:24px;line-height:32px;font-weight:700;letter-spacing:-.01em;margin:0">Accettazione invito</h1>
-    </div>
-    <div style="max-width:1440px;margin:0 auto;min-height:840px;display:flex;align-items:center;justify-content:center;padding:56px 32px;border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-base);position:relative;overflow:hidden">
+<div style="max-width:1440px;margin:0 auto;min-height:840px;display:flex;align-items:center;justify-content:center;padding:56px 32px;border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-base);position:relative;overflow:hidden">
       <svg viewBox="0 0 1440 840" preserveAspectRatio="xMidYMid slice" style="position:absolute;inset:0;width:100%;height:100%;opacity:.5">
         <sc-for list="{{ hexField }}" as="h" hint-placeholder-count="40">
           <polygon points="{{ h.points }}" fill="{{ h.fill }}" stroke="{{ h.stroke }}" stroke-width="1"></polygon>
@@ -68,7 +69,7 @@ a:hover{color:var(--ac-hover)}
             <span style="font-family:var(--font-display);font-size:15px;font-weight:700;color:var(--tx-primary)">Analista dati</span>
           </div>
           <div style="font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--tx-muted);margin-bottom:12px">Moduli inclusi</div>
-          <div style="display:flex;flex-direction:column;gap:8px">
+          <div class="mm-scroll" style="display:flex;flex-direction:column;gap:8px;max-height:150px;overflow-y:auto;padding-right:10px;margin-right:-10px">
             <sc-for list="{{ inviteModules }}" as="m" hint-placeholder-count="4">
               <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-elevated)">
                 <span style="font-size:13px;font-weight:500">{{ m.name }}</span>
@@ -79,41 +80,61 @@ a:hover{color:var(--ac-hover)}
           <p style="margin:20px 0 0;font-size:12px;line-height:19px;color:var(--tx-muted)">I moduli non elencati non compaiono nel pannello. Un owner può ampliare l'accesso in qualsiasi momento.</p>
         </div>
         <div style="padding:40px">
-          <h3 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 20px">Attiva il tuo accesso</h3>
-          <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Email</label>
-          <input value="kryos@metamc.it" disabled="{{ true }}" style="width:100%;height:38px;padding:0 12px;margin-bottom:18px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-disabled);font-family:var(--font-ui);font-size:13.5px">
-          <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Nuova password</label>
-          <input type="password" value="••••••••••••••" readOnly="{{ true }}" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--ac);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-mono);font-size:13.5px;box-shadow:0 0 0 3px var(--ac-soft)">
-          <div style="display:flex;gap:4px;margin:10px 0 8px">
-            <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
-            <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
-            <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
-            <div style="height:3px;flex:1;border-radius:2px;background:var(--bd-subtle)"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:22px">
+            <span style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:{{ step1Color }}">
+              <span style="width:20px;height:20px;border-radius:50%;background:{{ step1Bg }};color:{{ step1Fg }};display:flex;align-items:center;justify-content:center;font-size:11px">{{ step1Mark }}</span>
+              Password
+            </span>
+            <span style="flex:1;height:1px;background:var(--bd-subtle)"></span>
+            <span style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:{{ step2Color }}">
+              <span style="width:20px;height:20px;border-radius:50%;background:{{ step2Bg }};color:{{ step2Fg }};display:flex;align-items:center;justify-content:center;font-size:11px">2</span>
+              Verifica a due fattori
+            </span>
           </div>
-          <div style="font-size:11.5px;color:var(--tx-muted);margin-bottom:18px">Robusta · minimo 12 caratteri, una maiuscola, un numero</div>
-          <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Conferma password</label>
-          <input type="password" value="••••••••••••••" readOnly="{{ true }}" style="width:100%;height:38px;padding:0 12px;margin-bottom:26px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-mono);font-size:13.5px">
 
-          <div style="padding:16px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-elevated);margin-bottom:24px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-              <div style="font-size:13px;font-weight:600">Autenticazione a due fattori</div>
-              <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:var(--r-full);background:var(--err-soft);color:var(--err)">Obbligatoria</span>
+          <sc-if value="{{ isStep1 }}" hint-placeholder-val="{{ true }}">
+            <h3 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 20px">Imposta la password</h3>
+            <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Email</label>
+            <input value="kryos@metamc.it" disabled="{{ true }}" style="width:100%;height:38px;padding:0 12px;margin-bottom:18px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-disabled);font-family:var(--font-ui);font-size:13.5px">
+            <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Nuova password</label>
+            <input type="password" value="••••••••••••••" readOnly="{{ true }}" style="width:100%;height:38px;padding:0 12px;border:1px solid var(--ac);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-mono);font-size:13.5px;box-shadow:0 0 0 3px var(--ac-soft)">
+            <div style="display:flex;gap:4px;margin:10px 0 8px">
+              <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
+              <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
+              <div style="height:3px;flex:1;border-radius:2px;background:var(--ok)"></div>
+              <div style="height:3px;flex:1;border-radius:2px;background:var(--bd-subtle)"></div>
             </div>
-            <div style="display:flex;gap:16px;align-items:center">
-              <div style="width:96px;height:96px;border-radius:var(--r-sm);background:var(--s-inset);border:1px solid var(--bd-subtle);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--tx-muted);text-align:center;flex:none">QR<br>setup</div>
-              <div style="min-width:0">
-                <div style="font-size:12px;line-height:19px;color:var(--tx-secondary)">Scansiona con Google Authenticator, 1Password o Authy, poi inserisci il primo codice.</div>
-                <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted);margin-top:8px;word-break:break-all">JBSW Y3DP EHPK 3PXP</div>
+            <div style="font-size:11.5px;color:var(--tx-muted);margin-bottom:18px">Robusta · minimo 12 caratteri, una maiuscola, un numero</div>
+            <label style="display:block;font-size:12px;font-weight:600;color:var(--tx-secondary);margin-bottom:7px">Conferma password</label>
+            <input type="password" value="••••••••••••••" readOnly="{{ true }}" style="width:100%;height:38px;padding:0 12px;margin-bottom:28px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-mono);font-size:13.5px">
+            <button onClick="{{ goStep2 }}" style="width:100%;height:40px;border:none;border-radius:var(--r-sm);background:var(--ac);color:#160A02;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer">Continua</button>
+            <p style="margin:14px 0 0;font-size:11.5px;line-height:18px;color:var(--tx-muted);text-align:center">Al passo successivo attivi la verifica a due fattori, obbligatoria per tutto lo staff.</p>
+          </sc-if>
+
+          <sc-if value="{{ isStep2 }}" hint-placeholder-val="{{ false }}">
+            <h3 style="font-family:var(--font-display);font-size:18px;font-weight:600;margin:0 0 20px">Attiva la verifica a due fattori</h3>
+            <div style="padding:16px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-elevated);margin-bottom:24px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div style="font-size:13px;font-weight:600">Autenticazione a due fattori</div>
+                <span style="font-size:11px;font-weight:600;padding:3px 8px;border-radius:var(--r-full);background:var(--err-soft);color:var(--err)">Obbligatoria</span>
+              </div>
+              <div style="display:flex;gap:16px;align-items:center">
+                <div style="width:96px;height:96px;border-radius:var(--r-sm);background:var(--s-inset);border:1px solid var(--bd-subtle);display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-size:10px;color:var(--tx-muted);text-align:center;flex:none">QR<br>setup</div>
+                <div style="min-width:0">
+                  <div style="font-size:12px;line-height:19px;color:var(--tx-secondary)">Scansiona con Google Authenticator, 1Password o Authy, poi inserisci il primo codice.</div>
+                  <div style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted);margin-top:8px;word-break:break-all">JBSW Y3DP EHPK 3PXP</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:7px;margin-top:14px">
+                <sc-for list="{{ otpCells }}" as="c" hint-placeholder-count="6">
+                  <div style="flex:1;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid {{ c.bd }};border-radius:var(--r-xs);background:var(--s-inset);font-family:var(--font-mono);font-size:16px;color:var(--tx-primary)">{{ c.v }}</div>
+                </sc-for>
               </div>
             </div>
-            <div style="display:flex;gap:7px;margin-top:14px">
-              <sc-for list="{{ otpCells }}" as="c" hint-placeholder-count="6">
-                <div style="flex:1;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid {{ c.bd }};border-radius:var(--r-xs);background:var(--s-inset);font-family:var(--font-mono);font-size:16px;color:var(--tx-primary)">{{ c.v }}</div>
-              </sc-for>
-            </div>
-          </div>
-          <button style="width:100%;height:40px;border:none;border-radius:var(--r-sm);background:var(--ac);color:#160A02;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer">Attiva account ed entra</button>
-          <p style="margin:14px 0 0;font-size:11.5px;line-height:18px;color:var(--tx-muted);text-align:center">Attivando l'account accetti il regolamento interno dello staff.</p>
+            <button style="width:100%;height:40px;border:none;border-radius:var(--r-sm);background:var(--ac);color:#160A02;font-family:var(--font-ui);font-size:14px;font-weight:600;cursor:pointer">Attiva account ed entra</button>
+            <button onClick="{{ goStep1 }}" style="width:100%;height:36px;margin-top:8px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:transparent;color:var(--tx-secondary);font-family:var(--font-ui);font-size:13px;cursor:pointer">← Torna alla password</button>
+            <p style="margin:14px 0 0;font-size:11.5px;line-height:18px;color:var(--tx-muted);text-align:center">Attivando l'account accetti il regolamento interno dello staff.</p>
+          </sc-if>
         </div>
       </div>
     </div>
@@ -123,7 +144,7 @@ a:hover{color:var(--ac-hover)}
 class Component extends DCLogic {
   rootRef = React.createRef();
   state = { screen:'invito', theme:null, collapsedOverride:null, loginState:'default',
-    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1' };
+    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1', inviteStep:1 };
 
   componentDidMount() { this.applyAccent(); this.waitShared(); }
   componentDidUpdate() { this.applyAccent(); }
@@ -150,7 +171,22 @@ class Component extends DCLogic {
   renderVals() {
     const M = window.MetaMC;
     if (!M) return { rootRef: this.rootRef, theme: 'dark' };
-    return M.baseVals(this, 'invito');
+    const base = M.baseVals(this, 'invito');
+    const step = this.state.inviteStep || 1;
+    return {
+      ...base,
+      isStep1: step === 1,
+      isStep2: step === 2,
+      goStep2: () => this.setState({inviteStep: 2}),
+      goStep1: () => this.setState({inviteStep: 1}),
+      step1Color: step === 1 ? 'var(--tx-primary)' : 'var(--tx-muted)',
+      step1Bg: step > 1 ? 'var(--ok)' : 'var(--ac)',
+      step1Fg: '#160A02',
+      step1Mark: step > 1 ? '✓' : '1',
+      step2Color: step === 2 ? 'var(--tx-primary)' : 'var(--tx-muted)',
+      step2Bg: step === 2 ? 'var(--ac)' : 'var(--s-elevated)',
+      step2Fg: step === 2 ? '#160A02' : 'var(--tx-muted)'
+    };
   }
 }
 </script>

@@ -115,6 +115,47 @@ body {
   }
 }
 
+/* --- barre di scorrimento -------------------------------------------------
+ *
+ * Le misure sono quelle di frontend/2-accettazione-invito.dc.html, dove il
+ * disegno le definisce su una classe `.mm-scroll`. Qui valgono per tutto:
+ * una barra stilizzata solo dove il disegno l'ha disegnata avrebbe fatto
+ * convivere due barre diverse nella stessa pagina — quella dei moduli e
+ * quella della tabella utenti, a due passi l'una dall'altra.
+ *
+ * `height` oltre a `width`: le tabelle scorrono in orizzontale, e la regola
+ * del disegno da sola le avrebbe lasciate col cursore di sistema.
+ *
+ * `color-scheme: dark` nei token fa gia' la parte del browser; questo e' lo
+ * strato nostro sopra, e serve anche a Firefox, che non conosce le
+ * pseudo-classi `::-webkit-` ma legge `scrollbar-color`.
+ *
+ * Fuori da `@layer` di proposito: le pseudo-classi delle barre non entrano
+ * in conflitto con niente, e nessuna regola livellata le sovrascrive. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--bd-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--bd-strong);
+  border-radius: var(--r-full);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--tx-disabled);
+}
+/* L'angolo fra barra verticale e orizzontale: senza, resta un quadratino
+ * chiaro di sistema nell'incrocio delle tabelle che scorrono su entrambi. */
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
 }

@@ -205,12 +205,25 @@ guarda ogni tanto.
 
 ## 8. Manutenzione mensile
 
-- **Partizioni dell'audit log.** La migration 001 ne crea 12 in avanti più 2
-  indietro. Un job mensile deve chiamare `audit.create_month_partition()` per
-  restare avanti. Se le partizioni finiscono, **ogni INSERT di audit fallisce**,
-  e siccome l'audit è nella stessa transazione delle modifiche di stato,
-  falliscono anche quelle: il pannello si blocca in scrittura. Non è un guasto
-  silenzioso, ma è un guasto totale.
+- **Partizioni dell'audit log — non serve fare niente.** Le tiene l'applicazione:
+  all'avvio e poi una volta al giorno garantisce 12 mesi avanti, e in caso di
+  errore riprova dopo un'ora invece di aspettarne ventiquattro. Cerca
+  `partizioni audit verificate` nei log per confermare che sta girando.
+
+  Perché non un cron: se le partizioni finiscono, **ogni INSERT di audit
+  fallisce**, e siccome l'audit sta nella stessa transazione delle modifiche di
+  stato falliscono anche quelle — il pannello si blocca in scrittura, tutto
+  insieme. Un cron esterno regge finché qualcuno lo configura e finché nessuno
+  ricostruisce la macchina dimenticandosene: una dipendenza che non si vede dal
+  codice e che si scopre rotta il giorno del guasto. Ora il lavoro vive accanto
+  alla cosa che protegge.
+
+  L'applicazione **non** ha privilegi DDL: chiama
+  `audit.create_month_partition()`, che dalla migration 009 è `SECURITY
+  DEFINER` con `search_path` bloccato, non eseguibile da `PUBLIC` e con un
+  orizzonte di [-12, +24] mesi sulle date accettate. Continua a non poter
+  cancellare, modificare, staccare o distruggere niente: lo verificano i test
+  di `21-partitions-self-service`.
 - **Retention.** Si pota con `DETACH` + `DROP` di partizione, mai con `DELETE`:
   un DELETE spezzerebbe la catena hash. Prima del DROP, ancorare la testa della
   partizione.

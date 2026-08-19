@@ -5,7 +5,7 @@
 //
 // Uso (cron sul VPS):
 //   node scripts/maintenance.ts anchor          # giornaliero
-//   node scripts/maintenance.ts partitions      # mensile
+//   node scripts/maintenance.ts partitions      # a mano: normalmente lo fa l'app
 //   node scripts/maintenance.ts cleanup         # giornaliero
 //   node scripts/maintenance.ts verify          # ogni ora
 

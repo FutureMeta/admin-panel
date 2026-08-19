@@ -1,21 +1,31 @@
-// Accettazione invito: password, enrollment TOTP, recovery code.
+// Accettazione invito: password, secondo fattore e recovery code.
 //
 // La pagina si apre DOPO il redirect a URL pulito (§8.1.7): qui il token non
 // c'e' piu', c'e' un cookie di onboarding. Se manca, l'invito non e'
 // spendibile — e la pagina non dice se era scaduto, consumato o inventato
 // (SEC-32).
 //
-// I recovery code si mostrano UNA SOLA VOLTA. La schermata lo dice prima di
-// mostrarli e non lascia proseguire finche' non si conferma di averli salvati.
+// Impaginazione di frontend/2-accettazione-invito.dc.html: campo di esagoni a
+// piena pagina sotto, card centrata da 940px divisa in due — a sinistra cosa
+// stai per ricevere, a destra tutto quello che devi fare, in una schermata
+// sola.
 //
-// Impaginazione del prototipo: campo di esagoni a piena pagina sotto, card
-// centrata da 940px divisa in due — a sinistra cosa stai per ricevere, a
-// destra cosa devi fare.
+// UNA COSA IL DISEGNO NON PUO' MOSTRARE, ed e' il motivo per cui il riquadro
+// del QR ha due stati. Il segreto TOTP lo produce better-auth, e per produrlo
+// gli serve la password: prima che la password sia impostata quel QR non
+// esiste da nessuna parte, e disegnarlo vuoto sarebbe una bugia. Quindi la
+// pagina resta una, ma il riquadro si accende da solo appena le due password
+// coincidono — non c'e' un secondo pulsante e non si cambia schermata.
+//
+// I recovery code si mostrano UNA SOLA VOLTA, e per quelli la schermata a
+// parte resta: sono l'unica cosa in tutto il flusso che non si puo' recuperare
+// e meritano una pagina che non abbia altro sopra.
 
 import { useNavigate } from '@tanstack/react-router';
-import { type FormEvent, type ReactNode, useEffect, useState } from 'react';
+import qrcode from 'qrcode-generator';
+import { type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { HexField } from '../components/hex-field.tsx';
-import { Button, Field, Notice } from '../components/ui.tsx';
+import { Button, Field, Notice, StrengthMeter } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
 type OnboardingModule = { key: string; name: string; level: number };
@@ -27,7 +37,7 @@ type Onboarding = {
   invitedByName: string | null;
   modules: OnboardingModule[];
 };
-type Step = 'caricamento' | 'scaduto' | 'password' | 'totp' | 'codici';
+type Phase = 'caricamento' | 'scaduto' | 'attiva' | 'codici';
 
 const LEVEL_LABEL = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
 const LEVEL_TONE = [
@@ -37,62 +47,77 @@ const LEVEL_TONE = [
   { color: 'var(--ac-text)', soft: 'var(--ac-soft)' },
 ] as const;
 
+/** Il §8.6 chiede lunghezza, non composizione: e' l'unica soglia che esiste. */
+const MIN_PASSWORD = 12;
+
 export function AcceptPage() {
   const navigate = useNavigate();
-  const [step, setStep] = useState<Step>('caricamento');
+  const [phase, setPhase] = useState<Phase>('caricamento');
   const [invite, setInvite] = useState<Onboarding | undefined>();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [totpUri, setTotpUri] = useState<string | undefined>();
+  const [preparing, setPreparing] = useState(false);
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
+  /**
+   * L'accettazione non e' idempotente: la seconda chiamata troverebbe
+   * l'account gia' creato. Il flag impedisce che una battitura in piu' la
+   * faccia partire due volte, e torna false solo se e' fallita davvero.
+   */
+  const accepting = useRef(false);
+  const accepted = totpUri !== undefined;
+
   useEffect(() => {
     api<Onboarding>('/api/invites/onboarding')
       .then((data) => {
         setInvite(data);
-        setStep('password');
+        setPhase('attiva');
       })
-      .catch(() => setStep('scaduto'));
+      .catch(() => setPhase('scaduto'));
   }, []);
 
-  async function submitPassword(e: FormEvent) {
-    e.preventDefault();
-    if (password !== confirm) {
-      setError('Le due password non coincidono.');
-      return;
-    }
-    setError(undefined);
-    setBusy(true);
-    try {
-      const res = await api<{ totpURI: string | null }>('/api/invites/accept', {
+  const passwordReady = password.length >= MIN_PASSWORD && password === confirm;
+
+  // Appena le due password coincidono si crea l'account e arriva il segreto.
+  // Mezzo secondo di attesa: senza, chi digita la conferma un carattere alla
+  // volta la farebbe partire su una coincidenza di passaggio.
+  useEffect(() => {
+    if (!passwordReady || accepted || accepting.current) return;
+    const timer = setTimeout(() => {
+      accepting.current = true;
+      setPreparing(true);
+      setError(undefined);
+      api<{ totpURI: string | null }>('/api/invites/accept', {
         method: 'POST',
         body: { password },
-      });
-      setTotpUri(res.totpURI ?? undefined);
-      setStep('totp');
-    } catch (err) {
-      if (err instanceof ApiError && err.code === 'PASSWORD_COMPROMISED') {
-        setError('Questa password compare in una violazione nota. Scegline un’altra.');
-      } else if (err instanceof ApiError && err.code === 'HIBP_UNAVAILABLE') {
-        // Fail-closed dichiarato: si spiega perche' non si prosegue, invece di
-        // accettare una password non verificata (§8.6).
-        setError(
-          'Non riusciamo a verificare che la password non sia compromessa. ' +
-            'Per sicurezza non proseguiamo: riprova fra qualche minuto.',
-        );
-      } else {
-        setError('Non è stato possibile completare l’accettazione.');
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
+      })
+        .then((res) => setTotpUri(res.totpURI ?? ''))
+        .catch((err: unknown) => {
+          accepting.current = false;
+          if (err instanceof ApiError && err.code === 'PASSWORD_COMPROMISED') {
+            setError('Questa password compare in una violazione nota. Scegline un’altra.');
+          } else if (err instanceof ApiError && err.code === 'HIBP_UNAVAILABLE') {
+            // Fail-closed dichiarato: si spiega perche' non si prosegue,
+            // invece di accettare una password non verificata (§8.6).
+            setError(
+              'Non riusciamo a verificare che la password non sia compromessa. ' +
+                'Per sicurezza non proseguiamo: riprova fra qualche minuto.',
+            );
+          } else {
+            setError('Non è stato possibile impostare la password. Riprova.');
+          }
+        })
+        .finally(() => setPreparing(false));
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [passwordReady, accepted, password]);
 
-  async function submitTotp(e: FormEvent) {
+  async function activate(e: FormEvent) {
     e.preventDefault();
     setError(undefined);
     setBusy(true);
@@ -102,7 +127,7 @@ export function AcceptPage() {
         body: { code: code.trim() },
       });
       setCodes(res.recoveryCodes);
-      setStep('codici');
+      setPhase('codici');
     } catch {
       setError('Codice non valido. Controlla che l’orario del telefono sia sincronizzato.');
       setCode('');
@@ -135,24 +160,13 @@ export function AcceptPage() {
     >
       <HexField width={1440} height={840} opacity={0.5} />
 
-      {step === 'caricamento' ? (
+      {phase === 'caricamento' ? (
         <p className="t-lead" style={{ position: 'relative', color: 'var(--tx-muted)', margin: 0 }}>
           Verifica dell'invito…
         </p>
-      ) : step === 'scaduto' ? (
+      ) : phase === 'scaduto' ? (
         <Shell single>
-          <h1
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 24,
-              lineHeight: '32px',
-              fontWeight: 700,
-              letterSpacing: '-.01em',
-              margin: '0 0 8px',
-            }}
-          >
-            Invito non più valido
-          </h1>
+          <Title>Invito non più valido</Title>
           {/* SEC-32 — scaduto, già usato, revocato o mai esistito: stessa frase. */}
           <p style={{ margin: '0 0 24px', fontSize: 13.5, lineHeight: '21px', color: 'var(--tx-secondary)' }}>
             Il link non è utilizzabile. Chiedi a chi ti ha invitato di emetterne uno nuovo.
@@ -161,20 +175,9 @@ export function AcceptPage() {
             Vai al login
           </Button>
         </Shell>
-      ) : step === 'codici' ? (
+      ) : phase === 'codici' ? (
         <Shell single>
-          <h1
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 24,
-              lineHeight: '32px',
-              fontWeight: 700,
-              letterSpacing: '-.01em',
-              margin: '0 0 8px',
-            }}
-          >
-            Salva i codici di recupero
-          </h1>
+          <Title>Salva i codici di recupero</Title>
           <p style={{ margin: '0 0 20px', fontSize: 13.5, lineHeight: '21px', color: 'var(--tx-secondary)' }}>
             Sono l'unico modo di rientrare se perdi il telefono. Vengono mostrati{' '}
             <strong style={{ color: 'var(--tx-primary)' }}>ora e mai più</strong>: senza, l'unica via è una
@@ -224,7 +227,13 @@ export function AcceptPage() {
         <Shell>
           {/* Colonna sinistra: cosa stai per ricevere. */}
           <div style={{ padding: 40, borderRight: '1px solid var(--bd-subtle)' }}>
-            <Logo />
+            <img
+              src="/assets/logo.png"
+              alt="MetaMC"
+              width={34}
+              height={34}
+              style={{ objectFit: 'contain', marginBottom: 22, display: 'block' }}
+            />
             <h1
               style={{
                 fontFamily: 'var(--font-display)',
@@ -235,7 +244,11 @@ export function AcceptPage() {
                 margin: '0 0 8px',
               }}
             >
-              Ciao,
+              {/* Il nome sta QUI e non in un campo: lo ha scelto chi ti ha
+                  invitato, non e' modificabile, e comparira' nel registro
+                  accanto a ogni tua azione. Un campo disabilitato con dentro
+                  il tuo nome sembra una cosa da compilare; un saluto no. */}
+              Ciao{invite?.name ? ` ${invite.name}` : ''},
               <br />
               sei stato invitato.
             </h1>
@@ -348,12 +361,12 @@ export function AcceptPage() {
             </p>
           </div>
 
-          {/* Colonna destra: cosa devi fare. */}
-          <div style={{ padding: 40 }}>
+          {/* Colonna destra: tutto quello che devi fare, in una volta. */}
+          <form onSubmit={activate} style={{ padding: 40 }}>
             <h2
               style={{ fontFamily: 'var(--font-display)', fontSize: 18, fontWeight: 600, margin: '0 0 20px' }}
             >
-              {step === 'password' ? 'Attiva il tuo accesso' : 'Attiva la verifica in due passaggi'}
+              Attiva il tuo accesso
             </h2>
 
             {error ? (
@@ -362,126 +375,115 @@ export function AcceptPage() {
               </div>
             ) : null}
 
-            {step === 'password' ? (
-              <form onSubmit={submitPassword} style={{ display: 'grid', gap: 18 }}>
-                <div className="field">
-                  <label className="label" htmlFor="accept-email">
-                    Email
-                  </label>
-                  {/* L'indirizzo viene dalla riga invito e non è modificabile:
-                      il campo lo mostra, non lo raccoglie (§8.1.9). */}
-                  <input id="accept-email" className="input" value={invite?.email ?? ''} disabled />
-                </div>
+            <div className="field" style={{ marginBottom: 18 }}>
+              <label className="label" htmlFor="accept-email">
+                Email
+              </label>
+              {/* L'indirizzo viene dalla riga invito e non è modificabile: il
+                  campo lo mostra, non lo raccoglie (§8.1.9). */}
+              <input id="accept-email" className="input" value={invite?.email ?? ''} disabled />
+            </div>
 
-                <div className="field">
-                  <label className="label" htmlFor="accept-name">
-                    Nome account
-                  </label>
-                  {/* Anche il nome viene dalla riga invito: lo ha scelto chi ti
-                      ha invitato, e comparirà nel registro accanto a ogni tua
-                      azione. Qui si mostra, non si raccoglie. */}
-                  <input id="accept-name" className="input" value={invite?.name ?? ''} disabled />
-                </div>
-                <Field
-                  label="Nuova password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  minLength={12}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  hint="Almeno 12 caratteri. Nessuna regola di composizione: la lunghezza conta più dei simboli."
-                />
-                <Field
-                  label="Conferma password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  minLength={12}
-                  value={confirm}
-                  onChange={(e) => setConfirm(e.target.value)}
-                />
-                <Button type="submit" variant="primary" size="lg" loading={busy} block>
-                  Continua
-                </Button>
-              </form>
-            ) : (
-              <>
-                <div
+            <Field
+              label="Nuova password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={MIN_PASSWORD}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              // Impostata la password, l'account esiste: lasciare il campo
+              // modificabile prometterebbe un cambio che questa pagina non fa
+              // piu'.
+              disabled={accepted}
+            />
+            <StrengthMeter password={password} />
+            <Field
+              label="Conferma password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={MIN_PASSWORD}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              disabled={accepted}
+              {...(confirm.length > 0 && confirm !== password
+                ? { hint: 'Le due password non coincidono.' }
+                : {})}
+            />
+
+            <div
+              style={{
+                padding: 16,
+                border: '1px solid var(--bd-subtle)',
+                borderRadius: 'var(--r-md)',
+                background: 'var(--s-elevated)',
+                margin: '26px 0 24px',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 600 }}>Autenticazione a due fattori</div>
+                <span
                   style={{
-                    padding: 16,
-                    border: '1px solid var(--bd-subtle)',
-                    borderRadius: 'var(--r-md)',
-                    background: 'var(--s-elevated)',
-                    marginBottom: 24,
+                    fontSize: 11,
+                    fontWeight: 600,
+                    padding: '3px 8px',
+                    borderRadius: 'var(--r-full)',
+                    background: 'var(--err-soft)',
+                    color: 'var(--err)',
                   }}
                 >
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      marginBottom: 14,
-                    }}
-                  >
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>Autenticazione a due fattori</div>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        padding: '3px 8px',
-                        borderRadius: 'var(--r-full)',
-                        background: 'var(--err-soft)',
-                        color: 'var(--err)',
-                      }}
-                    >
-                      Obbligatoria
-                    </span>
-                  </div>
+                  Obbligatoria
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <QrBox uri={totpUri} preparing={preparing} />
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 12, lineHeight: '19px', color: 'var(--tx-secondary)' }}>
-                    Aggiungi un account nella tua app di autenticazione (Aegis, 1Password, Bitwarden…)
-                    inserendo a mano la chiave qui sotto, poi digita il primo codice.
+                    {accepted
+                      ? 'Scansiona con Google Authenticator, 1Password o Authy, poi inserisci il primo codice.'
+                      : 'Scegli la password qui sopra: il codice QR compare appena è impostata.'}
                   </div>
                   {secret ? (
                     <div
                       className="mono"
                       style={{
-                        fontSize: 11.5,
-                        color: 'var(--tx-primary)',
-                        marginTop: 10,
+                        fontSize: 11,
+                        color: 'var(--tx-muted)',
+                        marginTop: 8,
                         wordBreak: 'break-all',
                       }}
                     >
-                      {secret}
+                      {/* La chiave in chiaro non è ridondante: se la fotocamera
+                          non collabora, è l'unico modo di aggiungere l'account
+                          a mano. */}
+                      {groupsOf(secret, 4)}
                     </div>
                   ) : null}
                 </div>
+              </div>
 
-                <form onSubmit={submitTotp} style={{ display: 'grid', gap: 16 }}>
-                  <Field
-                    label="Codice a sei cifre"
-                    className="input input-mono"
-                    inputMode="numeric"
-                    pattern="[0-9]{6}"
-                    maxLength={6}
-                    required
-                    autoFocus
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-                  />
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="lg"
-                    loading={busy}
-                    disabled={code.length !== 6}
-                    block
-                  >
-                    Attiva account ed entra
-                  </Button>
-                </form>
-              </>
-            )}
+              <OtpCells value={code} onChange={setCode} disabled={!accepted} />
+            </div>
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              loading={busy}
+              disabled={!accepted || code.length !== 6}
+              block
+            >
+              Attiva account ed entra
+            </Button>
 
             <p
               style={{
@@ -494,7 +496,7 @@ export function AcceptPage() {
             >
               Attivando l'account accetti il regolamento interno dello staff.
             </p>
-          </div>
+          </form>
         </Shell>
       )}
     </main>
@@ -502,6 +504,153 @@ export function AcceptPage() {
 }
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Il QR, disegnato come nodi SVG e non come stringa di markup.
+ *
+ * SEC-35 — `createSvgTag()` della libreria restituisce HTML da iniettare, e
+ * qui l'innerHTML e' vietato senza eccezioni. Dai moduli si costruisce un
+ * `path`: un rettangolo per modulo scuro, in un `<path>` solo.
+ *
+ * Fondo bianco e bordo di quiete di due moduli: un QR chiaro su scuro molti
+ * lettori non lo prendono, e senza margine nemmeno.
+ */
+function QrBox({ uri, preparing }: { uri: string | undefined; preparing: boolean }) {
+  const drawing = useMemo(() => {
+    if (!uri) return null;
+    const qr = qrcode(0, 'M');
+    qr.addData(uri);
+    qr.make();
+    const count = qr.getModuleCount();
+    let path = '';
+    for (let row = 0; row < count; row++) {
+      for (let col = 0; col < count; col++) {
+        if (qr.isDark(row, col)) path += `M${col} ${row}h1v1h-1z`;
+      }
+    }
+    return { count, path };
+  }, [uri]);
+
+  const frame: React.CSSProperties = {
+    width: 96,
+    height: 96,
+    borderRadius: 'var(--r-sm)',
+    border: '1px solid var(--bd-subtle)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 'none',
+    overflow: 'hidden',
+  };
+
+  if (!drawing) {
+    return (
+      <div
+        style={{
+          ...frame,
+          background: 'var(--s-inset)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10,
+          color: 'var(--tx-muted)',
+          textAlign: 'center',
+        }}
+      >
+        {preparing ? 'attendi…' : 'QR'}
+      </div>
+    );
+  }
+
+  const quiet = 2;
+  const span = drawing.count + quiet * 2;
+  return (
+    <div style={{ ...frame, background: '#ffffff' }}>
+      {/* Riempie il contenitore invece di dichiarare 96 fissi: il riquadro
+          e' 96 BORDER-BOX, quindi dentro il bordo restano 94, e un SVG da 96
+          si stringe in larghezza ma non in altezza. Due pixel di differenza
+          bastano a rendere i moduli rettangolari. */}
+      <svg
+        viewBox={`${-quiet} ${-quiet} ${span} ${span}`}
+        width="100%"
+        height="100%"
+        style={{ display: 'block' }}
+        role="img"
+        aria-label="Codice QR per l'app di autenticazione"
+      >
+        <rect x={-quiet} y={-quiet} width={span} height={span} fill="#ffffff" />
+        <path d={drawing.path} fill="#000000" />
+      </svg>
+    </div>
+  );
+}
+
+/**
+ * Le sei celle del codice, sulle misure del disegno (40px, non le 52 del
+ * login). Il campo vero e' trasparente sopra: le caselle sono la
+ * rappresentazione, non il controllo, cosi' restano incolla-e-vai e leggibili
+ * da uno screen reader.
+ */
+function OtpCells({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  disabled: boolean;
+}) {
+  return (
+    <div style={{ position: 'relative', marginTop: 14 }}>
+      <div style={{ display: 'flex', gap: 7 }} aria-hidden="true">
+        {Array.from({ length: 6 }, (_, i) => `cell-${i}`).map((id, i) => (
+          <div
+            key={id}
+            style={{
+              flex: 1,
+              height: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              border: `1px solid ${!disabled && value.length === i ? 'var(--ac)' : 'var(--bd-subtle)'}`,
+              boxShadow: !disabled && value.length === i ? '0 0 0 3px var(--ac-soft)' : undefined,
+              borderRadius: 'var(--r-xs)',
+              background: 'var(--s-inset)',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 16,
+              color: disabled ? 'var(--tx-disabled)' : 'var(--tx-primary)',
+            }}
+          >
+            {value[i] ?? ''}
+          </div>
+        ))}
+      </div>
+      <input
+        inputMode="numeric"
+        autoComplete="one-time-code"
+        pattern="[0-9]{6}"
+        maxLength={6}
+        aria-label="Codice a sei cifre"
+        disabled={disabled}
+        value={value}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+        style={{
+          position: 'absolute',
+          inset: 0,
+          width: '100%',
+          height: '100%',
+          opacity: 0,
+          border: 0,
+          background: 'transparent',
+          cursor: disabled ? 'not-allowed' : 'text',
+        }}
+      />
+    </div>
+  );
+}
+
+/** La chiave a gruppi: si trascrive a mano molto piu' facilmente. */
+function groupsOf(value: string, size: number): string {
+  return (value.match(new RegExp(`.{1,${size}}`, 'g')) ?? [value]).join(' ');
+}
 
 /** La card centrata: due colonne nel flusso normale, una sola per gli esiti. */
 function Shell({ single = false, children }: { single?: boolean; children: ReactNode }) {
@@ -526,14 +675,19 @@ function Shell({ single = false, children }: { single?: boolean; children: React
   );
 }
 
-function Logo() {
+function Title({ children }: { children: ReactNode }) {
   return (
-    <img
-      src="/assets/logo.png"
-      alt="MetaMC"
-      width={34}
-      height={34}
-      style={{ objectFit: 'contain', marginBottom: 22, display: 'block' }}
-    />
+    <h1
+      style={{
+        fontFamily: 'var(--font-display)',
+        fontSize: 24,
+        lineHeight: '32px',
+        fontWeight: 700,
+        letterSpacing: '-.01em',
+        margin: '0 0 8px',
+      }}
+    >
+      {children}
+    </h1>
   );
 }

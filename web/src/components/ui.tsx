@@ -346,9 +346,7 @@ export function Avatar({
   const hues = ['#8B5E34', '#2F6E8F', '#3E7C63', '#A8434F', '#6B5AA6'];
   const hue = hues[[...name].reduce((a, c) => a + c.charCodeAt(0), 0) % hues.length];
 
-  const skin = !failed && MINECRAFT_NAME.test(name)
-    ? `/api/avatars/${encodeURIComponent(name)}.png`
-    : null;
+  const skin = !failed && MINECRAFT_NAME.test(name) ? `/api/avatars/${encodeURIComponent(name)}.png` : null;
 
   const layer = (left: number): React.CSSProperties => ({
     position: 'absolute',
@@ -473,3 +471,47 @@ export const ICONS = {
   shield: 'M12 21s7-3.2 7-9V5.6L12 3 5 5.6V12c0 5.8 7 9 7 9z',
   mail: 'M3 7h18v11H3zM3 7l9 6 9-6',
 } as const;
+
+/**
+ * La barra di robustezza: quattro segmenti, come nel disegno.
+ *
+ * Misura la LUNGHEZZA e lo dice. Il disegno scrive «minimo 12 caratteri, una
+ * maiuscola, un numero», ma quelle regole di composizione non esistono in
+ * questo pannello — il §8.6 chiede lunghezza e controllo HIBP, non simboli.
+ * Copiare quella frase avrebbe voluto dire mettere in pagina una regola che
+ * il server non applica, cioe' un'istruzione falsa.
+ */
+export function StrengthMeter({ password }: { password: string }) {
+  const filled = [12, 16, 20, 24].filter((n) => password.length >= n).length;
+  const label = ['Troppo corta', 'Sufficiente', 'Buona', 'Ottima', 'Ottima'][filled] ?? '';
+  const color = filled === 0 ? 'var(--err)' : filled === 1 ? 'var(--warn)' : 'var(--ok)';
+  return (
+    <>
+      <div style={{ display: 'flex', gap: 5, margin: '10px 0 8px' }}>
+        {[0, 1, 2, 3].map((i) => (
+          <span
+            key={i}
+            style={{
+              flex: 1,
+              height: 4,
+              borderRadius: 2,
+              background: i < filled ? color : 'var(--bd-subtle)',
+            }}
+          />
+        ))}
+      </div>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          fontSize: 11.5,
+          color: 'var(--tx-muted)',
+          marginBottom: 20,
+        }}
+      >
+        <span>Robustezza · conta la lunghezza</span>
+        <span style={{ color, fontWeight: 600 }}>{label}</span>
+      </div>
+    </>
+  );
+}

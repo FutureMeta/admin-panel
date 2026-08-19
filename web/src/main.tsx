@@ -17,7 +17,7 @@ import {
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { type Command, CommandPalette, Sidebar, Topbar } from './components/shell.tsx';
-import { Button, Card, Field, Notice, SkeletonRows } from './components/ui.tsx';
+import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';

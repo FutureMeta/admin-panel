@@ -255,17 +255,3 @@ export async function revokeInvitesBy(
     .execute();
   return rows.length;
 }
-
-/**
- * Il ruolo concede livello 3 su almeno un modulo? Determina se l'emissione
- * dell'invito richiede step-up (§8.1.1).
- */
-export async function roleGrantsManage(db: Database, roleId: number): Promise<boolean> {
-  const row = await db
-    .selectFrom('auth.role_permissions')
-    .select('level')
-    .where('role_id', '=', roleId)
-    .where('level', '=', 3)
-    .executeTakeFirst();
-  return row !== undefined;
-}

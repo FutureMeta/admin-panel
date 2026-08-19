@@ -48,19 +48,18 @@ export function registerAvatarRoutes(app: FastifyInstance, ctx: AppContext): voi
         // Anche il guasto risponde 404, non 502: per il browser questa e'
         // un'immagine che non c'e', e il pannello disegna le iniziali. Un 502
         // riempirebbe la console di errori rossi per una faccia mancante.
-        return reply
-          .code(404)
-          .header('cache-control', 'no-store')
-          .send({ error: 'AVATAR_NON_DISPONIBILE' });
+        return reply.code(404).header('cache-control', 'no-store').send({ error: 'AVATAR_NON_DISPONIBILE' });
       }
 
-      return reply
-        .header('content-type', 'image/png')
-        .header('cache-control', BROWSER_CACHE)
-        // La skin arriva da fuori: nessun browser deve provare a indovinare
-        // che cosa sia oltre a quello che dichiariamo.
-        .header('x-content-type-options', 'nosniff')
-        .send(result.bytes);
+      return (
+        reply
+          .header('content-type', 'image/png')
+          .header('cache-control', BROWSER_CACHE)
+          // La skin arriva da fuori: nessun browser deve provare a indovinare
+          // che cosa sia oltre a quello che dichiariamo.
+          .header('x-content-type-options', 'nosniff')
+          .send(result.bytes)
+      );
     },
   );
 }

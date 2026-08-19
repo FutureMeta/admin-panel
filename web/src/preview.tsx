@@ -26,6 +26,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Sidebar, Topbar } from './components/shell.tsx';
 import type { AuditPage, InviteRow, Me, RolesMatrix, UserRow } from './lib/api.ts';
+import { AcceptPage } from './routes/accept.tsx';
 import './app.css';
 import { AuditPage_ } from './routes/audit.tsx';
 import { InvitesPage } from './routes/invites.tsx';
@@ -288,11 +289,18 @@ function Preview() {
 // Il router serve solo perché la sidebar usa `useRouterState` e `Link`.
 const rootRoute = createRootRoute({ component: Outlet });
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', component: Preview });
+// L'accettazione invito e' l'unica schermata che non vive dentro il guscio:
+// ha il suo layout a piena pagina, e in sviluppo non e' raggiungibile
+// dall'app perche' il proxy manda `/accept` al server, che li' scambia il
+// token con un cookie. Qui si guarda per quello che e'.
+const acceptRoute = createRoute({ getParentRoute: () => rootRoute, path: '/accept', component: AcceptPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: '/utenti', component: Preview });
 const auditRoute = createRoute({ getParentRoute: () => rootRoute, path: '/registro', component: Preview });
 const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, usersRoute, auditRoute]),
-  history: createMemoryHistory({ initialEntries: [screen === 'registro' ? '/registro' : '/utenti'] }),
+  routeTree: rootRoute.addChildren([indexRoute, usersRoute, auditRoute, acceptRoute]),
+  history: createMemoryHistory({
+    initialEntries: [screen === 'registro' ? '/registro' : screen === 'invito' ? '/accept' : '/utenti'],
+  }),
 });
 
 const container = document.getElementById('root');

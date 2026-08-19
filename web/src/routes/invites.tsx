@@ -17,7 +17,7 @@ import {
   RelativeTime,
   SkeletonRows,
 } from '../components/ui.tsx';
-import { ApiError, api, type InviteRow, type Me } from '../lib/api.ts';
+import { api, type InviteRow, type Me } from '../lib/api.ts';
 
 export function InvitesPage({ me }: { me: Me }) {
   const qc = useQueryClient();
@@ -34,9 +34,9 @@ export function InvitesPage({ me }: { me: Me }) {
       setError(undefined);
       void qc.invalidateQueries({ queryKey: ['invites'] });
     },
-    onError: (err) => {
-      // La revoca è fra le operazioni che richiedono step-up (§8.5): un
-      // invito revocato per errore non si riapre.
+    onError: () => {
+      // Un invito revocato per errore non si riapre: chi ha sbagliato deve
+      // emetterne uno nuovo, e il registro conserva entrambe le mosse.
       setError('Revoca non riuscita.');
     },
   });

@@ -83,7 +83,6 @@ export function installErrorHandler(app: {
       return reply.code(404).send({ error: 'not_found' } satisfies ErrorBody);
     }
 
-
     if (error instanceof RateLimited) {
       reply.header('Retry-After', String(error.retryAfterSeconds));
       return reply.code(429).send({ error: 'rate_limited' } satisfies ErrorBody);

@@ -608,13 +608,7 @@ function UserDialog({
 
 // ---------------------------------------------------------------------------
 
-function InviteDialog({
-  onClose,
-  onCreated,
-}: {
-  onClose: () => void;
-  onCreated: () => void;
-}) {
+function InviteDialog({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [roleId, setRoleId] = useState<number | undefined>();

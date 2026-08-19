@@ -16,7 +16,7 @@
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useState } from 'react';
 import { AuthFootnote, AuthHeading, AuthIcon, AuthShell } from '../components/auth-shell.tsx';
-import { Button, Field, Notice } from '../components/ui.tsx';
+import { Button, Field, Notice, StrengthMeter } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
 const FOOTNOTE = (
@@ -160,40 +160,6 @@ export function ForgotPasswordPage() {
 // ---------------------------------------------------------------------------
 
 /** Le quattro barre di robustezza. Misurano la lunghezza, e la riga sotto lo dice. */
-function StrengthMeter({ password }: { password: string }) {
-  const filled = [12, 16, 20, 24].filter((n) => password.length >= n).length;
-  const label = ['Troppo corta', 'Sufficiente', 'Buona', 'Ottima', 'Ottima'][filled] ?? '';
-  const color = filled === 0 ? 'var(--err)' : filled === 1 ? 'var(--warn)' : 'var(--ok)';
-  return (
-    <>
-      <div style={{ display: 'flex', gap: 5, margin: '10px 0 8px' }}>
-        {[0, 1, 2, 3].map((i) => (
-          <span
-            key={i}
-            style={{
-              flex: 1,
-              height: 4,
-              borderRadius: 2,
-              background: i < filled ? color : 'var(--bd-subtle)',
-            }}
-          />
-        ))}
-      </div>
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          fontSize: 11.5,
-          color: 'var(--tx-muted)',
-          marginBottom: 20,
-        }}
-      >
-        <span>Robustezza · conta la lunghezza</span>
-        <span style={{ color, fontWeight: 600 }}>{label}</span>
-      </div>
-    </>
-  );
-}
 
 /** L'elenco dei requisiti. Sono i controlli VERI, non consigli generici. */
 function Rules({ password, confirm }: { password: string; confirm: string }) {

@@ -11,7 +11,6 @@ import type pg from 'pg';
 import type { Logger } from 'pino';
 import { type Auth, createAuth } from '#src/auth/auth.ts';
 import { HibpClient } from '#src/auth/hibp.ts';
-import { MinecraftSkins } from '#src/minecraft/skins.ts';
 import { PasswordService } from '#src/auth/password.ts';
 import { HashSemaphore } from '#src/auth/semaphore.ts';
 import { TotpReplayGuard } from '#src/auth/totp.ts';
@@ -24,6 +23,7 @@ import type { Mailer } from '#src/email/mailer.ts';
 import { AuthzMiddleware } from '#src/http/authz-middleware.ts';
 import type { IndexHtml } from '#src/http/index-html.ts';
 import { createLogger } from '#src/http/logger.ts';
+import { MinecraftSkins } from '#src/minecraft/skins.ts';
 import { RateLimitService } from '#src/ratelimit/limiter.ts';
 import { createRedis } from '#src/redis/client.ts';
 

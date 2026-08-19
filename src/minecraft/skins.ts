@@ -126,11 +126,7 @@ export class MinecraftSkins {
       const found = await this.#lookupTexture(key);
       if (found.status !== 'ok') return found;
       texture = found.url;
-      await this.#set(
-        `mc:texture:${key}`,
-        texture ?? NONE,
-        texture === null ? TTL_UNKNOWN : TTL_FOUND,
-      );
+      await this.#set(`mc:texture:${key}`, texture ?? NONE, texture === null ? TTL_UNKNOWN : TTL_FOUND);
       if (texture === null) return { status: 'unknown' };
     }
 
@@ -179,9 +175,7 @@ export class MinecraftSkins {
   /** GET che si aspetta JSON. `code` distingue il 404 dal successo. */
   async #json(
     url: string,
-  ): Promise<
-    { status: 'ok'; code: number; body: unknown } | { status: 'unavailable'; reason: string }
-  > {
+  ): Promise<{ status: 'ok'; code: number; body: unknown } | { status: 'unavailable'; reason: string }> {
     const res = await this.#request(url, 'application/json');
     if (res.status !== 'ok') return res;
     if (res.response.status === 404) return { status: 'ok', code: 404, body: null };
@@ -198,9 +192,7 @@ export class MinecraftSkins {
   /** GET dei byte della texture. `bytes: null` = non e' una skin utilizzabile. */
   async #raw(
     url: string,
-  ): Promise<
-    { status: 'ok'; bytes: Buffer | null } | { status: 'unavailable'; reason: string }
-  > {
+  ): Promise<{ status: 'ok'; bytes: Buffer | null } | { status: 'unavailable'; reason: string }> {
     const res = await this.#request(url, 'image/png');
     if (res.status !== 'ok') return res;
     if (!res.response.ok) {

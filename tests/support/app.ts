@@ -60,10 +60,7 @@ export type MinecraftStub = {
 };
 
 /** Un PNG minimo valido: firma piu' IHDR. */
-const TEST_SKIN = Buffer.from(
-  '89504e470d0a1a0a0000000d49484452000000400000004008060000008fb6ba60',
-  'hex',
-);
+const TEST_SKIN = Buffer.from('89504e470d0a1a0a0000000d49484452000000400000004008060000008fb6ba60', 'hex');
 
 /**
  * UUID e hash della texture DERIVATI dal nome, non costanti.

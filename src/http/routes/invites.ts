@@ -17,7 +17,7 @@ import { sanitizeDisplayName } from '#src/audit/sanitize.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import { canGrantRole, isSystemRole } from '#src/authz/dominance.ts';
 import { inviteEmail } from '#src/email/templates/invite.ts';
-import { assertInvitable, InviteConflict, insertInvite, roleGrantsManage } from '#src/invites/service.ts';
+import { assertInvitable, InviteConflict, insertInvite } from '#src/invites/service.ts';
 import { BadRequest, Conflict, NotFound } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';

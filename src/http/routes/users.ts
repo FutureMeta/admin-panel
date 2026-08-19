@@ -304,45 +304,41 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
     },
   );
 
-  app.delete(
-    '/api/users/:id/roles/:roleId',
-    { preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'ruoli', 2);
-      const { id, roleId } = request.params as { id: string; roleId: string };
-      const ips = requestIps(request);
-      const target = await requireDominatedTarget(request, id);
+  app.delete('/api/users/:id/roles/:roleId', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
+    const actor = actorOf(request);
+    requireLevel(actor, 'ruoli', 2);
+    const { id, roleId } = request.params as { id: string; roleId: string };
+    const ips = requestIps(request);
+    const target = await requireDominatedTarget(request, id);
 
-      await securityTransaction(ctx.db, async (trx) => {
-        const removed = await trx
-          .deleteFrom('auth.user_roles')
-          .where('user_id', '=', id)
-          .where('role_id', '=', Number(roleId))
-          .returning('role_id')
-          .executeTakeFirst();
-        if (!removed) throw new NotFound();
+    await securityTransaction(ctx.db, async (trx) => {
+      const removed = await trx
+        .deleteFrom('auth.user_roles')
+        .where('user_id', '=', id)
+        .where('role_id', '=', Number(roleId))
+        .returning('role_id')
+        .executeTakeFirst();
+      if (!removed) throw new NotFound();
 
-        return {
-          result: undefined,
-          events: {
-            action: AUDIT_ACTIONS.roleRevoked,
-            outcome: 'success' as const,
-            actor: auditActorOf(actor),
-            request: auditContextOf(request, ips),
-            moduleKey: 'ruoli',
-            targetType: 'user',
-            targetId: id,
-            targetLabel: target.email,
-            before: { roleId: Number(roleId) },
-          },
-        };
-      });
+      return {
+        result: undefined,
+        events: {
+          action: AUDIT_ACTIONS.roleRevoked,
+          outcome: 'success' as const,
+          actor: auditActorOf(actor),
+          request: auditContextOf(request, ips),
+          moduleKey: 'ruoli',
+          targetType: 'user',
+          targetId: id,
+          targetLabel: target.email,
+          before: { roleId: Number(roleId) },
+        },
+      };
+    });
 
-      await ctx.store.invalidate(id);
-      return reply.send({ ok: true });
-    },
-  );
+    await ctx.store.invalidate(id);
+    return reply.send({ ok: true });
+  });
 
   // -------------------------------------------------------------------------
   // PUT /api/users/:id/permissions — override individuale, SOLO in aumento
@@ -474,70 +470,62 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
     },
   );
 
-  app.post(
-    '/api/users/:id/unban',
-    { preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'utenti', 3);
-      const { id } = request.params as { id: string };
-      const ips = requestIps(request);
-      const target = await requireDominatedTarget(request, id);
+  app.post('/api/users/:id/unban', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
+    const actor = actorOf(request);
+    requireLevel(actor, 'utenti', 3);
+    const { id } = request.params as { id: string };
+    const ips = requestIps(request);
+    const target = await requireDominatedTarget(request, id);
 
-      await securityTransaction(ctx.db, async (trx) => {
-        await trx
-          .updateTable('auth.user')
-          .set({ banned: false, ban_reason: null, ban_expires: null })
-          .where('id', '=', id)
-          .execute();
-        return {
-          result: undefined,
-          events: {
-            action: AUDIT_ACTIONS.userUnbanned,
-            outcome: 'success' as const,
-            actor: auditActorOf(actor),
-            request: auditContextOf(request, ips),
-            moduleKey: 'utenti',
-            targetType: 'user',
-            targetId: id,
-            targetLabel: target.email,
-          },
-        };
-      });
+    await securityTransaction(ctx.db, async (trx) => {
+      await trx
+        .updateTable('auth.user')
+        .set({ banned: false, ban_reason: null, ban_expires: null })
+        .where('id', '=', id)
+        .execute();
+      return {
+        result: undefined,
+        events: {
+          action: AUDIT_ACTIONS.userUnbanned,
+          outcome: 'success' as const,
+          actor: auditActorOf(actor),
+          request: auditContextOf(request, ips),
+          moduleKey: 'utenti',
+          targetType: 'user',
+          targetId: id,
+          targetLabel: target.email,
+        },
+      };
+    });
 
-      await ctx.store.invalidate(id);
-      return reply.send({ ok: true });
-    },
-  );
+    await ctx.store.invalidate(id);
+    return reply.send({ ok: true });
+  });
 
   // -------------------------------------------------------------------------
   // POST /api/users/:id/revoke-sessions
   // -------------------------------------------------------------------------
-  app.post(
-    '/api/users/:id/revoke-sessions',
-    { preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'sessioni', 2);
-      const { id } = request.params as { id: string };
-      const ips = requestIps(request);
-      const target = await requireDominatedTarget(request, id);
+  app.post('/api/users/:id/revoke-sessions', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
+    const actor = actorOf(request);
+    requireLevel(actor, 'sessioni', 2);
+    const { id } = request.params as { id: string };
+    const ips = requestIps(request);
+    const target = await requireDominatedTarget(request, id);
 
-      const revoked = await ctx.authz.revokeAllSessions(id);
-      await writeAudit(ctx.db, {
-        action: AUDIT_ACTIONS.sessionsRevokedAll,
-        outcome: 'success',
-        actor: auditActorOf(actor),
-        request: auditContextOf(request, ips),
-        moduleKey: 'sessioni',
-        targetType: 'user',
-        targetId: id,
-        targetLabel: target.email,
-        meta: { revoked },
-      });
-      return reply.send({ revoked });
-    },
-  );
+    const revoked = await ctx.authz.revokeAllSessions(id);
+    await writeAudit(ctx.db, {
+      action: AUDIT_ACTIONS.sessionsRevokedAll,
+      outcome: 'success',
+      actor: auditActorOf(actor),
+      request: auditContextOf(request, ips),
+      moduleKey: 'sessioni',
+      targetType: 'user',
+      targetId: id,
+      targetLabel: target.email,
+      meta: { revoked },
+    });
+    return reply.send({ revoked });
+  });
 
   // -------------------------------------------------------------------------
   // POST /api/users/:id/offboard — §8.10, operazione unica in UNA transazione

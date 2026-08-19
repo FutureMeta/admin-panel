@@ -30,10 +30,7 @@ import { startTestApp, type TestApp } from '#tests/support/app.ts';
 let t: TestApp;
 
 /** Un PNG minimo valido: bastano la firma e un IHDR per distinguerlo da un corpo qualsiasi. */
-const PNG = Buffer.from(
-  '89504e470d0a1a0a0000000d49484452000000400000004008060000008fb6ba60',
-  'hex',
-);
+const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000400000004008060000008fb6ba60', 'hex');
 
 beforeAll(async () => {
   t = await startTestApp({ label: 'avatar' });

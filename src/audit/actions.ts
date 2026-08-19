@@ -69,6 +69,8 @@ export const AUDIT_ACTIONS = {
   auditIntegrityFailed: 'system.audit_integrity_failed',
   auditAnchored: 'system.audit_anchored',
   bootstrapOwner: 'system.bootstrap_owner',
+  /** Invito owner emesso dalla riga di comando, fuori dal pannello (runbook §9). */
+  breakGlassOwnerInvite: 'system.break_glass_owner_invite',
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];

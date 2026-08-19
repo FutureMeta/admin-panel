@@ -232,6 +232,34 @@ Se tutti gli owner sono fuori contemporaneamente:
 3. **Nessun endpoint automatizza questa procedura, e non va aggiunto.** Un
    endpoint di break-glass è una porta che resta aperta anche quando non serve.
 
+### Nessun owner riesce più a entrare
+
+È il caso più comune, e per quello esiste un comando — non un endpoint:
+
+```bash
+DATABASE_MIGRATE_URL=... APP_ORIGIN=https://admin.metamc.it node scripts/invite-owner.ts --break-glass nuovo.owner@metamc.it "Nome Cognome"
+```
+
+Stampa un link d'invito owner valido **un'ora**, una volta sola.
+
+Pretende `DATABASE_MIGRATE_URL`, ed è quello il confine che lo rende
+accettabile: chi ha quelle credenziali possiede già lo schema e potrebbe
+inserire la stessa riga a mano, spegnendo il trigger da sé. Il comando non
+concede un potere nuovo — evita di sbagliare la query e, soprattutto, scrive
+nel registro la voce `system.break_glass_owner_invite`, che una INSERT
+scritta a mano non lascerebbe. **Quella voce non va cancellata**: è ciò che
+permette a chi legge fra sei mesi di distinguere questo invito da uno
+emesso dal pannello. L'invito risulta emesso da un'identità tecnica
+«Break-glass», non da una persona, per la stessa ragione.
+
+Si rifiuta di partire senza `--break-glass`, e si ferma con una spiegazione
+se per quell'indirizzo esiste già un account o un invito in attesa.
+
+Il comando **non** sblocca un secondo fattore perduto. Il reset del §8.8
+vuole un richiedente e due approvatori distinti da lui: per recuperare
+l'account di un owner servono tre altri owner. Per quello restano i recovery
+code o l'intervento diretto sul database descritto qui sopra.
+
 ---
 
 ## 10. Cosa NON è in fase 1

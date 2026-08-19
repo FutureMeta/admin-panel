@@ -23,6 +23,7 @@
     "migrate": "node scripts/migrate.ts up",
     "migrate:status": "node scripts/migrate.ts status",
     "bootstrap:owner": "node scripts/bootstrap-owner.ts",
+    "invite:owner": "node scripts/invite-owner.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "build:web": "vite build && node scripts/check-build.ts",

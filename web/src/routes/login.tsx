@@ -128,10 +128,7 @@ export function LoginPage() {
   } as const;
 
   return (
-    <AuthShell
-      headline={['Il network,', 'in un solo pannello.']}
-      description="Accessi, ruoli e registro attività dello staff. Ogni azione lascia una traccia firmata."
-    >
+    <AuthShell>
       {step === 'totp' ? (
         <div
           className="pill pill-ac"

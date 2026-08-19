@@ -15,16 +15,19 @@
 import type { ReactNode } from 'react';
 import { HexField } from './hex-field.tsx';
 
-export function AuthShell({
-  headline,
-  description,
-  children,
-}: {
-  /** Le righe del titolo grande: nel disegno vanno a capo a mano. */
-  headline: string[];
-  description: string;
-  children: ReactNode;
-}) {
+/**
+ * Il pannello di sinistra e' FISSO.
+ *
+ * Non e' una prop perche' non deve essere una scelta: login e recupero
+ * password sono la stessa porta, e vedere il lato sinistro cambiare mentre si
+ * passa dall'una all'altra fa sembrare di essere finiti altrove. Restando
+ * identico, l'unica cosa che si muove e' il modulo — che e' l'unica cosa che
+ * e' davvero cambiata.
+ */
+const HEADLINE = ['Il network,', 'in un solo pannello.'];
+const DESCRIPTION = 'Accessi, ruoli e registro attività dello staff. Ogni azione lascia una traccia firmata.';
+
+export function AuthShell({ children }: { children: ReactNode }) {
   return (
     <main
       style={{
@@ -88,15 +91,15 @@ export function AuthShell({
               color: '#E9F1F5',
             }}
           >
-            {headline.map((line, i) => (
+            {HEADLINE.map((line, i) => (
               <span key={line}>
                 {line}
-                {i < headline.length - 1 ? <br /> : null}
+                {i < HEADLINE.length - 1 ? <br /> : null}
               </span>
             ))}
           </div>
           <p style={{ margin: '16px 0 0', fontSize: 14, lineHeight: '22px', color: '#A9BEC9' }}>
-            {description}
+            {DESCRIPTION}
           </p>
         </div>
       </div>

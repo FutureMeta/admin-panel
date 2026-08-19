@@ -25,7 +25,7 @@ import { AuditPage_ } from './routes/audit.tsx';
 import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { ForgotPasswordPage, ResetPasswordPage } from './routes/password.tsx';
-import { ForbiddenPage, NotFoundPage, UnauthorizedPage } from './routes/states.tsx';
+import { ForbiddenPage, NotFoundPage } from './routes/states.tsx';
 import { RolesPage, UsersPage } from './routes/users.tsx';
 
 const queryClient = new QueryClient({
@@ -163,6 +163,21 @@ function AppShell() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Sessione scaduta o assente: si va al login, senza una schermata che
+  // chieda di cliccare per andarci. Chi arriva qui non ha scelto di vedere un
+  // messaggio, ha chiesto una pagina che non puo' avere.
+  //
+  // SEC-20 — la destinazione e' COSTANTE. Nessun parametro di ritorno viene
+  // letto dalla URL, e non se ne scrive uno: un "torna a" controllato dal
+  // client e' il modo classico di trasformare un login in un redirect aperto.
+  //
+  // `replace` e non `assign`: la pagina che non si e' potuta aprire non deve
+  // restare nella cronologia, o il tasto indietro ci riporta sopra.
+  const unauthorized = me.isError && me.error instanceof ApiError && me.error.isUnauthorized;
+  useEffect(() => {
+    if (unauthorized) window.location.replace('/login');
+  }, [unauthorized]);
+
   if (me.isPending) {
     return (
       <main style={{ padding: 'var(--sp8)' }}>
@@ -171,7 +186,9 @@ function AppShell() {
     );
   }
   if (me.isError) {
-    return me.error instanceof ApiError && me.error.isUnauthorized ? <UnauthorizedPage /> : <ForbiddenPage />;
+    // Il 401 non disegna niente: l'effetto qui sopra sta gia' cambiando pagina,
+    // e un lampo di schermata prima del salto e' peggio di uno schermo vuoto.
+    return unauthorized ? null : <ForbiddenPage />;
   }
 
   const data = me.data;

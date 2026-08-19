@@ -19,10 +19,6 @@ import { AuthFootnote, AuthHeading, AuthIcon, AuthShell } from '../components/au
 import { Button, Field, Notice } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
-const HEADLINE = ['Recupera', "l'accesso."];
-const DESCRIPTION =
-  'Il link di reset vale 30 minuti e può essere usato una volta sola. La 2FA resta attiva: dopo il reset serve comunque il codice a 6 cifre.';
-
 const FOOTNOTE = (
   <>
     Il reset non modifica la 2FA. Se hai perso anche l'app di autenticazione, serve un owner: solo lui può
@@ -92,7 +88,7 @@ export function ForgotPasswordPage() {
   const mmss = `${String(Math.floor(cooldown / 60)).padStart(2, '0')}:${String(cooldown % 60).padStart(2, '0')}`;
 
   return (
-    <AuthShell headline={HEADLINE} description={DESCRIPTION}>
+    <AuthShell>
       {sent ? (
         <>
           <AuthIcon
@@ -312,7 +308,7 @@ export function ResetPasswordPage() {
     : '';
 
   return (
-    <AuthShell headline={HEADLINE} description={DESCRIPTION}>
+    <AuthShell>
       {doneAt ? (
         <>
           <AuthIcon tone="ok" path={<path d="m5 13 4 4 10-10" />} />

@@ -129,15 +129,6 @@ export function LoginPage() {
 
   return (
     <AuthShell>
-      {step === 'totp' ? (
-        <div
-          className="pill pill-ac"
-          style={{ marginBottom: 18, display: 'inline-flex', height: 24, gap: 8 }}
-        >
-          Passaggio 2 di 2
-        </div>
-      ) : null}
-
       <h1 className="t-title" style={{ marginBottom: 6 }}>
         {step === 'credenziali'
           ? 'Accedi alla console'

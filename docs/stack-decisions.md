@@ -151,12 +151,21 @@ CLI di generazione schema better-auth: `pnpm dlx auth@1.6.29 generate` con versi
 | react / react-dom | `19.2.8` | [V] | UI |
 | @tanstack/react-router | `1.170.29` | [V] | Routing type-safe, search params tipizzati |
 | @tanstack/react-query | `5.101.4` | [V] | Stato server |
-| @tanstack/react-virtual | `3.14.9` | [V] | Virtualizzazione tabella audit |
 | @tanstack/react-table | `8.x` | [R] | **Non la 9.** Versione 8 più recente da risolvere all'installazione |
 | tailwindcss | `4.3.3` | [V] | Stile |
 | @radix-ui/react-dialog + dropdown-menu + tooltip | `1.1.x` | [R] | Primitive accessibili. Restare sulle stable 1.1.x, non 1.2.0-rc |
 
 **Non in fase 1**: uPlot, ECharts, d3-geo, topojson, world-atlas, react-compiler, SSE. Vedi §16.
+
+**Rimosso dopo la decisione iniziale**: `@tanstack/react-virtual` (`3.14.9`).
+Era li' per la tabella dell'audit, che era uno scorrimento infinito: dopo
+qualche «carica altre 50» erano centinaia di righe con i pannelli del diff
+dentro. Su richiesta del committente la tabella e' passata a pagine da 50, e a
+quel punto la virtualizzazione costava piu' di quanto rendesse — le righe
+espandibili vanno rimisurate a mano, e stampa e `Ctrl+F` del browser vedono
+solo cio' che e' renderizzato. La soglia oltre la quale conviene sono le
+migliaia di righe a schermo. Se torna lo scorrimento infinito, torna anche
+lei.
 
 ---
 

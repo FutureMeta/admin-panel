@@ -45,13 +45,21 @@ export function AuthShell({ children }: { children: ReactNode }) {
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          gap: 32,
           padding: 48,
         }}
       >
         <HexField />
 
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Il lockup e' FUORI dal flusso, non un figlio flex.
+            Nel disegno il pannello ha tre blocchi in `space-between`: marchio
+            in alto, titolo al centro, statistiche in basso. Le statistiche
+            sono state tolte, e con due soli figli `space-between` spingerebbe
+            il titolo in fondo mentre `center` tirerebbe giu' anche il marchio.
+            Togliendo il marchio dal flusso restano vere tutte e due le cose:
+            lui in cima sul padding di 48, il titolo al centro del pannello. */}
+        <div
+          style={{ position: 'absolute', top: 48, left: 48, display: 'flex', alignItems: 'center', gap: 12 }}
+        >
           <img src="/assets/logo.png" alt="" width={40} height={40} style={{ objectFit: 'contain' }} />
           <div>
             <div

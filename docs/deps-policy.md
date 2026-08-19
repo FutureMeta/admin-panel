@@ -11,9 +11,10 @@
 
 ## Regole non negoziabili
 
-- Versioni **esatte** in `package.json`: niente `^`, niente `~`. La CI fallisce
-  se ne compare una.
-- Lockfile committato. In CI: `pnpm install --frozen-lockfile --ignore-scripts`.
+- Versioni **esatte** in `package.json`: niente `^`, niente `~`.
+  `pnpm run check` fallisce se ne compare una.
+- Lockfile committato. Si installa con
+  `pnpm install --frozen-lockfile --ignore-scripts`.
 - **Nessun floor di versione entra in `package.json` o nel Dockerfile sulla
   base di un CVE non verificato** con una chiamata a
   `cveawg.mitre.org/api/cve/<ID>` o `api.osv.dev/v1/vulns/<GHSA>`.
@@ -22,9 +23,26 @@
 - La provenance npm firmata **non basta**: nella campagna ChainDrop le versioni
   avvelenate avevano provenance valida, perché era la pipeline stessa a essere
   compromessa.
-- Renovate/Dependabot su **tutto** lo scope `@better-auth/*`, e una regola di CI
-  che fallisce se compare un pacchetto di quello scope fuori dalla allowlist
-  (`better-auth`, `@better-auth/redis-storage`).
+- Renovate/Dependabot su **tutto** lo scope `@better-auth/*`, e una regola in
+  `scripts/check-deps.ts` che fallisce se compare un pacchetto di quello scope
+  fuori dalla allowlist (`better-auth`, `@better-auth/redis-storage`).
+
+## Cosa non è più automatico
+
+Il progetto non ha GitHub Actions: sono state rimosse su richiesta del
+committente. Le due regole qui sopra girano in `pnpm run check`, quindi
+reggono ancora — ma **la scansione della supply chain non gira più da sola**,
+ed è proprio quella che il §12 chiedeva contro ChainDrop. Va lanciata a mano
+ogni volta che cambia il lockfile:
+
+```bash
+pnpm audit --audit-level=high
+pnpm dlx osv-scanner@1.9.0 --lockfile=./pnpm-lock.yaml
+```
+
+Un controllo che dipende dal fatto che qualcuno si ricordi non è un controllo.
+Se in futuro il progetto tornasse ad avere una pipeline, questi due comandi
+sono la prima cosa da rimetterci dentro.
 
 ## Bus factor — da sapere, non da temere
 

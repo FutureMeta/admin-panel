@@ -40,12 +40,23 @@ locale per un motivo che non c'entra col codice.
 ## Verificare
 
 ```bash
-pnpm run check    # guardie + identificatori + tipi + lint
-pnpm test         # i 17 test di accettazione del §14
+pnpm run check      # guardie + identificatori + dipendenze + tipi + lint
+pnpm test           # i 17 test di accettazione del §14
+pnpm run build:web  # build del frontend, col controllo del nonce CSP in coda
 ```
 
-I test hanno bisogno di un PostgreSQL raggiungibile. In CI è un container
-`postgres:18.6`; in locale va bene un cluster effimero:
+**Non c'è CI.** Il progetto non ha GitHub Actions, quindi questi comandi vanno
+lanciati a mano prima di ogni push. L'unica cosa che il workflow faceva e che
+oggi non fa più nessuno è la scansione della supply chain: vale la pena
+eseguirla quando si tocca il lockfile.
+
+```bash
+pnpm audit --audit-level=high
+pnpm dlx osv-scanner@1.9.0 --lockfile=./pnpm-lock.yaml
+```
+
+I test hanno bisogno di un PostgreSQL raggiungibile; in locale va bene un
+cluster effimero:
 
 ```bash
 initdb -D /tmp/pgdata -U postgres -A trust
@@ -69,7 +80,7 @@ src/
   invites/     ciclo di vita dell'invito
   db/          pool iniettato, interfaccia Kysely scritta a mano
 migrations/    forward-only, una per passo
-scripts/       migrate, bootstrap-owner, job, guardie di CI
+scripts/       migrate, bootstrap-owner, job, guardie che fermano la build
 tests/         i 17 test di accettazione, con Postgres vero
 web/           frontend Vite + React
 ```
@@ -78,8 +89,8 @@ Tre cose che vale la pena sapere prima di leggere il codice:
 
 **L'autorizzazione non legge mai `session.user`.** È uno snapshot fatto al
 login: non riflette né ban né declassamenti. Si legge `authz:{userId}` da
-Redis, ricostruita da Postgres su miss. Una guardia di CI fallisce la build se
-un confronto su ruoli compare fuori da `src/authz/`.
+Redis, ricostruita da Postgres su miss. `pnpm run check` fallisce se un
+confronto su ruoli compare fuori da `src/authz/`.
 
 **L'INSERT nell'audit è l'ultima istruzione prima del COMMIT**, nella stessa
 transazione della modifica di stato. Non è affidato alla disciplina:

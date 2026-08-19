@@ -265,18 +265,17 @@ function Preview() {
   // modo diverso dall'app non serve a trovare i difetti dell'app.
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
-      <Sidebar me={ME} collapsed={false} onOpenPalette={() => {}} />
+      <Sidebar me={ME} onOpenPalette={() => {}} />
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
         <Topbar
           me={ME}
           breadcrumb={screen === 'registro' ? 'Registro attività' : 'Utenti & Ruoli'}
-          onToggleSidebar={() => {}}
           onLogout={() => {}}
           feedDisconnected={false}
         />
         <main className="app-main">
           {screen === 'registro' ? (
-            <AuditPage_ canVerify />
+            <AuditPage_ />
           ) : (
             <>
               <UsersPage me={ME} onNeedStepUp={() => {}} />

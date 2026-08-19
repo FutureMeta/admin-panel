@@ -145,7 +145,6 @@ function StepUpDialog({ open, onClose }: { open: boolean; onClose: (ok: boolean)
 
 function AppShell() {
   const navigate = useNavigate();
-  const [collapsed, setCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [stepUpOpen, setStepUpOpen] = useState(false);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
@@ -235,12 +234,11 @@ function AppShell() {
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
-      <Sidebar me={data} collapsed={collapsed} onOpenPalette={() => setPaletteOpen(true)} />
+      <Sidebar me={data} onOpenPalette={() => setPaletteOpen(true)} />
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
         <Topbar
           me={data}
           breadcrumb={breadcrumb}
-          onToggleSidebar={() => setCollapsed((c) => !c)}
           onLogout={() => {
             void api('/api/session/logout-all', { method: 'POST' }).finally(() =>
               window.location.assign('/login'),
@@ -329,7 +327,7 @@ function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
   if (!me.data.modules.includes('audit')) return <ForbiddenPage />;
-  return <AuditPage_ canVerify={(me.data.permissions.audit ?? 0) >= 3} />;
+  return <AuditPage_ />;
 }
 
 // ---------------------------------------------------------------------------

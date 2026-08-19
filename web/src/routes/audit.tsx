@@ -33,7 +33,7 @@ const SENSITIVE = new Set([
 
 type Filters = { actor: string; module: string; action: string; outcome: string };
 
-export function AuditPage_({ canVerify }: { canVerify: boolean }) {
+export function AuditPage_() {
   const [filters, setFilters] = useState<Filters>({ actor: '', module: '', action: '', outcome: '' });
   const [expanded, setExpanded] = useState<string | undefined>();
   const parentRef = useRef<HTMLDivElement>(null);
@@ -75,7 +75,6 @@ export function AuditPage_({ canVerify }: { canVerify: boolean }) {
       <PageHeader
         title="Registro attività"
         sub="Ogni azione rilevante del pannello · fuso Europe/Rome"
-        {...(canVerify ? { action: <IntegrityBadge /> } : {})}
       />
 
       <Panel>
@@ -390,30 +389,4 @@ function format(value: unknown): string {
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return JSON.stringify(value);
-}
-
-// ---------------------------------------------------------------------------
-
-/**
- * §10 — l'integrità della catena è l'informazione che rende credibile il
- * registro. Chi lo consulta deve poterla vedere senza chiedere ai sistemi.
- */
-function IntegrityBadge() {
-  const check = useQuery({
-    queryKey: ['audit-integrity'],
-    queryFn: () => api<{ ok: boolean; rows: number; detail: string | null }>('/api/audit/integrity'),
-    refetchInterval: 60_000,
-  });
-
-  if (check.isPending) return <Badge tone="neutral">verifica…</Badge>;
-  if (check.isError) return <Badge tone="warn">verifica non disponibile</Badge>;
-  return check.data?.ok ? (
-    <Badge tone="ok" dot>
-      catena integra · {check.data.rows} voci
-    </Badge>
-  ) : (
-    <Badge tone="err" dot>
-      catena compromessa
-    </Badge>
-  );
 }

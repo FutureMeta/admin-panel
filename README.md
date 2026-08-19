@@ -7,7 +7,7 @@ Pannello di amministrazione interno per il network Minecraft MetaMC.
 audit log, e le schermate che servono a usarli. Le statistiche di gioco sono
 fase 2 e qui non ci sono.
 
-Il progetto è normato da [`docs/stack-decisioni.md`](docs/stack-decisioni.md).
+Il progetto è normato da [`docs/stack-decisions.md`](docs/stack-decisions.md).
 Quel documento decide; questo repository lo implementa e, dove ha trovato un
 errore, lo dice.
 
@@ -98,8 +98,8 @@ operazione che tocca un altro utente. Il client non le ricalcola: riceve
 
 | File | Cosa contiene |
 |---|---|
-| [`docs/stack-decisioni.md`](docs/stack-decisioni.md) | il documento normativo |
-| [`docs/spike-esiti.md`](docs/spike-esiti.md) | i 5 spike del §15, con l'esito e il ramo preso |
+| [`docs/stack-decisions.md`](docs/stack-decisions.md) | il documento normativo |
+| [`docs/spike-outcomes.md`](docs/spike-outcomes.md) | i 5 spike del §15, con l'esito e il ramo preso |
 | [`docs/runbook.md`](docs/runbook.md) | primo avvio, segreti, backup, manutenzione, break-glass |
 | [`docs/security/deviations.md`](docs/security/deviations.md) | 8 deviazioni, con motivo e data di rientro |
 | [`docs/security/asvs.md`](docs/security/asvs.md) | mappatura ASVS 5.0 L2 |

@@ -16,7 +16,7 @@ Lo stato attuale della cartella: `logo.png`, il prototipo di design `MetaMC Admi
 </contesto>
 
 <documenti_normativi>
-**`docs/stack-decisioni.md` è vincolante.** È il risultato di una ricerca su otto dimensioni dello stack (verificata online ad agosto 2026) passata al vaglio di tre revisori adversariali — performance, sicurezza, maturità — che hanno prodotto 25 verdetti bloccanti. Ogni scelta contenuta lì è già stata attaccata e difesa.
+**`docs/stack-decisions.md` è vincolante.** È il risultato di una ricerca su otto dimensioni dello stack (verificata online ad agosto 2026) passata al vaglio di tre revisori adversariali — performance, sicurezza, maturità — che hanno prodotto 25 verdetti bloccanti. Ogni scelta contenuta lì è già stata attaccata e difesa.
 
 Leggilo per intero prima di scrivere codice. Contiene, in forma già decisa:
 - lo stack completo con versioni pinnate e stato di verifica (§3)

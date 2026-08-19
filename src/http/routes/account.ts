@@ -1,4 +1,4 @@
-// Cicli di vita dell'account: recovery code al login, step-up, reset password,
+// Cicli di vita dell'account: recovery code al login, reset password,
 // cambio email, reset 2FA assistito.  §8.4, §8.5, §8.7, §8.8, §8.9
 
 import { createHash, randomBytes } from 'node:crypto';
@@ -21,7 +21,7 @@ import {
   recoveryCodesLowNotice,
 } from '#src/email/templates/notices.ts';
 import { BadRequest, NotFound, Unauthorized } from '../errors.ts';
-import { requireAuth, requireStepUp } from '../guards.ts';
+import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, rateLimitIpKey, requestIps } from '../request-context.ts';
 
 /** Token opachi da 256 bit: in tabella va solo lo SHA-256. */
@@ -153,7 +153,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
   // -------------------------------------------------------------------------
   app.post(
     '/api/account/recovery-codes/regenerate',
-    { preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       const ips = requestIps(request);
@@ -188,88 +188,6 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
     const actor = actorOf(request);
     return reply.send({ remaining: await countOpenRecoveryCodes(ctx.db, actor.userId) });
   });
-
-  // -------------------------------------------------------------------------
-  // §8.5 — step-up esplicito.
-  //
-  // Alza `authenticated_at` sulla sessione ESISTENTE senza emettere un token
-  // nuovo: e' un'operazione non-privilegio. Per il cambio di livello di
-  // privilegio si emette invece una sessione newEmail, e in fase 1 non esiste
-  // alcuna rotta che promuova l'attore stesso.
-  // -------------------------------------------------------------------------
-  app.post(
-    '/api/account/step-up',
-    {
-      preHandler: [requireAuth(ctx)],
-      bodyLimit: 4_096,
-      schema: {
-        body: {
-          type: 'object',
-          required: ['code'],
-          additionalProperties: false,
-          properties: { code: { type: 'string', minLength: 6, maxLength: 8 } },
-        },
-      },
-    },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      const ips = requestIps(request);
-      const { code } = request.body as { code: string };
-
-      await ctx.rateLimit.consume('twoFactorAccount', actor.userId);
-
-      // SEC-11 — la guardia vale anche qui: uno step-up e' un'asserzione forte
-      // quanto un login, e riusare un codice per ottenerla sarebbe il modo
-      // piu' comodo di aggirare SEC-36.
-      const replay = await ctx.totpGuard.check(actor.userId);
-      if (!replay.allowed) {
-        await writeAudit(ctx.db, {
-          action: AUDIT_ACTIONS.stepUpFailed,
-          outcome: 'denied',
-          actor: auditActorOf(actor),
-          request: auditContextOf(request, ips),
-          meta: { reason: replay.reason },
-        });
-        throw new Unauthorized();
-      }
-
-      const headers = new Headers();
-      const cookie = request.headers.cookie;
-      if (cookie) headers.set('cookie', cookie);
-
-      try {
-        await ctx.auth.api.verifyTOTP({ body: { code }, headers });
-      } catch {
-        await ctx.rateLimit.penalize('twoFactorAccount', actor.userId);
-        await writeAudit(ctx.db, {
-          action: AUDIT_ACTIONS.stepUpFailed,
-          outcome: 'failure',
-          actor: auditActorOf(actor),
-          request: auditContextOf(request, ips),
-        });
-        throw new Unauthorized();
-      }
-
-      await ctx.totpGuard.markUsed(actor.userId);
-      await ctx.rateLimit.reward('twoFactorAccount', actor.userId);
-
-      const now = new Date();
-      await ctx.db
-        .updateTable('auth.session')
-        .set({ authenticated_at: now, amr: ['pwd', 'totp'], aal: 2 })
-        .where('id', '=', actor.sessionId)
-        .execute();
-
-      await writeAudit(ctx.db, {
-        action: AUDIT_ACTIONS.stepUpSucceeded,
-        outcome: 'success',
-        actor: auditActorOf(actor),
-        request: auditContextOf(request, ips),
-      });
-
-      return reply.send({ ok: true, validForSeconds: ctx.env.STEP_UP_SECONDS });
-    },
-  );
 
   // -------------------------------------------------------------------------
   // §8.7 — reset password.
@@ -513,7 +431,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
   app.post(
     '/api/account/email',
     {
-      preHandler: [requireAuth(ctx), requireStepUp(ctx)],
+      preHandler: [requireAuth(ctx)],
       bodyLimit: 4_096,
       schema: {
         body: {

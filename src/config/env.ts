@@ -61,11 +61,6 @@ const EnvSchema = z.object({
     .number()
     .int()
     .default(30 * 60),
-  STEP_UP_SECONDS: z.coerce
-    .number()
-    .int()
-    .default(10 * 60),
-
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 

@@ -47,14 +47,6 @@ export class Conflict extends Error {
   }
 }
 
-/** Serve uno step-up: il client apre la challenge TOTP e ritenta. */
-export class StepUpRequired extends Error {
-  constructor() {
-    super('richiesta ri-autenticazione');
-    this.name = 'StepUpRequired';
-  }
-}
-
 /**
  * Rotte che indirizzano una risorsa con un id. Su queste, `Forbidden`
  * diventa 404 (SEC-31). Sulle rotte di collezione un 403 e' corretto e non
@@ -91,9 +83,6 @@ export function installErrorHandler(app: {
       return reply.code(404).send({ error: 'not_found' } satisfies ErrorBody);
     }
 
-    if (error instanceof StepUpRequired) {
-      return reply.code(403).send({ error: 'step_up_required', code: 'STEP_UP_REQUIRED' });
-    }
 
     if (error instanceof RateLimited) {
       reply.header('Retry-After', String(error.retryAfterSeconds));

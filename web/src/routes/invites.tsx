@@ -19,7 +19,7 @@ import {
 } from '../components/ui.tsx';
 import { ApiError, api, type InviteRow, type Me } from '../lib/api.ts';
 
-export function InvitesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => void }) {
+export function InvitesPage({ me }: { me: Me }) {
   const qc = useQueryClient();
   const [error, setError] = useState<string | undefined>();
 
@@ -37,10 +37,6 @@ export function InvitesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => 
     onError: (err) => {
       // La revoca è fra le operazioni che richiedono step-up (§8.5): un
       // invito revocato per errore non si riapre.
-      if (err instanceof ApiError && err.needsStepUp) {
-        onNeedStepUp();
-        return;
-      }
       setError('Revoca non riuscita.');
     },
   });

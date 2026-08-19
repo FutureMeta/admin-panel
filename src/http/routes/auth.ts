@@ -261,10 +261,6 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         modules: visibleModules(actor),
         aal: actor.aal,
         authenticatedAt: actor.authenticatedAt.toISOString(),
-        stepUpValidForSeconds: Math.max(
-          0,
-          ctx.env.STEP_UP_SECONDS - Math.floor((Date.now() - actor.authenticatedAt.getTime()) / 1000),
-        ),
       });
     },
   );

@@ -47,106 +47,10 @@ const queryClient = new QueryClient({
 });
 
 // ---------------------------------------------------------------------------
-// Challenge di step-up (§8.5). Non e' una pagina: e' un modale che compare
-// quando il server risponde STEP_UP_REQUIRED, e riporta l'utente esattamente
-// dov'era.
-// ---------------------------------------------------------------------------
-
-function StepUpDialog({ open, onClose }: { open: boolean; onClose: (ok: boolean) => void }) {
-  const [code, setCode] = useState('');
-  const [error, setError] = useState<string | undefined>();
-  const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (open) {
-      setCode('');
-      setError(undefined);
-    }
-  }, [open]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Conferma la tua identità"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(7,18,25,0.7)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 60,
-      }}
-    >
-      <div className="elevated" style={{ width: 'min(420px, 92vw)', padding: 'var(--sp6)' }}>
-        <h2 className="t-title" style={{ margin: '0 0 var(--sp2)' }}>
-          Conferma la tua identità
-        </h2>
-        <p className="t-lead" style={{ margin: '0 0 var(--sp5)', color: 'var(--tx-muted)' }}>
-          Questa operazione tocca privilegi. Serve un codice fresco della tua app: vale per i dieci minuti
-          successivi.
-        </p>
-
-        {error ? (
-          <div style={{ marginBottom: 'var(--sp4)' }}>
-            <Notice tone="err" title={error} />
-          </div>
-        ) : null}
-
-        <form
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setBusy(true);
-            try {
-              await api('/api/account/step-up', { method: 'POST', body: { code: code.trim() } });
-              onClose(true);
-            } catch {
-              setError('Codice non valido.');
-              setCode('');
-            } finally {
-              setBusy(false);
-            }
-          }}
-          style={{ display: 'grid', gap: 'var(--sp4)' }}
-        >
-          <Field
-            label="Codice a sei cifre"
-            className="input input-mono"
-            inputMode="numeric"
-            maxLength={6}
-            autoFocus
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-          />
-          <div style={{ display: 'flex', gap: 'var(--sp3)' }}>
-            <Button
-              type="submit"
-              variant="primary"
-              loading={busy}
-              disabled={code.length !== 6}
-              style={{ flex: 1 }}
-            >
-              Conferma
-            </Button>
-            <Button type="button" variant="ghost" onClick={() => onClose(false)}>
-              Annulla
-            </Button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 
 function AppShell() {
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [stepUpOpen, setStepUpOpen] = useState(false);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
@@ -252,34 +156,8 @@ function AppShell() {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
-      <StepUpDialog
-        open={stepUpOpen}
-        onClose={(ok) => {
-          setStepUpOpen(false);
-          if (ok) void me.refetch();
-        }}
-      />
-      <StepUpBridge onRequest={() => setStepUpOpen(true)} />
     </div>
   );
-}
-
-/**
- * Ponte fra le pagine e il modale di step-up: le pagine chiamano
- * `window.dispatchEvent(new Event('metamc:step-up'))` invece di ricevere una
- * callback attraverso cinque livelli di props.
- */
-function StepUpBridge({ onRequest }: { onRequest: () => void }) {
-  useEffect(() => {
-    const handler = () => onRequest();
-    window.addEventListener('metamc:step-up', handler);
-    return () => window.removeEventListener('metamc:step-up', handler);
-  }, [onRequest]);
-  return null;
-}
-
-export function requestStepUp(): void {
-  window.dispatchEvent(new Event('metamc:step-up'));
 }
 
 // ---------------------------------------------------------------------------
@@ -316,9 +194,9 @@ function UsersRoute() {
   if (!sections.some((m) => data.modules.includes(m))) return <ForbiddenPage />;
   return (
     <>
-      {data.modules.includes('utenti') ? <UsersPage me={data} onNeedStepUp={requestStepUp} /> : null}
-      {data.modules.includes('ruoli') ? <RolesPage me={data} onNeedStepUp={requestStepUp} /> : null}
-      {data.modules.includes('inviti') ? <InvitesPage me={data} onNeedStepUp={requestStepUp} /> : null}
+      {data.modules.includes('utenti') ? <UsersPage me={data} /> : null}
+      {data.modules.includes('ruoli') ? <RolesPage me={data} /> : null}
+      {data.modules.includes('inviti') ? <InvitesPage me={data} /> : null}
     </>
   );
 }

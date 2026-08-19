@@ -456,14 +456,6 @@ export function Topbar({
                   <span style={{ color: 'var(--tx-muted)' }}>2FA</span>
                   <span style={{ color: 'var(--ok)' }}>Attiva</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span style={{ color: 'var(--tx-muted)' }}>Ri-autenticazione</span>
-                  <span className="mono">
-                    {me.stepUpValidForSeconds > 0
-                      ? `${Math.ceil(me.stepUpValidForSeconds / 60)} min`
-                      : 'scaduta'}
-                  </span>
-                </div>
               </div>
 
               <div style={{ padding: 8 }}>

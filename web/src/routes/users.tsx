@@ -34,7 +34,7 @@ const MODULE_TOTAL = 8;
 
 // ---------------------------------------------------------------------------
 
-export function UsersPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => void }) {
+export function UsersPage({ me }: { me: Me }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | undefined>();
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -252,7 +252,6 @@ export function UsersPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => vo
           me={me}
           onClose={() => setSelected(undefined)}
           onChanged={() => void qc.invalidateQueries({ queryKey: ['users'] })}
-          onNeedStepUp={onNeedStepUp}
         />
       ) : null}
 
@@ -260,7 +259,6 @@ export function UsersPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => vo
         <InviteDialog
           onClose={() => setInviteOpen(false)}
           onCreated={() => void qc.invalidateQueries({ queryKey: ['invites'] })}
-          onNeedStepUp={onNeedStepUp}
         />
       ) : null}
     </>
@@ -389,13 +387,11 @@ function UserDialog({
   me,
   onClose,
   onChanged,
-  onNeedStepUp,
 }: {
   userId: string;
   me: Me;
   onClose: () => void;
   onChanged: () => void;
-  onNeedStepUp: () => void;
 }) {
   const [error, setError] = useState<string | undefined>();
   const detail = useQuery({
@@ -414,11 +410,6 @@ function UserDialog({
     onError: (err) => {
       // SEC-36 — un'operazione sui privilegi richiede step-up. Il client non
       // decide se serve: lo dice il server, e qui si apre la challenge.
-      if (err instanceof ApiError && err.needsStepUp) {
-        onNeedStepUp();
-        setError(undefined);
-        return;
-      }
       if (err instanceof ApiError && err.code === 'SERVONO_DUE_OWNER') {
         setError(
           'Devono restare almeno due owner: senza, il reset del secondo fattore a quattro occhi non esiste più.',
@@ -620,11 +611,9 @@ function UserDialog({
 function InviteDialog({
   onClose,
   onCreated,
-  onNeedStepUp,
 }: {
   onClose: () => void;
   onCreated: () => void;
-  onNeedStepUp: () => void;
 }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -651,10 +640,6 @@ function InviteDialog({
       onCreated();
     },
     onError: (err) => {
-      if (err instanceof ApiError && err.needsStepUp) {
-        onNeedStepUp();
-        return;
-      }
       if (err instanceof ApiError && err.status === 409) {
         setError('Esiste già un utente o un invito pendente per questo indirizzo.');
         return;
@@ -768,7 +753,7 @@ const MODULE_AREAS: Record<string, string> = {
   server: 'Sistema',
 };
 
-export function RolesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => void }) {
+export function RolesPage({ me }: { me: Me }) {
   const [error, setError] = useState<string | undefined>();
   const [roleId, setRoleId] = useState<number | undefined>();
   // Bozza locale: cambiare la matrice declassa tutti quelli che hanno il
@@ -790,10 +775,6 @@ export function RolesPage({ me, onNeedStepUp }: { me: Me; onNeedStepUp: () => vo
       void matrix.refetch();
     },
     onError: (err) => {
-      if (err instanceof ApiError && err.needsStepUp) {
-        onNeedStepUp();
-        return;
-      }
       setError(
         err instanceof ApiError && err.code === 'LIVELLO_NON_CONCEDIBILE'
           ? 'Non puoi impostare un livello superiore al tuo.'

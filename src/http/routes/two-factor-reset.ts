@@ -25,7 +25,7 @@ import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction } from '#src/audit/log.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import { BadRequest, Conflict, NotFound } from '../errors.ts';
-import { requireAuth, requireStepUp } from '../guards.ts';
+import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
 const MANDATORY_DELAY_HOURS = 24;
@@ -49,7 +49,7 @@ export async function registerTwoFactorResetRoutes(app: FastifyInstance, ctx: Ap
   app.post(
     '/api/two-factor-resets',
     {
-      preHandler: [requireAuth(ctx), requireStepUp(ctx)],
+      preHandler: [requireAuth(ctx)],
       schema: {
         body: {
           type: 'object',
@@ -149,7 +149,7 @@ export async function registerTwoFactorResetRoutes(app: FastifyInstance, ctx: Ap
   app.post(
     '/api/two-factor-resets/:id/approve',
     {
-      preHandler: [requireAuth(ctx), requireStepUp(ctx)],
+      preHandler: [requireAuth(ctx)],
       schema: {
         body: {
           type: 'object',
@@ -239,7 +239,7 @@ export async function registerTwoFactorResetRoutes(app: FastifyInstance, ctx: Ap
   // -------------------------------------------------------------------------
   app.post(
     '/api/two-factor-resets/:id/execute',
-    { preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'utenti', 3);

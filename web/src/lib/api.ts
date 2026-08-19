@@ -20,9 +20,6 @@ export class ApiError extends Error {
   }
 
   /** Serve uno step-up: il chiamante apre la challenge TOTP e ritenta. */
-  get needsStepUp(): boolean {
-    return this.status === 403 && this.code === 'STEP_UP_REQUIRED';
-  }
   get isUnauthorized(): boolean {
     return this.status === 401;
   }
@@ -115,7 +112,6 @@ export type Me = {
   modules: ModuleKey[];
   aal: number;
   authenticatedAt: string;
-  stepUpValidForSeconds: number;
 };
 
 export type UserRow = {

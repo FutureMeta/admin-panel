@@ -17,7 +17,7 @@ import {
 import { isLevel, isModuleKey } from '#src/authz/modules.ts';
 import { revokeInvitesBy } from '#src/invites/service.ts';
 import { BadRequest, NotFound } from '../errors.ts';
-import { requireAuth, requireStepUp } from '../guards.ts';
+import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
 const banSchema = {
@@ -239,7 +239,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.post(
     '/api/users/:id/roles',
-    { schema: roleSchema, preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { schema: roleSchema, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'ruoli', 2);
@@ -306,7 +306,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
 
   app.delete(
     '/api/users/:id/roles/:roleId',
-    { preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'ruoli', 2);
@@ -349,7 +349,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.put(
     '/api/users/:id/permissions',
-    { schema: permissionSchema, preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { schema: permissionSchema, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'ruoli', 2);
@@ -426,7 +426,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.post(
     '/api/users/:id/ban',
-    { schema: banSchema, preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { schema: banSchema, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'utenti', 3);
@@ -476,7 +476,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
 
   app.post(
     '/api/users/:id/unban',
-    { preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'utenti', 3);
@@ -515,7 +515,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.post(
     '/api/users/:id/revoke-sessions',
-    { preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'sessioni', 2);
@@ -544,7 +544,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.post(
     '/api/users/:id/offboard',
-    { schema: banSchema, preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { schema: banSchema, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'utenti', 3);
@@ -619,7 +619,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.post(
     '/api/users/:id/delete',
-    { schema: banSchema, preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { schema: banSchema, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'utenti', 3);

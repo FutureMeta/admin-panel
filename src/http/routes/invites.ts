@@ -18,8 +18,8 @@ import { require as requireLevel } from '#src/authz/can.ts';
 import { canGrantRole, isSystemRole } from '#src/authz/dominance.ts';
 import { inviteEmail } from '#src/email/templates/invite.ts';
 import { assertInvitable, InviteConflict, insertInvite, roleGrantsManage } from '#src/invites/service.ts';
-import { BadRequest, Conflict, NotFound, StepUpRequired } from '../errors.ts';
-import { requireAuth, requireStepUp } from '../guards.ts';
+import { BadRequest, Conflict, NotFound } from '../errors.ts';
+import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
 const createInviteSchema = {
@@ -88,12 +88,6 @@ export async function registerInviteRoutes(app: FastifyInstance, ctx: AppContext
           meta: { reason: 'concedibilita`', severita: 'alta' },
         });
         throw new BadRequest('RUOLO_NON_CONCEDIBILE');
-      }
-
-      // §8.1.1 — step-up se il ruolo concede livello 3 su almeno un modulo.
-      if (await roleGrantsManage(ctx.db, body.roleId)) {
-        const ageMs = Date.now() - actor.authenticatedAt.getTime();
-        if (ageMs > ctx.env.STEP_UP_SECONDS * 1000) throw new StepUpRequired();
       }
 
       let created: { id: string; token: string; expiresAt: Date };
@@ -237,11 +231,11 @@ export async function registerInviteRoutes(app: FastifyInstance, ctx: AppContext
   );
 
   // -------------------------------------------------------------------------
-  // POST /api/invites/:id/revoke — richiede step-up (§8.5)
+  // POST /api/invites/:id/revoke
   // -------------------------------------------------------------------------
   app.post(
     '/api/invites/:id/revoke',
-    { preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { preHandler: [requireAuth(ctx)] },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'inviti', 2);

@@ -50,7 +50,6 @@ const ME: Me = {
   modules: ['utenti', 'ruoli', 'inviti', 'sessioni', 'audit', 'impostazioni', 'statistiche', 'server'],
   aal: 2,
   authenticatedAt: new Date().toISOString(),
-  stepUpValidForSeconds: 480,
 };
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString();
@@ -275,9 +274,9 @@ function Preview() {
             <AuditPage_ />
           ) : (
             <>
-              <UsersPage me={ME} onNeedStepUp={() => {}} />
-              <RolesPage me={ME} onNeedStepUp={() => {}} />
-              <InvitesPage me={ME} onNeedStepUp={() => {}} />
+              <UsersPage me={ME} />
+              <RolesPage me={ME} />
+              <InvitesPage me={ME} />
             </>
           )}
         </main>

@@ -1,4 +1,4 @@
-// preHandler riutilizzabili: autenticazione, autorizzazione, step-up.
+// preHandler riutilizzabili: autenticazione e autorizzazione.
 //
 // Sono l'unico modo in cui una rotta ottiene un AuthzContext. Una rotta che
 // dimentica `requireAuth` non riceve un attore parziale: riceve un'eccezione
@@ -9,7 +9,7 @@ import type { AppContext } from '#src/app-context.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import type { ModuleKey, RequiredLevel } from '#src/authz/modules.ts';
 import { issueCsrfCookie } from './csrf.ts';
-import { StepUpRequired, Unauthorized } from './errors.ts';
+import { Unauthorized } from './errors.ts';
 import { actorOf, setAuthz } from './request-context.ts';
 
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -52,44 +52,23 @@ export function requirePermission(module: ModuleKey, level: RequiredLevel): PreH
   };
 }
 
-/**
- * §8.5 — step-up.
+/*
+ * LO STEP-UP NON C'E' PIU'. §8.5, rimosso su richiesta del committente.
  *
- * L'operazione richiede un'asserzione TOTP negli ultimi 10 minuti. Non e'
- * "sei loggato": e' "hai dimostrato di essere tu di recente". SEC-36: un XSS
- * che ruba una sessione non puo' promuoversi in silenzio, perche' non ha modo
- * di produrre un codice TOTP.
+ * Cosa proteggeva, perche' resti scritto: chiedeva un codice TOTP fresco
+ * prima delle operazioni privilegiate. Non «sei loggato», ma «hai dimostrato
+ * di essere tu adesso». Era la difesa del SEC-36 — una sessione rubata (XSS,
+ * portatile lasciato aperto) non poteva promuoversi a owner, perche' il
+ * codice dall'app non ce l'aveva.
  *
- * L'elenco delle operazioni che lo richiedono e' CHIUSO ed e' in
- * STEP_UP_OPERATIONS.
+ * Cosa resta al suo posto: la 2FA obbligatoria al login, il dominio del §8.8
+ * (nessuno tocca chi lo domina), la regola dei due owner, e il registro
+ * append-only — che non impedisce l'abuso ma lo rende impossibile da
+ * nascondere.
+ *
+ * Se un giorno lo si rimette, il posto e' questo e l'elenco delle operazioni
+ * va tenuto qui dentro: sparso nelle rotte non sarebbe un elenco.
  */
-export function requireStepUp(ctx: AppContext): PreHandler {
-  return async (request) => {
-    const actor = actorOf(request);
-    const ageMs = Date.now() - actor.authenticatedAt.getTime();
-    if (ageMs > ctx.env.STEP_UP_SECONDS * 1000) {
-      throw new StepUpRequired();
-    }
-  };
-}
-
-/**
- * Elenco CHIUSO delle operazioni che richiedono step-up (§8.5). Sta qui e non
- * sparso nelle rotte, perche' un elenco sparso non e' un elenco.
- */
-export const STEP_UP_OPERATIONS = [
-  'invito che concede livello 3 su almeno un modulo',
-  'revoca invito',
-  'modifica ruoli o permessi di chiunque',
-  'ban / unban',
-  'revoca sessioni altrui',
-  'disattivazione 2FA',
-  'rigenerazione recovery code',
-  'cambio email',
-  'cambio password',
-  'qualunque scrittura sul modulo impostazioni',
-  'offboarding',
-] as const;
 
 /** Sessione di onboarding (aal=0): solo per il percorso invito → enrollment. */
 export function requireOnboarding(ctx: AppContext): PreHandler {

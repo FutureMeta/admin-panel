@@ -38,7 +38,6 @@ export type TestApp = {
 export type TestAppOptions = {
   label?: string;
   /** Secondi di validita' dello step-up. Abbassarlo permette di verificarne la scadenza. */
-  stepUpSeconds?: number;
   idleSeconds?: number;
 };
 
@@ -173,7 +172,6 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from('segreto-webhook-di-test-0123456789').toString('base64')}`,
     SESSION_ABSOLUTE_SECONDS: '28800',
     SESSION_IDLE_SECONDS: String(opts.idleSeconds ?? 1800),
-    STEP_UP_SECONDS: String(opts.stepUpSeconds ?? 600),
     LOG_LEVEL: 'fatal',
   });
 

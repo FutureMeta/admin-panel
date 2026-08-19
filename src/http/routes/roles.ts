@@ -8,7 +8,7 @@ import { require as requireLevel } from '#src/authz/can.ts';
 import { canGrantLevel } from '#src/authz/dominance.ts';
 import { isLevel } from '#src/authz/modules.ts';
 import { BadRequest, NotFound } from '../errors.ts';
-import { requireAuth, requireStepUp } from '../guards.ts';
+import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
 const matrixSchema = {
@@ -88,7 +88,7 @@ export async function registerRoleRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.put(
     '/api/roles/:id/permissions',
-    { schema: matrixSchema, preHandler: [requireAuth(ctx), requireStepUp(ctx)] },
+    { schema: matrixSchema, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'ruoli', 3);

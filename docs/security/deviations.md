@@ -160,3 +160,43 @@ politica sotto test.
 
 **In CI la variabile è impostata** e i test girano sul backend Redis vero, con
 lo script Lua, esattamente come in produzione.
+
+---
+
+## D-09 — Nessuno step-up (contro §8.5 del brief)
+
+**Da cosa devia.** Il §8.5 chiedeva un'asserzione TOTP fresca — entro dieci
+minuti — prima di ogni operazione privilegiata: cambio di ruoli e permessi,
+ban, revoca sessioni altrui, disattivazione 2FA, cambio email e password,
+scritture sul modulo impostazioni, offboarding.
+
+**Cosa facciamo.** Lo step-up non esiste. Nessuna rotta lo richiede, la rotta
+`/api/account/step-up` è stata rimossa e con lei la variabile
+`STEP_UP_SECONDS`.
+
+**Perché.** Richiesta esplicita del committente, il 2026-08-19. Nella pratica
+il codice veniva richiesto a ogni operazione dopo i primi dieci minuti di
+sessione, cioè quasi sempre, e il costo d'uso è stato giudicato superiore al
+beneficio.
+
+**Cosa perdiamo, detto per intero.** Era la difesa del SEC-36. Una sessione
+rubata — un XSS, un portatile lasciato aperto — adesso può fare tutto ciò che
+può fare la persona a cui è stata rubata, promozioni comprese, senza mai
+produrre un codice dall'app. Non è stato attenuato: è stato tolto.
+
+Sono state proposte due alternative più conservative — tenerlo solo sulle
+operazioni irreversibili, oppure allargarne la finestra — ed entrambe sono
+state scartate a favore della rimozione completa. Va detto che la seconda
+sarebbe stata peggiore della rimozione: una finestra lunga quanto la sessione
+lascia il controllo nel codice senza che protegga più da nulla, e questo è più
+difficile da scoprire di un controllo assente.
+
+**Cosa resta a comporlo.** La 2FA obbligatoria al login (nessuna sessione
+nasce senza un codice), il dominio del §8.8 (nessuno opera su chi lo domina),
+la regola dei due owner, la scadenza di sessione assoluta a 8 ore e quella per
+inattività a 30 minuti, e il registro append-only con catena hash: non
+impedisce l'abuso, ma lo rende impossibile da cancellare.
+
+**Rientro.** Nessuno programmato. Se lo si rimette, il posto è
+`requireStepUp` in `src/http/guards.ts`, dove il commento conserva l'elenco
+chiuso delle operazioni che lo richiedevano.

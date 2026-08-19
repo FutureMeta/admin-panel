@@ -6,20 +6,23 @@
 // (SEC-32).
 //
 // Impaginazione di frontend/2-accettazione-invito.dc.html: campo di esagoni a
-// piena pagina sotto, card centrata da 940px divisa in due — a sinistra cosa
-// stai per ricevere, a destra tutto quello che devi fare, in una schermata
-// sola.
+// piena pagina sotto, card centrata da 940px divisa in due. A sinistra cosa
+// stai per ricevere, e non cambia mai; a destra i due passi piu' i codici di
+// recupero, che restano dentro la stessa card invece di prendersi una pagina.
 //
-// UNA COSA IL DISEGNO NON PUO' MOSTRARE, ed e' il motivo per cui il riquadro
-// del QR ha due stati. Il segreto TOTP lo produce better-auth, e per produrlo
-// gli serve la password: prima che la password sia impostata quel QR non
-// esiste da nessuna parte, e disegnarlo vuoto sarebbe una bugia. Quindi la
-// pagina resta una, ma il riquadro si accende da solo appena le due password
-// coincidono — non c'e' un secondo pulsante e non si cambia schermata.
+// La barra dei passi si ferma a due anche quando compaiono i codici: non sono
+// un terzo passo ma il secondo fattore visto dall'altro lato — che cosa fai
+// quando il telefono non ce l'hai piu'.
 //
-// I recovery code si mostrano UNA SOLA VOLTA, e per quelli la schermata a
-// parte resta: sono l'unica cosa in tutto il flusso che non si puo' recuperare
-// e meritano una pagina che non abbia altro sopra.
+// UNA COSA DEL DISEGNO NON C'E': il pulsante «← Torna alla password» del passo
+// 2. Il passo 1 non e' reversibile. Il segreto TOTP lo conia better-auth, e
+// per coniarlo gli serve la password: premendo «Continua» l'account viene
+// creato e l'invito consumato, ed e' l'unico modo di avere il segreto da cui
+// nasce il QR. Un pulsante che riportasse indietro troverebbe la password gia'
+// impostata e non potrebbe cambiarla.
+//
+// I recovery code si mostrano UNA SOLA VOLTA, e il pulsante finale resta
+// spento finche' non si conferma di averli salvati.
 
 import { useNavigate } from '@tanstack/react-router';
 import qrcode from 'qrcode-generator';
@@ -37,7 +40,7 @@ type Onboarding = {
   invitedByName: string | null;
   modules: OnboardingModule[];
 };
-type Phase = 'caricamento' | 'scaduto' | 'attiva' | 'codici';
+type Phase = 'caricamento' | 'scaduto' | 'attiva';
 
 const LEVEL_LABEL = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
 const LEVEL_TONE = [
@@ -61,6 +64,7 @@ export function AcceptPage() {
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
 
@@ -125,13 +129,52 @@ export function AcceptPage() {
         body: { code: code.trim() },
       });
       setCodes(res.recoveryCodes);
-      setPhase('codici');
     } catch {
       setError('Codice non valido. Controlla che l’orario del telefono sia sincronizzato.');
       setCode('');
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * I codici come testo. Numerati: un elenco di dieci stringhe uguali fra loro
+   * e' esattamente il genere di cosa che si incolla a meta'.
+   */
+  function codesAsText(): string {
+    return [
+      'Codici di recupero MetaMC Admin',
+      invite?.email ?? '',
+      '',
+      ...codes.map((c, i) => `${String(i + 1).padStart(2, ' ')}. ${c}`),
+      '',
+      'Ognuno vale una volta sola. Sono stati mostrati una volta e non si rivedono.',
+    ].join('\n');
+  }
+
+  async function copyCodes() {
+    try {
+      await navigator.clipboard.writeText(codesAsText());
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2_000);
+    } catch {
+      // Gli appunti possono essere negati dal browser. Non e' un errore da
+      // mostrare: i codici sono li' sullo schermo, e c'e' il download.
+    }
+  }
+
+  /**
+   * Il file lo compone il browser da dati che ha gia': nessuna richiesta al
+   * server, quindi questi codici non passano una seconda volta dalla rete.
+   */
+  function downloadCodes() {
+    const blob = new Blob([codesAsText()], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'metamc-codici-di-recupero.txt';
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   const secret = totpUri ? new URLSearchParams(totpUri.split('?')[1] ?? '').get('secret') : null;
@@ -171,54 +214,6 @@ export function AcceptPage() {
           </p>
           <Button variant="secondary" onClick={() => navigate({ to: '/login' })}>
             Vai al login
-          </Button>
-        </Shell>
-      ) : phase === 'codici' ? (
-        <Shell single>
-          <Title>Salva i codici di recupero</Title>
-          <p style={{ margin: '0 0 20px', fontSize: 13.5, lineHeight: '21px', color: 'var(--tx-secondary)' }}>
-            Sono l'unico modo di rientrare se perdi il telefono. Vengono mostrati{' '}
-            <strong style={{ color: 'var(--tx-primary)' }}>ora e mai più</strong>: senza, l'unica via è una
-            procedura che richiede due owner e ventiquattro ore.
-          </p>
-
-          <div
-            className="mono"
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '6px 20px',
-              background: 'var(--s-inset)',
-              border: '1px solid var(--bd-subtle)',
-              borderRadius: 'var(--r-sm)',
-              padding: 18,
-              marginBottom: 18,
-              fontSize: 13,
-              color: 'var(--tx-primary)',
-            }}
-          >
-            {codes.map((c) => (
-              <span key={c}>{c}</span>
-            ))}
-          </div>
-
-          <label
-            style={{
-              display: 'flex',
-              gap: 10,
-              alignItems: 'flex-start',
-              marginBottom: 20,
-              fontSize: 12.5,
-              lineHeight: '19px',
-              color: 'var(--tx-secondary)',
-            }}
-          >
-            <input type="checkbox" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
-            Li ho salvati in un posto sicuro, fuori da questo browser.
-          </label>
-
-          <Button variant="primary" size="lg" disabled={!saved} onClick={() => navigate({ to: '/' })} block>
-            Entra nel pannello
           </Button>
         </Shell>
       ) : (
@@ -444,7 +439,7 @@ export function AcceptPage() {
                   Al passo successivo attivi la verifica a due fattori, obbligatoria per tutto lo staff.
                 </Footnote>
               </form>
-            ) : (
+            ) : codes.length === 0 ? (
               <form onSubmit={activate}>
                 <h2
                   style={{
@@ -525,7 +520,7 @@ export function AcceptPage() {
                   disabled={code.length !== 6}
                   block
                 >
-                  Attiva account ed entra
+                  Verifica e continua
                 </Button>
                 {/* Il disegno mette qui «← Torna alla password». Non c'è, e
                     non è una dimenticanza: il passo 1 non è reversibile.
@@ -534,8 +529,126 @@ export function AcceptPage() {
                     nasce il QR. Un pulsante che riportasse indietro
                     troverebbe la password già impostata e non potrebbe
                     cambiarla: prometterebbe un ritorno che non esiste. */}
-                <Footnote>Attivando l'account accetti il regolamento interno dello staff.</Footnote>
               </form>
+            ) : (
+              <>
+                {/* I codici di recupero restano DENTRO la card, come nel
+                    disegno, e la barra dei passi non avanza a tre: sono il
+                    secondo fattore visto dall'altro lato — cosa fai quando il
+                    telefono non c'è più. */}
+                <p
+                  style={{ margin: '0 0 18px', fontSize: 12.5, lineHeight: '19px', color: 'var(--tx-muted)' }}
+                >
+                  2FA attiva. Salva questi codici: usali se perdi l'accesso all'app di autenticazione, ognuno
+                  funziona una sola volta e vengono mostrati solo adesso.
+                </p>
+
+                <div
+                  style={{
+                    border: '1px solid var(--bd-strong)',
+                    borderRadius: 'var(--r-md)',
+                    background: 'var(--s-inset)',
+                    padding: '16px 18px',
+                    marginBottom: 14,
+                  }}
+                >
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 18px' }}>
+                    {codes.map((value, i) => (
+                      <div
+                        key={value}
+                        className="mono"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 9,
+                          fontSize: 12.5,
+                          color: 'var(--tx-primary)',
+                          padding: '5px 0',
+                          borderBottom: '1px solid var(--bd-subtle)',
+                        }}
+                      >
+                        <span style={{ width: 14, fontSize: 10.5, color: 'var(--tx-disabled)' }}>
+                          {i + 1}
+                        </span>
+                        {value}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+                  <SmallButton onClick={copyCodes} path={ICON_COPY}>
+                    {copied ? 'Copiati' : 'Copia tutti'}
+                  </SmallButton>
+                  <SmallButton onClick={downloadCodes} path={ICON_DOWNLOAD}>
+                    Scarica .txt
+                  </SmallButton>
+                </div>
+
+                <label
+                  style={{
+                    position: 'relative',
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 10,
+                    marginBottom: 18,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {/* La casella vera è nascosta ma resta il controllo: tastiera
+                      e screen reader lavorano su quella, il quadrato arancione
+                      è soltanto come si vede. */}
+                  <input
+                    type="checkbox"
+                    checked={saved}
+                    onChange={(e) => setSaved(e.target.checked)}
+                    style={{ position: 'absolute', opacity: 0, width: 16, height: 16, margin: 0 }}
+                  />
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: 'var(--r-xs)',
+                      background: saved ? 'var(--ac)' : 'transparent',
+                      border: saved ? 'none' : '1px solid var(--bd-strong)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flex: 'none',
+                      marginTop: 1,
+                    }}
+                  >
+                    {saved ? (
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="11"
+                        height="11"
+                        fill="none"
+                        stroke="var(--on-ac)"
+                        strokeWidth="3"
+                        strokeLinecap="round"
+                        aria-hidden="true"
+                      >
+                        <path d="m5 13 4 4 10-10" />
+                      </svg>
+                    ) : null}
+                  </span>
+                  <span style={{ fontSize: 12, lineHeight: '18px', color: 'var(--tx-secondary)' }}>
+                    Ho salvato questi codici in un posto sicuro.
+                  </span>
+                </label>
+
+                <Button
+                  variant="primary"
+                  size="lg"
+                  disabled={!saved}
+                  onClick={() => navigate({ to: '/' })}
+                  block
+                >
+                  Attiva account ed entra
+                </Button>
+              </>
             )}
           </div>
         </Shell>
@@ -812,5 +925,68 @@ function Footnote({ children }: { children: ReactNode }) {
     >
       {children}
     </p>
+  );
+}
+
+/** Le due icone del disegno: appunti e freccia in giu'. */
+const ICON_COPY = (
+  <>
+    <rect x="9" y="9" width="12" height="12" rx="2" />
+    <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+  </>
+);
+const ICON_DOWNLOAD = (
+  <>
+    <path d="M12 3v13m0 0-4-4m4 4 4-4" />
+    <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+  </>
+);
+
+/** I due pulsanti sotto i codici: 34px, bordo pieno, icona a sinistra. */
+function SmallButton({
+  onClick,
+  path,
+  children,
+}: {
+  onClick: () => void;
+  path: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        flex: 1,
+        height: 34,
+        border: '1px solid var(--bd-strong)',
+        borderRadius: 'var(--r-sm)',
+        background: 'var(--s-elevated)',
+        color: 'var(--tx-primary)',
+        fontFamily: 'var(--font-ui)',
+        fontSize: 12,
+        fontWeight: 500,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+      }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="13"
+        height="13"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {path}
+      </svg>
+      {children}
+    </button>
   );
 }

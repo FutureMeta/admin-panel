@@ -343,6 +343,17 @@ body {
     font-size: 13.5px;
     transition: border-color var(--dur-fast) var(--ease);
   }
+  /* Un campo spento deve SEMBRARE spento.
+   *
+   * Senza questa regola un input disabilitato restava del bianco pieno del
+   * testo normale, e l'unico indizio era che non prendeva il fuoco: chi
+   * arrivava sull'accettazione invito provava a cambiare la propria email e
+   * scopriva solo battendo che non si poteva. Il colore e' quello del
+   * disegno. */
+  .input:disabled {
+    color: var(--tx-disabled);
+    cursor: not-allowed;
+  }
   .input::placeholder {
     color: var(--tx-disabled);
   }

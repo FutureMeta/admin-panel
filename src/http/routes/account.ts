@@ -352,13 +352,39 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
           // a chi NON ha chiesto il reset di capire da dove e' partito.
           ip: ips.ip,
         });
-        await ctx.mailer.send({
-          to: user.email,
-          subject: tpl.subject,
-          html: tpl.html,
-          text: tpl.text,
-          idempotencyKey: `reset:${user.id}:${expiresAt.getTime()}`,
-        });
+        // L'invio NON puo' far fallire la richiesta.
+        //
+        // Due motivi. Il primo e' SEC-31: se un errore del servizio di posta
+        // diventasse un 500, un indirizzo REGISTRATO risponderebbe 500 e uno
+        // inesistente 200 — cioe' esattamente l'oracolo che tutto il resto di
+        // questa rotta esiste per non dare. Il secondo e' pratico: il token e'
+        // gia' scritto e valido, e una schermata d'errore su un reset che in
+        // realta' e' partito manda la persona a chiederne un altro.
+        //
+        // Il fallimento non sparisce: finisce nel registro, dove chi guarda lo
+        // vede.
+        try {
+          await ctx.mailer.send({
+            to: user.email,
+            subject: tpl.subject,
+            html: tpl.html,
+            text: tpl.text,
+            idempotencyKey: `reset:${user.id}:${expiresAt.getTime()}`,
+          });
+        } catch (err) {
+          request.log.error({ err, userId: user.id }, 'invio del link di reset fallito');
+          await writeAudit(ctx.db, {
+            action: AUDIT_ACTIONS.userPasswordResetRequested,
+            outcome: 'failure',
+            actor: { userId: user.id, email: user.email, displayName: user.name, sessionId: null },
+            request: auditContextOf(request, ips),
+            moduleKey: 'utenti',
+            targetType: 'user',
+            targetId: user.id,
+            targetLabel: user.email,
+            meta: { reason: 'invio email fallito' },
+          });
+        }
       }
 
       // Risposta identica in ogni caso. Nessun dettaglio, nessun conteggio.

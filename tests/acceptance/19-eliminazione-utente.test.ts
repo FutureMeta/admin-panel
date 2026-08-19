@@ -15,6 +15,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { assertInvitable, insertInvite } from '#src/invites/service.ts';
 import { createUser, roleIdByKey, userWithRole } from '#tests/support/fixtures.ts';
 import { createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
@@ -43,7 +44,15 @@ afterAll(async () => {
 async function markDeleted(userId: string, reason = 'test'): Promise<void> {
   await db
     .updateTable('auth.user')
-    .set({ deleted_at: new Date(), banned: true, status: 'disabled', ban_reason: reason })
+    .set({
+      deleted_at: new Date(),
+      banned: true,
+      status: 'disabled',
+      ban_reason: reason,
+      // Come la rotta: l'indirizzo torna libero.
+      email: `deleted+${userId}@invalid.local`,
+      emailVerified: false,
+    })
     .where('id', '=', userId)
     .execute();
 }
@@ -146,5 +155,71 @@ describe('eliminazione utente', () => {
     await markDeleted(a);
     expect(await activeOwners()).toBe(before - 1);
     expect(b).not.toBe(a);
+  });
+  it("dopo l'eliminazione lo stesso indirizzo si puo' reinvitare", async () => {
+    // È il caso che si è rotto in produzione: eliminare e reinvitare dava
+    // «esiste già un utente». Un'eliminazione che non libera l'indirizzo
+    // brucia quella casella per sempre.
+    const email = `riciclato${Date.now()}@metamc.it`;
+    const inviter = await userWithRole(db, 'owner', `owner-ric${Date.now()}@metamc.it`);
+    const roleId = await roleIdByKey(db, 'moderatore');
+
+    const victim = await createUser(db, { email });
+    await markDeleted(victim);
+
+    // 1. il controllo applicativo non protesta più
+    await expect(
+      db.transaction().execute(async (trx) => assertInvitable(trx, email, inviter)),
+    ).resolves.toBeUndefined();
+
+    // 2. e nemmeno il database: l'invito entra davvero
+    const invite = await db
+      .transaction()
+      .execute(async (trx) =>
+        insertInvite(trx, { emailLower: email, displayName: 'Riciclato', roleId, invitedBy: inviter }),
+      );
+    expect(invite.token).toBeTruthy();
+
+    // 3. l'indice unico su lower(email) non blocca la creazione del nuovo
+    //    utente, perché la riga eliminata non tiene più quell'indirizzo
+    const reborn = await createUser(db, { email });
+    expect(reborn).not.toBe(victim);
+  });
+
+  it("l'indirizzo della riga eliminata diventa un segnaposto irraggiungibile", async () => {
+    const email = `tombstone${Date.now()}@metamc.it`;
+    const id = await createUser(db, { email });
+    await markDeleted(id);
+
+    const row = await db
+      .selectFrom('auth.user')
+      .select(['email', 'emailVerified'])
+      .where('id', '=', id)
+      .executeTakeFirstOrThrow();
+
+    expect(row.email).toBe(`deleted+${id}@invalid.local`);
+    expect(row.emailVerified).toBe(false);
+    // Il dominio non risolve: nessuna email potrà mai partire verso lì.
+    expect(row.email.endsWith('@invalid.local')).toBe(true);
+  });
+  it('anche una riga eliminata PRIMA della migration 008 non blocca il reinvito', async () => {
+    // Il segnaposto sull'indirizzo è la correzione vera, ma non copre le righe
+    // eliminate quando quel comportamento non c'era ancora: lì l'email vera è
+    // rimasta sulla riga. È il caso che il filtro su `deleted_at` protegge, e
+    // senza questo test non lo verificherebbe nessuno.
+    const email = `vecchiaeliminazione${Date.now()}@metamc.it`;
+    const inviter = await userWithRole(db, 'owner', `owner-old${Date.now()}@metamc.it`);
+    const victim = await createUser(db, { email });
+
+    // Eliminazione «vecchio stile»: nessun segnaposto, l'indirizzo resta.
+    await db
+      .updateTable('auth.user')
+      .set({ deleted_at: new Date(), banned: true, status: 'disabled', ban_reason: 'vecchia' })
+      .where('id', '=', victim)
+      .execute();
+
+    await expect(
+      db.transaction().execute(async (trx) => assertInvitable(trx, email, inviter)),
+    ).resolves.toBeUndefined();
   });
 });

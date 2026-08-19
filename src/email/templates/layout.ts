@@ -40,6 +40,20 @@ const MONO = "'Courier New',Courier,monospace";
 export type EmailSection = string;
 
 /**
+ * L'origine da cui servire il logo, ricavata dal link del messaggio.
+ *
+ * Ogni email che mostra il marchio contiene gia' un link verso il pannello
+ * (`${APP_ORIGIN}/accept?t=...`, `/reset?t=...`): l'origine e' li' dentro, e
+ * ricavarla evita di far passare la configurazione attraverso quattro livelli
+ * di firme solo per comporre una URL. Se il link non e' assoluto — non
+ * dovrebbe succedere — si torna al riquadro con la lettera.
+ */
+function originOf(link: string): string | null {
+  const m = /^(https?:\/\/[^/]+)/i.exec(link);
+  return m ? (m[1] ?? null) : null;
+}
+
+/**
  * Testo nascosto che i client mostrano nell'anteprima accanto all'oggetto.
  * Senza, l'anteprima diventa il primo testo visibile — cioe' «METAMC CONSOLE».
  */
@@ -148,6 +162,8 @@ export function render(input: {
   preheaderText: string;
   sections: EmailSection[];
   footerLines: string[];
+  /** Un link assoluto del messaggio: serve solo a ricavare l'origine del logo. */
+  logoFrom?: string;
 }): string {
   // La prima sezione ha il padding superiore del disegno (36px), le altre no.
   const [first, ...rest] = input.sections;
@@ -162,6 +178,17 @@ export function render(input: {
         `<p style="margin:0${i === input.footerLines.length - 1 ? '' : ' 0 6px 0'};font-family:${FONT};font-size:12px;line-height:19px;color:${i === 0 ? C.textFaint : C.textFooter};">${line}</p>`,
     )
     .join('\n');
+
+  // Molti client bloccano le immagini remote: `alt` e le dimensioni
+  // esplicite fanno si' che il messaggio resti leggibile e non salti.
+  const origin = input.logoFrom ? originOf(input.logoFrom) : null;
+  const mark = origin
+    ? `<img src="${escapeUrl(`${origin}/assets/logo.png`)}" width="30" height="30" alt="MetaMC" style="display:block;width:30px;height:30px;border:0;outline:none;text-decoration:none;">`
+    : `<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="30" style="width:30px;">
+                    <tr>
+                      <td align="center" valign="middle" bgcolor="${C.page}" style="width:30px;height:30px;border:1px solid ${C.borderLogo};border-radius:6px;font-family:${FONT};font-size:14px;font-weight:bold;color:${C.accentText};line-height:30px;mso-line-height-rule:exactly;">M</td>
+                    </tr>
+                  </table>`;
 
   return `<!DOCTYPE html>
 <html lang="it">
@@ -192,11 +219,7 @@ ${preheader(input.preheaderText)}
             <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
               <tr>
                 <td width="34" valign="middle" style="width:34px;">
-                  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="30" style="width:30px;">
-                    <tr>
-                      <td align="center" valign="middle" bgcolor="${C.page}" style="width:30px;height:30px;border:1px solid ${C.borderLogo};border-radius:6px;font-family:${FONT};font-size:14px;font-weight:bold;color:${C.accentText};line-height:30px;mso-line-height-rule:exactly;">M</td>
-                    </tr>
-                  </table>
+                  ${mark}
                 </td>
                 <td valign="middle" style="font-family:${FONT};font-size:13px;font-weight:bold;letter-spacing:2px;color:${C.text};">
                   METAMC<span style="font-weight:normal;letter-spacing:1px;color:${C.textFaint};"> &nbsp;CONSOLE</span>

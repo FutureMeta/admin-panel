@@ -206,14 +206,6 @@ function AppShell() {
         void api('/api/session/logout-all', { method: 'POST' }).then(() => window.location.assign('/login'));
       },
     },
-    {
-      id: 'theme',
-      label: 'Cambia tema',
-      run: () => {
-        const root = document.documentElement;
-        root.dataset.theme = root.dataset.theme === 'light' ? 'dark' : 'light';
-      },
-    },
   ];
 
   // Il titolo della pagina corrente, per il breadcrumb della topbar.

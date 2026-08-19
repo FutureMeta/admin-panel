@@ -68,6 +68,7 @@ export function passwordChangedNotice(input: PasswordNoticeInput): EmailTemplate
 
     const html = render({
       title: 'Reimposta la password della console MetaMC',
+      logoFrom: input.link,
       preheaderText: `Link per reimpostare la password della console MetaMC. Valido ${validity}, un solo utilizzo.`,
       sections: [
         eyebrow('Sicurezza account') +
@@ -158,6 +159,7 @@ export function emailChangeNotice(input: EmailChangeInput): EmailTemplate {
       subject: 'Conferma il nuovo indirizzo per MetaMC Admin',
       html: render({
         title,
+        logoFrom: input.link,
         preheaderText: `Conferma il nuovo indirizzo. Il link vale fino al ${formatDate(input.expiresAt)}.`,
         sections: [
           eyebrow('Sicurezza account') +
@@ -180,6 +182,7 @@ export function emailChangeNotice(input: EmailChangeInput): EmailTemplate {
     subject: 'MetaMC Admin — richiesta di cambio indirizzo',
     html: render({
       title,
+      logoFrom: input.link,
       preheaderText: `È stato richiesto di spostare il tuo accesso su ${input.newEmail}.`,
       sections: [
         eyebrow('Sicurezza account') +

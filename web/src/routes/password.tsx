@@ -19,13 +19,6 @@ import { AuthFootnote, AuthHeading, AuthIcon, AuthShell } from '../components/au
 import { Button, Field, Notice } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
-/** Le cifre del pannello di sinistra: sono i vincoli veri, non slogan. */
-const STATS = [
-  { value: '30 min', label: 'Validità link' },
-  { value: '12', label: 'Caratteri minimi' },
-  { value: '2FA', label: 'Sempre richiesta' },
-];
-
 const HEADLINE = ['Recupera', "l'accesso."];
 const DESCRIPTION =
   'Il link di reset vale 30 minuti e può essere usato una volta sola. La 2FA resta attiva: dopo il reset serve comunque il codice a 6 cifre.';
@@ -51,35 +44,6 @@ function BackToLogin() {
     >
       ← Torna all'accesso
     </Link>
-  );
-}
-
-/** Riquadro grigio con il pallino: la nota discreta del disegno. */
-function Hint({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        display: 'flex',
-        gap: 10,
-        padding: '12px 14px',
-        border: '1px solid var(--bd-subtle)',
-        background: 'var(--s-inset)',
-        borderRadius: 'var(--r-sm)',
-        marginBottom: 22,
-      }}
-    >
-      <span
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: '50%',
-          background: 'var(--tx-muted)',
-          marginTop: 7,
-          flex: 'none',
-        }}
-      />
-      <div style={{ fontSize: 12, lineHeight: '18px', color: 'var(--tx-secondary)' }}>{children}</div>
-    </div>
   );
 }
 
@@ -128,7 +92,7 @@ export function ForgotPasswordPage() {
   const mmss = `${String(Math.floor(cooldown / 60)).padStart(2, '0')}:${String(cooldown % 60).padStart(2, '0')}`;
 
   return (
-    <AuthShell headline={HEADLINE} description={DESCRIPTION} stats={STATS}>
+    <AuthShell headline={HEADLINE} description={DESCRIPTION}>
       {sent ? (
         <>
           <AuthIcon
@@ -147,10 +111,6 @@ export function ForgotPasswordPage() {
             </span>{' '}
             corrisponde a un account staff, il link è già in arrivo. Vale 30 minuti.
           </AuthHeading>
-
-          {/* SEC-31 — lo diciamo invece di lasciarlo dedurre: un messaggio
-              uguale in ogni caso è una scelta, non una svista. */}
-          <Hint>Non riveliamo se un'email è registrata: il messaggio che vedi è lo stesso in ogni caso.</Hint>
 
           <Button block size="lg" disabled={cooldown > 0 || busy} loading={busy} onClick={() => void send()}>
             {cooldown > 0 ? (
@@ -183,7 +143,6 @@ export function ForgotPasswordPage() {
                 type="email"
                 required
                 placeholder="nome@metamc.it"
-                // biome-ignore lint/a11y/noAutofocus: è l'unico campo della schermata.
                 autoFocus
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -353,7 +312,7 @@ export function ResetPasswordPage() {
     : '';
 
   return (
-    <AuthShell headline={HEADLINE} description={DESCRIPTION} stats={STATS}>
+    <AuthShell headline={HEADLINE} description={DESCRIPTION}>
       {doneAt ? (
         <>
           <AuthIcon tone="ok" path={<path d="m5 13 4 4 10-10" />} />
@@ -441,7 +400,6 @@ export function ResetPasswordPage() {
               required
               minLength={12}
               className="input-mono"
-              // biome-ignore lint/a11y/noAutofocus: è il primo campo della schermata.
               autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}

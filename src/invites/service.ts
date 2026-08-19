@@ -58,6 +58,11 @@ export async function assertInvitable(
     .selectFrom('auth.user')
     .select('id')
     .where((eb) => eb.fn('lower', ['email']), '=', emailLower)
+    // Gli eliminati non contano: la loro riga sopravvive solo come segnaposto
+    // e il loro indirizzo e' gia' stato sostituito, quindi non puo' nemmeno
+    // corrispondere. Il filtro c'e' lo stesso, perche' una riga eliminata
+    // prima della migration 008 conserva ancora l'indirizzo vero.
+    .where('deleted_at', 'is', null)
     .executeTakeFirst();
   if (existing) {
     if (existing.id === actorId) throw new InviteConflict('own_email');

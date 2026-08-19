@@ -16,13 +16,6 @@ import { ApiError, api } from '../lib/api.ts';
 
 type Step = 'credenziali' | 'totp' | 'recovery';
 
-/** Le tre cifre del pannello: sono regole del sistema, non slogan. */
-const STATS = [
-  { value: 'Solo invito', label: 'Nessuna registrazione' },
-  { value: '2FA', label: 'Sempre obbligatoria' },
-  { value: 'Append-only', label: 'Registro attivita' },
-];
-
 /** Le sei celle del codice: il prototipo le tiene separate, non un campo unico. */
 function OtpCells({ value }: { value: string }) {
   return (
@@ -138,7 +131,6 @@ export function LoginPage() {
     <AuthShell
       headline={['Il network,', 'in un solo pannello.']}
       description="Accessi, ruoli e registro attività dello staff. Ogni azione lascia una traccia firmata."
-      stats={STATS}
     >
       {step === 'totp' ? (
         <div

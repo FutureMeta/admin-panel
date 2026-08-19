@@ -665,6 +665,12 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
             ban_reason: body.reason,
             twoFactorEnabled: false,
             sessions_valid_from: new Date(),
+            // L'indirizzo torna libero: senza, quella casella resterebbe
+            // bruciata per sempre — la persona non potrebbe rientrare e
+            // nessun altro potrebbe usarla. L'email vera resta nel registro,
+            // qui sotto in `before`.
+            email: `deleted+${id}@invalid.local`,
+            emailVerified: false,
           })
           .where('id', '=', id)
           .execute();

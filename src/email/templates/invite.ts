@@ -78,6 +78,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
 
   const html = render({
     title: 'Invito alla console MetaMC',
+    logoFrom: input.link,
     preheaderText: `${input.inviterName} ti ha invitato nella console MetaMC come ${input.roleName}. L'invito scade ${window}.`,
     sections: [
       eyebrow('Invito allo staff') +

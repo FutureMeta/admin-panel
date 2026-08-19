@@ -1,9 +1,9 @@
 // Impalcatura delle schermate fuori dal pannello: login e reset password.
 //
 // Sono la stessa schermata con contenuti diversi — due pannelli, il campo di
-// esagoni a sinistra col lockup e tre cifre in fondo, il modulo a destra
-// largo 372px. Tenerle come due file separati significherebbe che fra un mese
-// una ha il bordo e l'altra no.
+// esagoni a sinistra col lockup e il titolo, il modulo a destra largo 372px.
+// Tenerle come due file separati significherebbe che fra un mese una ha il
+// bordo e l'altra no.
 //
 // Metriche di frontend/9-reset-password.dc.html, con UNA deviazione: il file
 // del disegno limita il contenitore a 1440px e lo centra, perché la tavola è
@@ -15,18 +15,14 @@
 import type { ReactNode } from 'react';
 import { HexField } from './hex-field.tsx';
 
-export type AuthStat = { value: string; label: string };
-
 export function AuthShell({
   headline,
   description,
-  stats,
   children,
 }: {
   /** Le righe del titolo grande: nel disegno vanno a capo a mano. */
   headline: string[];
   description: string;
-  stats: AuthStat[];
   children: ReactNode;
 }) {
   return (
@@ -45,7 +41,8 @@ export function AuthShell({
           overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
+          gap: 32,
           padding: 48,
         }}
       >
@@ -101,35 +98,6 @@ export function AuthShell({
           <p style={{ margin: '16px 0 0', fontSize: 14, lineHeight: '22px', color: '#A9BEC9' }}>
             {description}
           </p>
-        </div>
-
-        <div style={{ position: 'relative', display: 'flex', gap: 28, flexWrap: 'wrap' }}>
-          {stats.map((s) => (
-            <div key={s.label}>
-              <div
-                style={{
-                  fontFamily: 'var(--font-display)',
-                  fontSize: 20,
-                  fontWeight: 700,
-                  color: '#E9F1F5',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {s.value}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  letterSpacing: '.08em',
-                  textTransform: 'uppercase',
-                  color: '#718996',
-                  marginTop: 4,
-                }}
-              >
-                {s.label}
-              </div>
-            </div>
-          ))}
         </div>
       </div>
 

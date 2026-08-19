@@ -35,15 +35,7 @@ const NAV: Array<{ modules: ModuleKey[]; label: string; to: string; area: string
   },
 ];
 
-export function Sidebar({
-  me,
-  collapsed,
-  onOpenPalette,
-}: {
-  me: Me;
-  collapsed: boolean;
-  onOpenPalette: () => void;
-}) {
+export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   // `me.modules` arriva già filtrato dal server: il client non decide chi vede
@@ -63,7 +55,7 @@ export function Sidebar({
     <aside
       aria-label="Moduli"
       style={{
-        width: collapsed ? 68 : 248,
+        width: 248,
         flex: 'none',
         alignSelf: 'stretch',
         background: 'var(--s-surface)',
@@ -72,7 +64,6 @@ export function Sidebar({
         display: 'flex',
         flexDirection: 'column',
         gap: 22,
-        transition: 'width var(--dur) var(--ease)',
         overflow: 'hidden',
       }}
     >
@@ -84,8 +75,7 @@ export function Sidebar({
           height={28}
           style={{ objectFit: 'contain', flex: 'none' }}
         />
-        {collapsed ? null : (
-          <div style={{ minWidth: 0 }}>
+        <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontFamily: 'var(--font-display)',
@@ -97,40 +87,33 @@ export function Sidebar({
             >
               MetaMC
             </div>
-            <div
-              style={{
-                fontSize: 10.5,
-                color: 'var(--tx-muted)',
-                letterSpacing: '.08em',
-                textTransform: 'uppercase',
-                marginTop: 1,
-              }}
-            >
-              Console
-            </div>
+          <div
+            style={{
+              fontSize: 10.5,
+              color: 'var(--tx-muted)',
+              letterSpacing: '.08em',
+              textTransform: 'uppercase',
+              marginTop: 1,
+            }}
+          >
+            Console
           </div>
-        )}
+        </div>
       </div>
 
       <button type="button" className="search-trigger" onClick={onOpenPalette}>
         <Icon path={ICONS.search} size={15} />
-        {collapsed ? null : (
-          <>
-            <span>Cerca moduli</span>
-            <span className="kbd" style={{ marginLeft: 'auto' }}>
-              ⌘K
-            </span>
-          </>
-        )}
+        <span>Cerca moduli</span>
+        <span className="kbd" style={{ marginLeft: 'auto' }}>
+          ⌘K
+        </span>
       </button>
 
       {groups.map(([area, items]) => (
         <div key={area}>
-          {collapsed ? null : (
-            <div className="t-group" style={{ padding: '0 8px', marginBottom: 8 }}>
-              {area}
-            </div>
-          )}
+          <div className="t-group" style={{ padding: '0 8px', marginBottom: 8 }}>
+            {area}
+          </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {items.map((item) => (
               <Link
@@ -138,10 +121,9 @@ export function Sidebar({
                 to={item.to}
                 className="nav-item"
                 data-active={pathname.startsWith(item.to)}
-                title={collapsed ? item.label : undefined}
               >
                 <Icon path={item.icon} />
-                {collapsed ? null : <span className="nav-label">{item.label}</span>}
+                <span className="nav-label">{item.label}</span>
               </Link>
             ))}
           </div>
@@ -330,13 +312,11 @@ const SQUARE_CONTROL = {
 export function Topbar({
   me,
   breadcrumb,
-  onToggleSidebar,
   onLogout,
   feedDisconnected,
 }: {
   me: Me;
   breadcrumb: string;
-  onToggleSidebar: () => void;
   onLogout: () => void;
   feedDisconnected: boolean;
 }) {
@@ -381,15 +361,6 @@ export function Topbar({
             "3" finto sarebbe l'unica cosa dell'interfaccia che mente. Al suo
             posto il quadrato porta il solo segnale che abbiamo davvero, cioè
             se il feed del registro è vivo. */}
-        <button
-          type="button"
-          onClick={onToggleSidebar}
-          aria-label="Comprimi o espandi il menu"
-          style={SQUARE_CONTROL}
-        >
-          <Icon path={ICONS.panel} size={16} />
-        </button>
-
         <div
           title={feedDisconnected ? 'Feed del registro disconnesso' : 'Feed del registro attivo'}
           style={{ ...SQUARE_CONTROL, position: 'relative', cursor: 'default' }}

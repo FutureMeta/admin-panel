@@ -411,6 +411,5 @@ export const ICONS = {
   cal: 'M3.5 9h17M7.5 3.5v3.5M16.5 3.5v3.5M5 5.5h14v15H5z',
   globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z',
   shield: 'M12 21s7-3.2 7-9V5.6L12 3 5 5.6V12c0 5.8 7 9 7 9z',
-  panel: 'M4 4h16v16H4zM9.5 4v16',
   mail: 'M3 7h18v11H3zM3 7l9 6 9-6',
 } as const;

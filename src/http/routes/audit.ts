@@ -165,7 +165,7 @@ export async function registerAuditRoutes(app: FastifyInstance, ctx: AppContext)
 
   // -------------------------------------------------------------------------
   // GET /api/audit/integrity — la stessa verifica dell'endpoint interno, ma
-  // esposta to chi ha `audit:3`: e' l'informazione che rende il registro
+  // esposta a chi ha `audit:3`: e' l'informazione che rende il registro
   // credibile, e chi lo consulta deve poterla vedere senza chiedere ai sistemi.
   // -------------------------------------------------------------------------
   app.get('/api/audit/integrity', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {

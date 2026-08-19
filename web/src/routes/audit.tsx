@@ -9,10 +9,16 @@
 // La paginazione è KEYSET: il cursore è (occurred_at, id) dell'ultima riga.
 // Con OFFSET, la pagina 900 costerebbe la scansione delle 45.000 righe che la
 // precedono — è il problema del pannello legacy, e non lo si riporta dentro.
+//
+// Da qui viene anche la forma delle frecce in fondo. Un cursore dice come
+// andare AVANTI, non indietro: per tornare si tiene la pila dei cursori già
+// visitati. Ed è il motivo per cui il piede mostra «51–100» e non «51–100 di
+// 1.284»: il totale richiederebbe un COUNT filtrato su tutte le partizioni,
+// cioè esattamente la scansione che il keyset serve a evitare. Meglio nessun
+// numero che un numero pagato a quel prezzo.
 
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { useVirtualizer } from '@tanstack/react-virtual';
-import { useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { FilterSelect, PageHeader, Panel, PanelBar, PanelFooter, SearchBox } from '../components/page.tsx';
 import { Avatar, Badge, Banner, Button, EmptyState, SkeletonRows } from '../components/ui.tsx';
 import { type AuditEntry, type AuditPage, api } from '../lib/api.ts';
@@ -33,10 +39,26 @@ const SENSITIVE = new Set([
 
 type Filters = { actor: string; module: string; action: string; outcome: string };
 
+/** Quante righe per pagina. Il server accetta questo come `limit`. */
+const PAGE_SIZE = 50;
+
+type Cursor = { beforeOccurredAt: string; beforeId: string };
+
 export function AuditPage_() {
   const [filters, setFilters] = useState<Filters>({ actor: '', module: '', action: '', outcome: '' });
   const [expanded, setExpanded] = useState<string | undefined>();
-  const parentRef = useRef<HTMLDivElement>(null);
+  // Un cursore per ogni pagina oltre la prima: `trail.length` è l'indice di
+  // pagina, l'ultimo elemento è da dove parte quella che si sta guardando.
+  const [trail, setTrail] = useState<Cursor[]>([]);
+
+  const cursor = trail.at(-1);
+
+  /** Cambiare filtro riporta alla prima pagina: i cursori vecchi puntano a righe che il nuovo filtro può non contenere. */
+  function changeFilters(next: (f: Filters) => Filters) {
+    setFilters(next);
+    setTrail([]);
+    setExpanded(undefined);
+  }
 
   const vocab = useQuery({
     queryKey: ['audit-actions'],
@@ -44,31 +66,26 @@ export function AuditPage_() {
       api<{ actions: string[]; modules: Array<{ key: string; name: string }> }>('/api/audit/actions'),
   });
 
-  const query = useInfiniteQuery({
-    queryKey: ['audit', filters],
-    initialPageParam: undefined as { beforeOccurredAt: string; beforeId: string } | undefined,
-    queryFn: ({ pageParam }) => {
-      const params = new URLSearchParams({ limit: '50' });
-      if (pageParam) {
-        params.set('beforeOccurredAt', pageParam.beforeOccurredAt);
-        params.set('beforeId', pageParam.beforeId);
+  const query = useQuery({
+    queryKey: ['audit', filters, cursor],
+    queryFn: () => {
+      const params = new URLSearchParams({ limit: String(PAGE_SIZE) });
+      if (cursor) {
+        params.set('beforeOccurredAt', cursor.beforeOccurredAt);
+        params.set('beforeId', cursor.beforeId);
       }
       for (const [k, v] of Object.entries(filters)) if (v) params.set(k, v);
       return api<AuditPage>(`/api/audit?${params.toString()}`);
     },
-    getNextPageParam: (last) => last.nextCursor ?? undefined,
+    // La pagina precedente resta a schermo mentre arriva la nuova: senza,
+    // ogni click su una freccia fa lampeggiare lo scheletro.
+    placeholderData: (previous) => previous,
   });
 
-  const entries = useMemo(() => (query.data?.pages ?? []).flatMap((p) => p.entries), [query.data]);
-
-  const virtualizer = useVirtualizer({
-    count: entries.length,
-    getScrollElement: () => parentRef.current,
-    // Le righe espanse sono più alte: la stima è quella chiusa, e il
-    // virtualizzatore misura quelle vere con `measureElement`.
-    estimateSize: () => 45,
-    overscan: 8,
-  });
+  const entries = query.data?.entries ?? [];
+  const nextCursor = query.data?.nextCursor ?? null;
+  const first = trail.length * PAGE_SIZE + 1;
+  const last = trail.length * PAGE_SIZE + entries.length;
 
   return (
     <>
@@ -83,7 +100,7 @@ export function AuditPage_() {
               attore e cercare per nome sono la stessa azione. */}
           <SearchBox
             value={filters.actor}
-            onChange={(v) => setFilters((f) => ({ ...f, actor: v }))}
+            onChange={(v) => changeFilters((f) => ({ ...f, actor: v }))}
             placeholder="Cerca per attore"
             label="Filtra per attore"
             width={200}
@@ -91,19 +108,19 @@ export function AuditPage_() {
           <FilterSelect
             label="Tutti i moduli"
             value={filters.module}
-            onChange={(v) => setFilters((f) => ({ ...f, module: v }))}
+            onChange={(v) => changeFilters((f) => ({ ...f, module: v }))}
             options={(vocab.data?.modules ?? []).map((m) => ({ value: m.key, label: m.name }))}
           />
           <FilterSelect
             label="Tutte le azioni"
             value={filters.action}
-            onChange={(v) => setFilters((f) => ({ ...f, action: v }))}
+            onChange={(v) => changeFilters((f) => ({ ...f, action: v }))}
             options={(vocab.data?.actions ?? []).map((a) => ({ value: a, label: a }))}
           />
           <FilterSelect
             label="Tutti gli esiti"
             value={filters.outcome}
-            onChange={(v) => setFilters((f) => ({ ...f, outcome: v }))}
+            onChange={(v) => changeFilters((f) => ({ ...f, outcome: v }))}
             options={[
               { value: 'success', label: 'Riuscite' },
               { value: 'failure', label: 'Fallite' },
@@ -132,47 +149,56 @@ export function AuditPage_() {
             description="Con questi filtri il registro è vuoto. Non significa che non sia successo nulla: prova ad allargare."
           />
         ) : (
-          <div ref={parentRef} style={{ maxHeight: '62vh', overflowY: 'auto' }}>
-            <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
-              {virtualizer.getVirtualItems().map((item) => {
-                const entry = entries[item.index];
-                if (!entry) return null;
-                return (
-                  <div
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ width: 96 }}>Ora</th>
+                  <th style={{ width: 200 }}>Attore</th>
+                  <th>Azione</th>
+                  <th style={{ width: 220 }}>Oggetto</th>
+                  <th style={{ width: 44 }} />
+                </tr>
+              </thead>
+              <tbody>
+                {entries.map((entry) => (
+                  <AuditRow
                     key={entry.id}
-                    ref={virtualizer.measureElement}
-                    data-index={item.index}
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      width: '100%',
-                      transform: `translateY(${item.start}px)`,
-                    }}
-                  >
-                    <AuditRow
-                      entry={entry}
-                      expanded={expanded === entry.id}
-                      onToggle={() => setExpanded(expanded === entry.id ? undefined : entry.id)}
-                    />
-                  </div>
-                );
-              })}
-            </div>
+                    entry={entry}
+                    expanded={expanded === entry.id}
+                    onToggle={() => setExpanded(expanded === entry.id ? undefined : entry.id)}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
         <PanelFooter>
           <span>
-            {entries.length} {entries.length === 1 ? 'azione caricata' : 'azioni caricate'}
+            {entries.length === 0 ? 'Nessuna azione' : `${first}–${last} azioni`}
           </span>
-          {query.hasNextPage ? (
-            <Button size="sm" onClick={() => void query.fetchNextPage()} loading={query.isFetchingNextPage}>
-              Carica altre 50
-            </Button>
-          ) : (
-            <span>Fine del registro con questi filtri.</span>
-          )}
+          <span style={{ display: 'flex', gap: 6 }}>
+            <PageArrow
+              glyph="‹"
+              label="Pagina precedente"
+              disabled={trail.length === 0 || query.isFetching}
+              onClick={() => {
+                setTrail((t) => t.slice(0, -1));
+                setExpanded(undefined);
+              }}
+            />
+            <PageArrow
+              glyph="›"
+              label="Pagina successiva"
+              disabled={nextCursor === null || query.isFetching}
+              onClick={() => {
+                if (!nextCursor) return;
+                setTrail((t) => [...t, nextCursor]);
+                setExpanded(undefined);
+              }}
+            />
+          </span>
         </PanelFooter>
       </Panel>
     </>
@@ -194,6 +220,15 @@ const DATE_FORMAT = new Intl.DateTimeFormat('it-IT', {
   timeZone: 'Europe/Rome',
 });
 
+/**
+ * Una voce del registro: la riga chiusa piu', quando aperta, una seconda riga
+ * che tiene il pannello del diff.
+ *
+ * Il diff sta in un `<tr>` a parte con `colSpan` invece che dentro l'ultima
+ * cella perche' una cella che cresce allarga la riga chiusa sopra di se': le
+ * colonne si sfaserebbero rispetto a tutte le altre righe ogni volta che
+ * qualcuno apre una voce.
+ */
 function AuditRow({
   entry,
   expanded,
@@ -218,123 +253,164 @@ function AuditRow({
           : undefined;
 
   return (
-    <div style={{ borderBottom: '1px solid var(--bd-subtle)', background }}>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={expanded}
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '96px 180px 1fr 220px 26px',
-          alignItems: 'center',
-          gap: 14,
-          padding: '12px 16px',
-          width: '100%',
-          background: 'none',
-          border: 0,
-          color: 'inherit',
-          textAlign: 'left',
-          cursor: 'pointer',
-          fontSize: 13,
-        }}
-      >
-        <time
+    <>
+      <tr onClick={onToggle} style={{ background, cursor: 'pointer' }}>
+        <td
           className="mono"
-          dateTime={occurred.toISOString()}
-          title={DATE_FORMAT.format(occurred)}
           style={{ fontSize: 12, color: 'var(--tx-secondary)', fontVariantNumeric: 'tabular-nums' }}
         >
-          {TIME_FORMAT.format(occurred)}
-        </time>
+          <time dateTime={occurred.toISOString()} title={DATE_FORMAT.format(occurred)}>
+            {TIME_FORMAT.format(occurred)}
+          </time>
+        </td>
 
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-          <Avatar name={entry.actor.name ?? '?'} size={22} square />
-          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {entry.actor.name ?? 'anonimo'}
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+            <Avatar name={entry.actor.name ?? '?'} size={22} square />
+            <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {entry.actor.name ?? 'anonimo'}
+            </span>
           </span>
-        </span>
+        </td>
 
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
-          <span className="mono" style={{ fontWeight: 500, fontSize: 12.5 }}>
-            {entry.action}
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 9, minWidth: 0 }}>
+            <span className="mono" style={{ fontWeight: 500, fontSize: 12.5 }}>
+              {entry.action}
+            </span>
+            {entry.outcome !== 'success' ? (
+              <Badge tone={entry.outcome === 'denied' ? 'err' : 'warn'}>
+                {entry.outcome === 'denied' ? 'negato' : 'fallito'}
+              </Badge>
+            ) : null}
           </span>
-          {entry.outcome !== 'success' ? (
-            <Badge tone={entry.outcome === 'denied' ? 'err' : 'warn'}>
-              {entry.outcome === 'denied' ? 'negato' : 'fallito'}
-            </Badge>
-          ) : null}
-        </span>
+        </td>
 
-        <span
+        <td
           style={{
             color: 'var(--tx-secondary)',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            maxWidth: 220,
           }}
         >
           {entry.target.label ?? entry.target.id ?? '—'}
-        </span>
+        </td>
 
-        <span
-          aria-hidden="true"
-          style={{
-            color: 'var(--tx-muted)',
-            display: 'flex',
-            justifyContent: 'flex-end',
-            transform: expanded ? 'rotate(180deg)' : 'none',
-            transition: 'transform var(--dur) var(--ease)',
-          }}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            aria-hidden="true"
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </span>
-      </button>
-
-      {expanded ? (
-        <div
-          style={{ padding: '0 16px 16px 112px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}
-        >
-          <DiffBox title="Prima" value={entry.before} tint="var(--err)" />
-          <DiffBox title="Dopo" value={entry.after} tint="var(--ok)" />
-          {entry.meta ? (
-            <div style={{ gridColumn: '1 / -1' }}>
-              <DiffBox title="Contesto" value={entry.meta} tint="var(--tx-secondary)" />
-            </div>
-          ) : null}
-          <div
-            className="mono"
+        <td style={{ textAlign: 'right' }}>
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Chiudi i dettagli' : 'Mostra i dettagli'}
+            onClick={(e) => {
+              // La riga intera e' cliccabile: senza questo, il click sul
+              // bottone risalirebbe fino a lei e la voce si aprirebbe e
+              // richiuderebbe nello stesso gesto.
+              e.stopPropagation();
+              onToggle();
+            }}
             style={{
-              gridColumn: '1 / -1',
-              display: 'flex',
-              gap: 18,
-              flexWrap: 'wrap',
-              fontSize: 11.5,
+              border: 0,
+              background: 'transparent',
               color: 'var(--tx-muted)',
+              cursor: 'pointer',
+              padding: 4,
+              display: 'inline-flex',
+              transform: expanded ? 'rotate(180deg)' : 'none',
+              transition: 'transform var(--dur) var(--ease)',
             }}
           >
-            <span>{DATE_FORMAT.format(occurred)}</span>
-            <span>{entry.actor.email ?? 'anonimo'}</span>
-            <span style={ipMismatch ? { color: 'var(--warn)' } : undefined}>
-              {entry.actor.ip ?? '—'}
-              {ipMismatch ? ` ≠ ${entry.actor.socketIp ?? '—'}` : ''}
-            </span>
-            {/* Stringa controllata da terzi: nodo di testo, mai HTML. */}
-            <span style={{ minWidth: 0, wordBreak: 'break-all' }}>{entry.actor.userAgent ?? '—'}</span>
-          </div>
-        </div>
+            <svg
+              viewBox="0 0 24 24"
+              width="14"
+              height="14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        </td>
+      </tr>
+
+      {expanded ? (
+        <tr style={{ background }}>
+          <td colSpan={5} style={{ padding: '0 16px 16px 16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <DiffBox title="Prima" value={entry.before} tint="var(--err)" />
+              <DiffBox title="Dopo" value={entry.after} tint="var(--ok)" />
+              {entry.meta ? (
+                <div style={{ gridColumn: '1 / -1' }}>
+                  <DiffBox title="Contesto" value={entry.meta} tint="var(--tx-secondary)" />
+                </div>
+              ) : null}
+              <div
+                className="mono"
+                style={{
+                  gridColumn: '1 / -1',
+                  display: 'flex',
+                  gap: 18,
+                  flexWrap: 'wrap',
+                  fontSize: 11.5,
+                  color: 'var(--tx-muted)',
+                }}
+              >
+                <span>{DATE_FORMAT.format(occurred)}</span>
+                <span>{entry.actor.email ?? 'anonimo'}</span>
+                <span style={ipMismatch ? { color: 'var(--warn)' } : undefined}>
+                  {entry.actor.ip ?? '—'}
+                  {ipMismatch ? ` ≠ ${entry.actor.socketIp ?? '—'}` : ''}
+                </span>
+                {/* Stringa controllata da terzi: nodo di testo, mai HTML. */}
+                <span style={{ minWidth: 0, wordBreak: 'break-all' }}>{entry.actor.userAgent ?? '—'}</span>
+              </div>
+            </div>
+          </td>
+        </tr>
       ) : null}
-    </div>
+    </>
+  );
+}
+
+/** Una freccia del piede. Spenta quando non c'e' dove andare, non nascosta: la posizione del controllo non deve saltare. */
+function PageArrow({
+  glyph,
+  label,
+  disabled,
+  onClick,
+}: {
+  glyph: string;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      style={{
+        width: 26,
+        height: 26,
+        border: '1px solid var(--bd-subtle)',
+        borderRadius: 'var(--r-sm)',
+        background: 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: disabled ? 'var(--tx-disabled)' : 'var(--tx-secondary)',
+        cursor: disabled ? 'default' : 'pointer',
+        font: 'inherit',
+        lineHeight: 1,
+      }}
+    >
+      {glyph}
+    </button>
   );
 }
 

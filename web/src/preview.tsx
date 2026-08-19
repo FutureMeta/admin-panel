@@ -254,11 +254,8 @@ queryClient.setQueryData(['audit-actions'], {
   actions: ['role.permissions.change', 'invite.created', 'auth.login'],
   modules: MODULES.map((m) => ({ key: m.key, name: m.name })),
 });
-queryClient.setQueryData(['audit-integrity'], { ok: true, rows: 1284, detail: null });
-queryClient.setQueryData(['audit', { actor: '', module: '', action: '', outcome: '' }], {
-  pages: [AUDIT],
-  pageParams: [undefined],
-});
+// La chiave porta anche il cursore: `undefined` e' la prima pagina.
+queryClient.setQueryData(['audit', { actor: '', module: '', action: '', outcome: '' }, undefined], AUDIT);
 
 function Preview() {
   // Lo stesso guscio di `main.tsx`, non uno simile: se l'anteprima impagina in

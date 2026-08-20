@@ -27,8 +27,13 @@ import { type CountryResponse, open as openMmdb } from 'maxmind';
  * `src/geo` e da `game-redis.ts` — E LA VIETA GIUSTAMENTE, anche in una
  * firma: un nome che gira per il codice invita a farci passare un valore.
  * Chi ha bisogno di questa funzione ne nomina il TIPO, non il parametro.
+ *
+ * Restituisce `null` quando la geolocalizzazione NON E' ATTIVA, e due lettere
+ * quando lo e'. La differenza e' quella fra «funzione spenta» e «funzione
+ * accesa che non risolve», che il payload tiene separate: la prima nasconde il
+ * widget, la seconda mostra una barra XX — cioe' un guasto visibile.
  */
-export type CountryLookup = (value: string | undefined) => string;
+export type CountryLookup = (value: string | undefined) => string | null;
 
 /** Non determinato. E' una barra della mappa, mai uno scarto. */
 export const UNKNOWN_COUNTRY = 'XX';

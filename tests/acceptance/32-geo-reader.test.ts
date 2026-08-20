@@ -178,6 +178,29 @@ describe('il file si valida PRIMA di promuoverlo', () => {
   });
 });
 
+describe('spenta e non risolta sono due cose diverse', () => {
+  it('un lettore mai caricato non deve poter dire XX al posto di «spenta»', () => {
+    const off = new GeoReader();
+    // Il lettore da solo risponde XX, e per lui e` corretto: e` chi lo usa a
+    // dover distinguere. Il campionamento passa null finche` `ready` e` falso,
+    // cosi` un giocatore entrato prima che il file venisse scaricato non
+    // risulta «non determinato» per sempre — e la mappa compare quando i dati
+    // ci sono, invece di mostrare una barra XX enorme.
+    expect(off.ready).toBe(false);
+    expect(off.countryOf('8.8.8.8')).toBe(UNKNOWN_COUNTRY);
+
+    const lookup = (value: string | undefined) => (off.ready ? off.countryOf(value) : null);
+    expect(lookup('8.8.8.8')).toBeNull();
+  });
+
+  it('a lettore caricato lo stesso ripiego restituisce il paese', () => {
+    const lookup = (value: string | undefined) => (geo.ready ? geo.countryOf(value) : null);
+    expect(lookup('8.8.8.8')).toBe('US');
+    // Acceso ma non risolto: XX, che e` un dato e non un errore.
+    expect(lookup('1.1.1.1')).toBe(UNKNOWN_COUNTRY);
+  });
+});
+
 describe("l'eta` del database e` sorvegliata", () => {
   it('i giorni si contano dalla compilazione, non dal download', () => {
     const status = geo.status(new Date((BUILD_EPOCH + 46 * 86_400) * 1000));

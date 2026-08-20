@@ -164,7 +164,15 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
     redis,
     logger: opts.logger,
     pattern: opts.pattern,
-    ...(geo ? { countryOf: (value: string | undefined) => geo.countryOf(value) } : {}),
+    // `geo.ready` si controlla A OGNI CHIAMATA, non una volta sola.
+    //
+    // Al primo avvio il file non c'e' ancora e lo scarica il giro giornaliero:
+    // fino a quel momento il paese deve restare NULL («funzione spenta»), non
+    // diventare XX («accesa e non risolta»). Fissando la decisione qui, ogni
+    // giocatore entrato prima del download risulterebbe non determinato per
+    // sempre, e la mappa mostrerebbe una barra XX enorme invece di comparire
+    // quando i dati ci sono.
+    ...(geo ? { countryOf: (value: string | undefined) => (geo.ready ? geo.countryOf(value) : null) } : {}),
   });
 
   await poller.start();

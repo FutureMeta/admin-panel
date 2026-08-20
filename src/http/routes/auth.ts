@@ -253,8 +253,17 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // il pepper — ma registrarlo trasformerebbe il registro nell'elenco
       // degli indirizzi provati da chiunque, che e' esattamente cio' che il
       // commento dell'hook vuole evitare.
-      if (subPath === '/sign-in/email' && res.status < 400 && subject) {
-        setAuthSubject(request, subject.userId);
+      if (subPath === '/sign-in/email' && res.status < 400) {
+        if (subject) {
+          setAuthSubject(request, subject.userId);
+          request.log.info({ userId: subject.userId, fase: 'login' }, 'attore depositato per il registro');
+        } else {
+          // Il login e' riuscito ma non sappiamo di chi: l'utente non e' stato
+          // trovato per email. Succede se l'indirizzo memorizzato differisce
+          // per maiuscole da quello digitato, perche' la ricerca confronta la
+          // colonna cosi' com'e'.
+          request.log.warn('accesso riuscito senza attore: utente non trovato per email');
+        }
       }
 
       // ---------------------------------------------------------------------
@@ -311,6 +320,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
 
           // Chi e' entrato: l'hook di audit non puo' risolverlo da solo.
           setAuthSubject(request, userId);
+          request.log.info({ userId, fase: '2fa' }, 'attore depositato per il registro');
           await ctx.totpGuard.markUsed(userId, totpCode);
           await ctx.rateLimit.reward('twoFactorAccount', userId);
           // Il 2FA completato porta la sessione ad aal=2 e alza

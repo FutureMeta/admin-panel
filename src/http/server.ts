@@ -244,6 +244,15 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
         : AUDIT_ACTIONS.twoFactorChallengeFailed;
 
     const ips = requestIps(request);
+    const subject = authSubjectOf(request);
+
+    // Un accesso riuscito che finisce nel registro senza attore e' un buco
+    // nella risposta a «chi e' entrato e quando». Non e' fatale, ma va detto
+    // ad alta voce invece di restare una riga muta fra migliaia.
+    if (ok && subject === null) {
+      request.log.warn({ path }, 'registro: accesso riuscito senza attore');
+    }
+
     try {
       await writeAudit(ctx.db, {
         action,
@@ -257,7 +266,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
         // Sui FALLIMENTI resta null, e li' e' giusto: l'utente sarebbe pure
         // noto, ma registrarlo farebbe del registro l'elenco degli indirizzi
         // provati da chiunque passi di qui.
-        actor: { userId: authSubjectOf(request), email: null, displayName: null, sessionId: null },
+        actor: { userId: subject, email: null, displayName: null, sessionId: null },
         request: auditContextOf(request, ips),
         moduleKey: null,
         meta: { status: reply.statusCode },

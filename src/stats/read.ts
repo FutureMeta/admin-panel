@@ -112,6 +112,8 @@ type SeriesRow = {
   mode_key: string;
   player_seconds: string;
   players_max: number | null;
+  /** L'istante VERO del massimo, non l'inizio del bucket che lo contiene. */
+  players_max_at: Date | null;
   covered_s: number;
   samples: number;
 };
@@ -122,14 +124,16 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
   if (plan.source === '5m') {
     const res = await sql<SeriesRow>`
       WITH src AS (
-        SELECT bucket, mode_key, player_seconds, covered_s, samples, players_max
+        SELECT bucket, mode_key, player_seconds, covered_s, samples, players_max, players_max_at
           FROM stats.v_online_5m
          WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo}
       ),
       cov AS (SELECT bucket, covered_s, samples FROM src WHERE mode_key = '__network__')
       SELECT extract(epoch FROM s.bucket)::bigint::text AS t, s.mode_key,
              sum(s.player_seconds)::bigint::text AS player_seconds,
-             max(s.players_max) AS players_max, c.covered_s, c.samples
+             max(s.players_max) AS players_max,
+             (array_agg(s.players_max_at ORDER BY s.players_max DESC NULLS LAST))[1] AS players_max_at,
+             c.covered_s, c.samples
         FROM src s
         JOIN cov c ON c.bucket = s.bucket
        GROUP BY 1, 2, c.covered_s, c.samples
@@ -147,7 +151,7 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
         SELECT date_trunc('day', bucket, ${ROME})
                  + make_interval(hours =>
                      (extract(hour FROM bucket AT TIME ZONE ${ROME})::int / ${hours}) * ${hours}) AS t,
-               mode_key, player_seconds, covered_s, samples, players_max
+               mode_key, player_seconds, covered_s, samples, players_max, players_max_at
           FROM stats.v_online_1h
          WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo}
       ),
@@ -159,7 +163,9 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
       )
       SELECT extract(epoch FROM s.t)::bigint::text AS t, s.mode_key,
              sum(s.player_seconds)::bigint::text AS player_seconds,
-             max(s.players_max) AS players_max, c.covered_s, c.samples
+             max(s.players_max) AS players_max,
+             (array_agg(s.players_max_at ORDER BY s.players_max DESC NULLS LAST))[1] AS players_max_at,
+             c.covered_s, c.samples
         FROM src s
         JOIN cov c ON c.t = s.t
        GROUP BY 1, 2, c.covered_s, c.samples
@@ -170,7 +176,7 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
 
   const res = await sql<SeriesRow>`
     WITH src AS (
-      SELECT day, mode_key, player_seconds, covered_s, samples, players_max
+      SELECT day, mode_key, player_seconds, covered_s, samples, players_max, players_max_at
         FROM stats.v_online_1d
        WHERE day >= ${w.curFrom} AND day < ${w.curTo}
     ),
@@ -179,7 +185,9 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
            extract(epoch FROM (s.day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
            s.mode_key,
            sum(s.player_seconds)::bigint::text AS player_seconds,
-           max(s.players_max) AS players_max, c.covered_s, c.samples
+           max(s.players_max) AS players_max,
+           (array_agg(s.players_max_at ORDER BY s.players_max DESC NULLS LAST))[1] AS players_max_at,
+           c.covered_s, c.samples
       FROM src s
       JOIN cov c ON c.day = s.day
      GROUP BY 1, 2, c.covered_s, c.samples
@@ -551,6 +559,8 @@ async function modeLabels(db: Database): Promise<Map<string, { label: string; or
 
 type Bucket = {
   t: number;
+  /** L'istante del massimo dentro questo bucket, dal grezzo. */
+  peakAt: number | null;
   coveredS: number;
   byMode: Map<string, number>;
   networkSeconds: number;
@@ -563,13 +573,21 @@ function collect(rows: SeriesRow[]): Bucket[] {
     const t = Number(r.t);
     let b = byT.get(t);
     if (!b) {
-      b = { t, coveredS: Number(r.covered_s), byMode: new Map(), networkSeconds: 0, peak: null };
+      b = {
+        t,
+        peakAt: null,
+        coveredS: Number(r.covered_s),
+        byMode: new Map(),
+        networkSeconds: 0,
+        peak: null,
+      };
       byT.set(t, b);
     }
     const seconds = Number(r.player_seconds);
     if (r.mode_key === '__network__') {
       b.networkSeconds = seconds;
       b.peak = r.players_max === null ? null : Number(r.players_max);
+      b.peakAt = r.players_max_at ? Math.floor(r.players_max_at.getTime() / 1_000) : null;
     } else {
       b.byMode.set(r.mode_key, (b.byMode.get(r.mode_key) ?? 0) + seconds);
     }
@@ -673,7 +691,12 @@ function kpiOf(
       if (b.peak === null) continue;
       if (peak === null || b.peak > peak) {
         peak = b.peak;
-        peakAt = b.t;
+        // L'ISTANTE VERO, non l'inizio del bucket che lo contiene. Con bucket
+        // da sei ore (range 90g) l'inizio dista fino a sei ore dal massimo, e
+        // lo stesso picco risultava «alle 18:00» su 90g e «alle 20:00» su 7g:
+        // due risposte diverse alla stessa domanda, e per accorgersi che non
+        // erano in disaccordo bisognava sapere quanto e' largo un bucket.
+        peakAt = b.peakAt ?? b.t;
         // Il massimo non viaggia mai da solo: senza la copertura del suo
         // bucket, un picco misurato su due tick su dieci sembra un picco vero.
         peakCoverage = Math.min(1, b.coveredS / bucketSec);

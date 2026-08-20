@@ -425,3 +425,37 @@ describe('gli unici di OGGI non aspettano il rollup', () => {
     expect(payload.uniques.v[payload.uniques.v.length - 1]).toBe(50);
   });
 });
+
+describe("l'istante del picco non dipende da quanto e` largo un bucket", () => {
+  beforeEach(async () => {
+    await dictionary();
+    await seedHours(40);
+    // Un massimo netto, in un istante preciso dentro la sua ora.
+    await sql.query(
+      `UPDATE stats.rollup_1h
+          SET players_max = 4242, players_max_at = bucket + interval '37 minutes'
+        WHERE server_id = 0 AND bucket = date_trunc('hour', now()) - interval '30 hours'`,
+    );
+  });
+
+  it('7g e 90g danno lo stesso valore E lo stesso minuto', async () => {
+    const week = await buildOverview(db, '7d');
+    const quarter = await buildOverview(db, '90d');
+
+    expect(week.payload.kpi.peak).toBe(4242);
+    expect(quarter.payload.kpi.peak).toBe(4242);
+
+    // Prima si mostrava l`INIZIO del bucket: con bucket da un`ora usciva
+    // 20:00, con bucket da sei ore 18:00. Due risposte diverse alla stessa
+    // domanda, entrambe verificabili solo da chi sapeva quanto e` largo un
+    // bucket in quel range.
+    expect(quarter.payload.kpi.peakAt).toBe(week.payload.kpi.peakAt);
+  });
+
+  it("l'istante e` quello del massimo, non l'inizio dell'ora", async () => {
+    const { payload } = await buildOverview(db, '7d');
+    const at = payload.kpi.peakAt as number;
+    // 37 minuti dopo lo scoccare dell`ora, come seminato.
+    expect(new Date(at * 1000).getUTCMinutes()).toBe(37);
+  });
+});

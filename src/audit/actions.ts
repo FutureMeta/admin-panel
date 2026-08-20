@@ -46,6 +46,16 @@ export const AUDIT_ACTIONS = {
   roleCreated: 'role.create',
   roleDeleted: 'role.delete',
 
+  // --- statistiche: dizionario delle modalita' (fase 2) ---------------------
+  // Il dizionario decide come si raggruppano i server nei grafici. Una
+  // riclassificazione cambia ogni numero per modalita' a partire dal giro di
+  // warm successivo, quindi va registrata con il prima e il dopo: senza,
+  // nessuno puo' spiegare perche' un grafico e' cambiato.
+  statsModeCreated: 'stats.mode.create',
+  statsModeUpdated: 'stats.mode.update',
+  statsModeDeleted: 'stats.mode.delete',
+  statsModeAliasesChanged: 'stats.mode.aliases.change',
+
   // --- sessioni -------------------------------------------------------------
   loginSucceeded: 'auth.login.success',
   loginFailed: 'auth.login.failure',

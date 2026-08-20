@@ -185,6 +185,10 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
           name: `stats-warm-${range}`,
           intervalMs: cadence.warm,
           retryMs: Math.min(cadence.warm, 30 * S),
+          // `warmOnBoot` ha appena riempito questo range, in sequenza con gli
+          // altri quattro. Partire subito rifarebbe lo stesso lavoro, e lo
+          // rifarebbe per tutti e cinque INSIEME.
+          runImmediately: false,
           run: async () => ({ ...(await warmRange(deps, range)) }),
           successMessage: `payload ${range} ricostruito`,
           failureMessage: `il pannello statistiche servira\` numeri vecchi per il range ${range}`,

@@ -66,6 +66,15 @@ export type JobDefinition = {
    * esiste per evitare.
    */
   alignMs?: number;
+  /**
+   * Falso quando il primo giro e' gia' stato fatto da qualcun altro.
+   *
+   * Il default e' partire SUBITO, ed e' il comportamento giusto per gli altri
+   * lavori: le partizioni servono prima della prima scrittura e l'integrita'
+   * va saputa adesso, non fra ventiquattro ore. Fa eccezione il warm delle
+   * statistiche, che `warmOnBoot` ha appena riempito in sequenza.
+   */
+  runImmediately?: boolean;
 };
 
 export type RunningJob = { stop: () => void };
@@ -132,7 +141,20 @@ export function startJob(job: JobDefinition, logger: Logger, registry: JobRegist
     timer.unref();
   };
 
-  void run();
+  if (job.runImmediately === false) {
+    // Il primo giro si salta perche' qualcun altro lo ha GIA' fatto.
+    //
+    // Serve al warm delle statistiche e a niente altro: `warmOnBoot` riempie i
+    // cinque range in sequenza, uno alla volta, apposta. Se poi i cinque job
+    // partissero subito, rilancerebbero le stesse cinque aggregazioni
+    // INSIEME — cioe' esattamente le scansioni concorrenti che `warmOnBoot`
+    // esiste per evitare, e nel momento peggiore: all'avvio, mentre le
+    // sessioni si riconnettono e il percorso di login ha bisogno di CPU.
+    timer = setTimeout(() => void run(), job.intervalMs);
+    timer.unref();
+  } else {
+    void run();
+  }
 
   return {
     stop: () => {

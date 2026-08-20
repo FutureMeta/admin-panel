@@ -19,7 +19,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { StatsCache } from '#src/stats/cache.ts';
 import type { ModePayload, OverviewPayload } from '#src/stats/contract.ts';
-import { K, markHot, warmOnBoot, warmRange } from '#src/stats/warm.ts';
+import { K, markHot, startStatsWorker, warmOnBoot, warmRange } from '#src/stats/warm.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
 import { startTestApp, type TestApp } from '#tests/support/app.ts';
 import { connect } from '#tests/support/postgres.ts';
@@ -165,6 +165,24 @@ describe('il giro di warm', () => {
     }
     // Cinque chiavi, cinque eta` sorvegliate.
     expect(t.ctx.statsCache.ages().length).toBeGreaterThanOrEqual(5);
+  });
+
+  it('il worker non rifa` subito cio` che warmOnBoot ha appena costruito', async () => {
+    await warmOnBoot(deps());
+
+    const worker = startStatsWorker(deps(), t.ctx.maintenance.registry);
+    await new Promise((r) => setTimeout(r, 400));
+    worker.stop();
+
+    // Se i cinque job partissero subito, rilancerebbero INSIEME le stesse
+    // cinque aggregazioni che warmOnBoot ha appena fatto una alla volta —
+    // e lo farebbero al momento peggiore, con le sessioni che si
+    // riconnettono e il percorso di login che ha bisogno di CPU.
+    for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {
+      const state = t.ctx.maintenance.registry.state(`stats-warm-${range}`);
+      expect(state.successes, `range ${range}`).toBe(0);
+      expect(state.failures, `range ${range}`).toBe(0);
+    }
   });
 
   it('il cancello: venti richieste su una chiave fredda costruiscono UNA volta', async () => {

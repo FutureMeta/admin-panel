@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
+import { withPepperSubject } from '#src/auth/pepper-context.ts';
 import { visibleModules } from '#src/authz/can.ts';
 import { issueCsrfCookie } from '../csrf.ts';
 import { requireAuth } from '../guards.ts';
@@ -33,6 +34,20 @@ const HASHING_PATHS = new Set([
 ]);
 const TOTP_VERIFY_PATH = '/two-factor/verify-totp';
 
+/**
+ * SEC-40 — le rotte che verificano una password GIA' MEMORIZZATA.
+ *
+ * Non tutte quelle che finiscono in Argon2: `/reset-password` ne calcola una
+ * nuova a partire da un token e non confronta niente, quindi non ha bisogno di
+ * sapere con quale pepper e' nato il vecchio hash.
+ */
+const VERIFIES_STORED_PASSWORD = new Set([
+  '/sign-in/email',
+  '/change-password',
+  '/two-factor/enable',
+  '/two-factor/disable',
+]);
+
 function headersFrom(request: FastifyRequest): Headers {
   const headers = new Headers();
   for (const [k, v] of Object.entries(request.headers)) {
@@ -46,6 +61,51 @@ function accountKeyOf(body: unknown): string | undefined {
   if (typeof body !== 'object' || body === null) return undefined;
   const email = (body as { email?: unknown }).email;
   return typeof email === 'string' ? email.trim().toLowerCase() : undefined;
+}
+
+/**
+ * L'utente e la versione di pepper del suo hash.
+ *
+ * Sul login l'identita' arriva dal corpo, sulle altre dalla sessione — che
+ * sulle rotte autenticate e' gia' stata risolta per il rate limit, quindi
+ * questo non aggiunge un giro.
+ *
+ * Restituisce `undefined` quando l'utente non si trova: il percorso
+ * dell'account inesistente deve restare indistinguibile (SEC-30), e senza
+ * soggetto `verify` usa il pepper corrente esattamente come prima.
+ */
+async function pepperSubjectOf(
+  ctx: AppContext,
+  request: FastifyRequest,
+  subPath: string,
+  knownUserId: string | undefined,
+): Promise<{ userId: string; pepperVersion: number } | undefined> {
+  let userId = knownUserId;
+
+  if (!userId && subPath === '/sign-in/email') {
+    const email = accountKeyOf(request.body);
+    if (!email) return undefined;
+    const row = await ctx.db
+      .selectFrom('auth.user')
+      .select(['id', 'pepper_version'])
+      .where('email', '=', email)
+      .where('deleted_at', 'is', null)
+      .executeTakeFirst();
+    return row ? { userId: row.id, pepperVersion: row.pepper_version } : undefined;
+  }
+
+  if (!userId) {
+    const session = await ctx.auth.api.getSession({ headers: headersFrom(request) });
+    userId = session?.session?.userId;
+  }
+  if (!userId) return undefined;
+
+  const row = await ctx.db
+    .selectFrom('auth.user')
+    .select('pepper_version')
+    .where('id', '=', userId)
+    .executeTakeFirst();
+  return row ? { userId, pepperVersion: row.pepper_version } : undefined;
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
@@ -154,7 +214,22 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
           : {}),
       });
 
-      const res = await ctx.auth.handler(proxied);
+      // SEC-40 — di chi e' la password che better-auth sta per verificare.
+      //
+      // Il callback `password.verify` riceve solo `{ hash, password }`:
+      // verificato empiricamente, non dedotto dal tipo. Senza questo contesto
+      // non c'e' modo di sapere con quale pepper quell'hash e' nato, e ruotare
+      // il pepper equivarrebbe a invalidare tutte le password.
+      //
+      // Si risolve solo sulle rotte che verificano una password ESISTENTE: sul
+      // resto sarebbe una query per niente.
+      const subject = VERIFIES_STORED_PASSWORD.has(subPath)
+        ? await pepperSubjectOf(ctx, request, subPath, totpUserId)
+        : undefined;
+
+      const res = subject
+        ? await withPepperSubject(subject, () => ctx.auth.handler(proxied))
+        : await ctx.auth.handler(proxied);
 
       // ---------------------------------------------------------------------
       // SEC-11 — seconda meta' della guardia anti-replay.

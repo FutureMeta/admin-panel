@@ -197,7 +197,7 @@ guarda ogni tanto.
 | Segreto | Come si ruota | Cosa succede se si sbaglia |
 |---|---|---|
 | `MASTER_KEY` | tutte le chiavi derivate cambiano insieme: sessioni e token CSRF decadono, gli hash password **no** (dipendono dal pepper, versionato) | senza versioning, tutti fuori |
-| pepper Argon2 | si alza `PEPPER_VERSION`; ogni utente viene ri-hashato al login successivo grazie a `pepper_version` sulla sua riga | **cambiarlo senza versioning invalida TUTTI gli hash e impone un reset password globale** |
+| pepper Argon2 | si alza `PEPPER_VERSION` e si riavvia. Ogni hash viene rigenerato al login successivo di quella persona, con il pepper vecchio usato per verificare e quello nuovo per riscrivere. **Non togliere l'`info` di una versione precedente**: finche' esiste una riga non ancora migrata, quel pepper serve | **cambiarlo senza versioning invalida TUTTI gli hash e impone un reset password globale** |
 | chiave TOTP | `key_version` nel prefisso del ciphertext | idem |
 | webhook Resend | rigenerare su Resend, aggiornare env, riavviare | il webhook risponde 400 finché non combacia |
 | chiave di ancoraggio audit | le firme vecchie restano verificabili con la chiave vecchia: conservarla | ancoraggi passati non più verificabili |

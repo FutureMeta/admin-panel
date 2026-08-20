@@ -39,6 +39,8 @@ export type TestAppOptions = {
   label?: string;
   /** Secondi di validita' dello step-up. Abbassarlo permette di verificarne la scadenza. */
   idleSeconds?: number;
+  /** SEC-40: alza la versione del pepper per riprodurre lo stato post-rotazione. */
+  pepperVersion?: number;
 };
 
 /**
@@ -163,7 +165,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     PG_POOL_MAX: '6',
     REDIS_URL: redis.url,
     MASTER_KEY: randomBytes(32).toString('hex'),
-    PEPPER_VERSION: '1',
+    PEPPER_VERSION: String(opts.pepperVersion ?? 1),
     UV_THREADPOOL_SIZE: '8',
     MAIL_FROM: 'MetaMC Admin <no-reply@metamc.it>',
     RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from('segreto-webhook-di-test-0123456789').toString('base64')}`,

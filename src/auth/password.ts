@@ -13,6 +13,7 @@
 
 import { timingSafeEqual } from 'node:crypto';
 import argon2 from '@node-rs/argon2';
+import { currentPepperSubject } from './pepper-context.ts';
 import type { HashSemaphore } from './semaphore.ts';
 
 const { hash, verify } = argon2;
@@ -68,20 +69,68 @@ export function needsRehash(phc: string, userPepperVersion: number, currentPeppe
   );
 }
 
+/**
+ * Cosa fare quando un hash e' stato verificato con un pepper vecchio.
+ *
+ * Vive fuori dal servizio perche' scrivere su `auth.account` e su
+ * `auth.user` non e' compito di chi calcola hash, e perche' un suo guasto
+ * non deve poter far fallire un login: chi la implementa inghiotte i propri
+ * errori e li registra.
+ */
+export type RehashSink = (input: {
+  userId: string;
+  /**
+   * L'hash nuovo, oppure `undefined` quando c'e' solo da riallineare la
+   * colonna: l'hash era gia' prodotto con il pepper corrente ed era la riga a
+   * dichiarare il numero sbagliato. Rifarlo sarebbe lavoro per niente.
+   */
+  phc?: string;
+  pepperVersion: number;
+}) => Promise<void>;
+
 export type PasswordServiceOptions = {
-  pepper: Buffer;
+  /**
+   * SEC-40 — i pepper per versione, dalla 1 alla corrente.
+   *
+   * Non uno solo: un hash prodotto prima di una rotazione va verificato con il
+   * pepper con cui e' nato, altrimenti ruotare equivarrebbe a un reset
+   * password globale.
+   */
+  peppers: Map<number, Buffer>;
+  /** La versione usata per i NUOVI hash. */
+  currentPepperVersion: number;
   semaphore: HashSemaphore;
+  /** Facoltativo: senza, la migrazione degli hash non avviene e basta. */
+  onRehash?: RehashSink;
 };
 
 export class PasswordService {
-  readonly #pepper: Buffer;
+  readonly #peppers: Map<number, Buffer>;
+  readonly #currentVersion: number;
   readonly #semaphore: HashSemaphore;
+  readonly #onRehash: RehashSink | undefined;
   /** Hash-esca, precomputato all'avvio con parametri IDENTICI (SEC-30). */
   #decoy: string | undefined;
 
   constructor(opts: PasswordServiceOptions) {
-    this.#pepper = opts.pepper;
+    this.#peppers = opts.peppers;
+    this.#currentVersion = opts.currentPepperVersion;
     this.#semaphore = opts.semaphore;
+    this.#onRehash = opts.onRehash;
+
+    const current = this.#peppers.get(this.#currentVersion);
+    if (!current) {
+      // Meglio non partire che partire senza poter hashare: sarebbe un
+      // pannello che accetta password e non ne verifica nessuna.
+      throw new Error(`manca il pepper della versione corrente (${this.#currentVersion})`);
+    }
+  }
+
+  /** Il pepper corrente: quello con cui nascono i nuovi hash. */
+  get #pepper(): Buffer {
+    const current = this.#peppers.get(this.#currentVersion);
+    if (!current) throw new Error('pepper corrente assente');
+    return current;
   }
 
   /**
@@ -117,15 +166,94 @@ export class PasswordService {
       await this.verifyDecoy(password);
       return false;
     }
-    return this.#semaphore.run(async () => {
-      try {
-        return await verify(phc, normalizePassword(password), { secret: this.#pepper });
-      } catch {
-        // Una PHC string malformata non e' una password valida. Non si
-        // distingue da una password sbagliata, nemmeno nel messaggio.
-        return false;
+
+    // SEC-40 — con quale pepper e' stato prodotto questo hash.
+    //
+    // La colonna `pepper_version` e' un SUGGERIMENTO, non un vincolo, ed e'
+    // una distinzione che costa poco e vale molto. Nessuno la scrive quando
+    // un hash nasce o cambia: better-auth riscrive `auth.account.password`
+    // da se' su cambio password e su reset, e quella colonna resta indietro.
+    // Se la trattassimo come verita', dopo una rotazione chiunque cambiasse
+    // password — o venisse creato — si troverebbe una riga che dichiara una
+    // versione con cui il suo hash non e' stato prodotto, e non entrerebbe
+    // piu'. Un blocco totale, silenzioso e senza rimedio, perche' un hash non
+    // si ricalcola senza la password in chiaro.
+    //
+    // Quindi: si prova il suggerimento, e se fallisce e non era gia' il
+    // corrente si riprova con il corrente. Il costo aggiuntivo esiste solo
+    // durante la finestra di migrazione, per le righe non ancora allineate, e
+    // si estingue da solo perche' la verifica riuscita fa scattare il
+    // ri-hash. A regime — suggerimento uguale al corrente — l'Argon2 resta
+    // uno solo, e la costanza di costo del SEC-30 non e' toccata.
+    const subject = currentPepperSubject();
+    const hinted = subject?.pepperVersion ?? this.#currentVersion;
+
+    const attempt = async (version: number): Promise<boolean> => {
+      const pepper = this.#peppers.get(version);
+      if (!pepper) return false;
+      return this.#semaphore.run(async () => {
+        try {
+          return await verify(phc, normalizePassword(password), { secret: pepper });
+        } catch {
+          // Una PHC string malformata non e' una password valida. Non si
+          // distingue da una password sbagliata, nemmeno nel messaggio.
+          return false;
+        }
+      });
+    };
+
+    let usedVersion = hinted;
+    let ok = await attempt(hinted);
+    if (!ok && hinted !== this.#currentVersion) {
+      usedVersion = this.#currentVersion;
+      ok = await attempt(this.#currentVersion);
+    }
+
+    if (ok && subject) {
+      if (needsRehash(phc, usedVersion, this.#currentVersion)) {
+        // L'hash e' nato con un pepper vecchio: va rifatto.
+        await this.#migrate(subject.userId, password);
+      } else if (usedVersion !== hinted) {
+        // L'hash era gia' quello giusto e a mentire era la colonna — succede
+        // quando better-auth riscrive la password da se'. Senza questo, ogni
+        // accesso di quella persona pagherebbe due Argon2 per sempre.
+        await this.#realign(subject.userId, usedVersion);
       }
-    });
+    }
+    return ok;
+  }
+
+  /**
+   * Rigenera l'hash con il pepper corrente, dopo una verifica RIUSCITA.
+   *
+   * E' l'unico momento in cui la password in chiaro esiste ed e' provata
+   * giusta: e' li' che una rotazione del pepper puo' avvenire senza chiedere
+   * niente a nessuno.
+   *
+   * Passa dallo stesso semaforo di tutti gli altri hash — quindi non puo'
+   * raddoppiare gli Argon2 in volo — e un suo guasto non fa fallire il login:
+   * la password era giusta, e al prossimo accesso si riprova.
+   */
+  async #migrate(userId: string, password: string): Promise<void> {
+    const sink = this.#onRehash;
+    if (!sink) return;
+    try {
+      const phc = await this.hash(password);
+      await sink({ userId, phc, pepperVersion: this.#currentVersion });
+    } catch {
+      // Inghiottito di proposito: vedi sopra.
+    }
+  }
+
+  /** Solo la colonna: nessun Argon2, perche' l'hash e' gia' quello giusto. */
+  async #realign(userId: string, pepperVersion: number): Promise<void> {
+    const sink = this.#onRehash;
+    if (!sink) return;
+    try {
+      await sink({ userId, pepperVersion });
+    } catch {
+      // Come sopra: la password era giusta, e questo e' bookkeeping.
+    }
   }
 
   #hasCurrentParams(phc: string): boolean {

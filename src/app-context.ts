@@ -17,7 +17,7 @@ import { TotpReplayGuard } from '#src/auth/totp.ts';
 import { AuthzStore } from '#src/authz/store.ts';
 import { type CacheService, PassthroughCache } from '#src/cache/service.ts';
 import type { Env } from '#src/config/env.ts';
-import { type DerivedKeys, deriveKeys } from '#src/crypto/keys.ts';
+import { type DerivedKeys, deriveKeys, pepperRing } from '#src/crypto/keys.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import type { Mailer } from '#src/email/mailer.ts';
 import { AuthzMiddleware } from '#src/http/authz-middleware.ts';
@@ -94,7 +94,55 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   const redis = createRedis({ url: env.REDIS_URL, label: 'main' });
 
   const semaphore = new HashSemaphore(env.UV_THREADPOOL_SIZE);
-  const passwords = new PasswordService({ pepper: keys.argon2Pepper, semaphore });
+  const passwords = new PasswordService({
+    // SEC-40 — tutti i pepper fino al corrente: un hash non ancora rigenerato
+    // va verificato con quello con cui e' nato, altrimenti ruotare il pepper
+    // equivarrebbe a un reset password globale.
+    peppers: pepperRing(env.MASTER_KEY, env.PEPPER_VERSION),
+    currentPepperVersion: env.PEPPER_VERSION,
+    semaphore,
+    /**
+     * Dove finisce un hash rigenerato.
+     *
+     * L'hash nuovo e la versione si scrivono nella STESSA transazione: separate,
+     * un'interruzione fra le due lascerebbe una riga che dichiara una versione
+     * con cui il suo hash non e' stato prodotto — e da li' in poi quella
+     * persona non entrerebbe piu'.
+     *
+     * Gli errori restano qui dentro: un ri-hash fallito non deve far fallire un
+     * login, e al prossimo accesso si riprova.
+     */
+    onRehash: async ({ userId, phc, pepperVersion }) => {
+      try {
+        await db.transaction().execute(async (trx) => {
+          if (phc !== undefined) {
+            await trx
+              .updateTable('auth.account')
+              .set({ password: phc })
+              .where('userId', '=', userId)
+              .where('providerId', '=', 'credential')
+              .execute();
+          }
+          await trx
+            .updateTable('auth.user')
+            .set({ pepper_version: pepperVersion })
+            .where('id', '=', userId)
+            .execute();
+        });
+        logger.info(
+          { userId, pepperVersion, rehashed: phc !== undefined },
+          phc !== undefined
+            ? 'hash password rigenerato con il pepper corrente'
+            : "pepper_version riallineata: l'hash era gia' quello corrente",
+        );
+      } catch (err) {
+        logger.error(
+          { err, userId },
+          'ri-hash del pepper non riuscito: si riprova al prossimo accesso',
+        );
+      }
+    },
+  });
   // L'hash-esca si precalcola ADESSO: farlo alla prima richiesta renderebbe
   // quella richiesta distinguibile da tutte le altre (SEC-30).
   await passwords.warmUp();

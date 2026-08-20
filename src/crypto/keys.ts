@@ -14,6 +14,17 @@ import { hkdfSync } from 'node:crypto';
 /** `info` HKDF. Cambiarne uno cambia la chiave: sono di fatto versionati nel nome. */
 export const KEY_INFO = {
   betterAuthSecret: 'better-auth-secret',
+  /**
+   * SEC-40 — il pepper della VERSIONE 1.
+   *
+   * Questa stringa non si tocca, mai: e' l'`info` con cui e' derivato il
+   * pepper di ogni hash password esistente. Cambiarla non ruota niente,
+   * invalida tutto — e siccome un hash non si puo' ricalcolare senza la
+   * password in chiaro, l'unico rimedio sarebbe un reset globale.
+   *
+   * Le versioni successive AGGIUNGONO un `info` (`argon2-pepper-v2`, ...):
+   * vedi `pepperFor`.
+   */
   argon2Pepper: 'argon2-pepper-v1',
   csrf: 'csrf-v1',
   auditAnchor: 'audit-anchor-v1',
@@ -48,6 +59,30 @@ function derive(master: Buffer, info: string, length = 32): Buffer {
       length,
     ),
   );
+}
+
+/**
+ * Il pepper di una versione. La 1 e' `KEY_INFO.argon2Pepper` alla lettera,
+ * cosi' un hash prodotto prima di questo codice continua a verificarsi.
+ */
+export function pepperFor(masterKey: Buffer, version: number): Buffer {
+  if (!Number.isInteger(version) || version < 1) {
+    throw new Error(`versione di pepper non valida: ${version}`);
+  }
+  return derive(masterKey, version === 1 ? KEY_INFO.argon2Pepper : `argon2-pepper-v${version}`);
+}
+
+/**
+ * Tutti i pepper dalla 1 alla corrente.
+ *
+ * Si tengono anche i vecchi perche' un hash non ancora rigenerato va
+ * verificato con il pepper con cui e' nato: e' esattamente cio' che permette
+ * di ruotare senza un reset password globale.
+ */
+export function pepperRing(masterKey: Buffer, currentVersion: number): Map<number, Buffer> {
+  const ring = new Map<number, Buffer>();
+  for (let v = 1; v <= currentVersion; v += 1) ring.set(v, pepperFor(masterKey, v));
+  return ring;
 }
 
 export function deriveKeys(masterKey: Buffer): DerivedKeys {

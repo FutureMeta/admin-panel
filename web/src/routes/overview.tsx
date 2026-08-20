@@ -667,6 +667,14 @@ export function OverviewPage() {
   }
   if (!data) return <div style={{ padding: 24 }} />;
 
+  // LE CINQUE DEL DESIGN, nello stesso ordine e con le stesse etichette.
+  //
+  // Tre non hanno ancora un dato: unici e nuovi arrivano dalle sessioni
+  // (passo 6), il record storico da una query su tutto lo storico che non
+  // esiste ancora. Mostrano «—» e dicono cosa manca. Sostituirle con carte
+  // che ho a disposizione — media, copertura — sarebbe stato comodo e
+  // sbagliato: la pagina va confrontata col design, e due carte diverse
+  // rendono il confronto impossibile a chiunque non le abbia scritte.
   const cards: Card[] = [
     {
       label: 'Giocatori online ora',
@@ -681,22 +689,12 @@ export function OverviewPage() {
       label: 'Picco odierno',
       value: data.kpi.peak === null ? '—' : numero.format(data.kpi.peak),
       unit: 'gioc.',
+      // Il massimo non viaggia mai da solo: senza il suo istante e la
+      // copertura del bucket in cui e' avvenuto non e' verificabile.
       delta: '',
       note: data.kpi.peakAt ? `alle ${hhmm(data.kpi.peakAt)}` : 'nessun bucket chiuso',
       tone: 'muted',
       ready: data.kpi.peak !== null,
-    },
-    {
-      label: 'Media del periodo',
-      value: data.kpi.avg === null ? '—' : numero.format(data.kpi.avg),
-      unit: 'gioc.',
-      delta: data.comparable && data.kpiPrev.avg ? deltaOf(data.kpi.avg, data.kpiPrev.avg) : '',
-      // Il confronto si RIFIUTA quando le coperture differiscono: due periodi
-      // osservati in modo diverso producono un delta falso, ed è lo scenario
-      // più probabile in cui il pannello mente.
-      note: data.comparable ? 'vs periodo precedente' : 'confronto non affidabile: coperture diverse',
-      tone: 'muted',
-      ready: data.kpi.avg !== null,
     },
     {
       label: 'Giocatori unici oggi',
@@ -708,13 +706,22 @@ export function OverviewPage() {
       ready: false,
     },
     {
-      label: 'Copertura',
-      value: `${Math.round(data.kpi.coverage * 100)}`,
-      unit: '%',
+      label: 'Nuovi giocatori oggi',
+      value: '—',
+      unit: 'gioc.',
       delta: '',
-      note: 'secondi osservati sul periodo',
-      tone: data.kpi.coverage >= 0.98 ? 'ok' : 'muted',
-      ready: true,
+      note: 'anagrafica non ancora raccolta',
+      tone: 'muted',
+      ready: false,
+    },
+    {
+      label: 'Record storico',
+      value: '—',
+      unit: 'gioc.',
+      delta: '',
+      note: 'serve storico piu` lungo del periodo',
+      tone: 'muted',
+      ready: false,
     },
   ];
 
@@ -762,7 +769,8 @@ export function OverviewPage() {
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
             Giocatori connessi · 24h ({data.online.t.length > 0 ? hhmm(data.online.t[0] as number) : '—'}–
             {data.online.t.length > 0 ? hhmm(data.online.t[data.online.t.length - 1] as number) : '—'},
-            Europe/Rome)
+            Europe/Rome) · copertura {Math.round(data.kpi.coverage * 100)}%
+            {data.comparable ? null : ' · confronto col periodo precedente non affidabile'}
           </div>
         </div>
         <div
@@ -823,10 +831,4 @@ export function OverviewPage() {
       />
     </main>
   );
-}
-
-function deltaOf(now: number | null, before: number | null): string {
-  if (now === null || before === null || before === 0) return '';
-  const pct = ((now - before) / before) * 100;
-  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1).replace('.', ',')}%`;
 }

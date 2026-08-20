@@ -1990,19 +1990,31 @@ Istanza Valkey **dedicata alla cache** (`allkeys-lru`, `save ""`, `appendonly no
 ### 7.3 Cadenze e freschezza
 
 ```ts
-const S = 1000, M = 60 * S;
-export const RANGES = {
-  '24h': { src: 'rollup_5m', pts: 288, bucketH: 0,  warm: 60 * S, fresh: 90 * S,   stale: 10 * M },
-  '7d':  { src: 'rollup_1h', pts: 168, bucketH: 1,  warm:  5 * M, fresh: 7.5 * M,  stale: 30 * M },
-  '30d': { src: 'rollup_1h', pts: 360, bucketH: 2,  warm: 15 * M, fresh: 22.5 * M, stale: 120 * M },
-  '90d': { src: 'rollup_1h', pts: 360, bucketH: 6,  warm: 15 * M, fresh: 22.5 * M, stale: 120 * M },
-  '1y':  { src: 'rollup_1d', pts: 365, bucketH: 24, warm: 60 * M, fresh: 90 * M,   stale: 360 * M },
-} as const;
+export const WARM_MS = 60 * S;
+export const TTL: Ttl = { fresh: 90 * S, stale: 10 * M };
 ```
+
+**Una cadenza sola, per tutti e cinque i range**, e un solo job che li percorre in sequenza.
+
+La versione precedente ne prevedeva cinque diverse (60 s per il 24h, 15 min per 30g e 90g, un'ora per l'1y), e la ragione scritta era che «nel payload 1y solo l'ultimo punto si muove». Era vero finché i range lunghi erano viste di solo storico. L'emendamento sul selettore l'ha invalidata: il selettore in alto governa **ogni** riquadro della panoramica, quindi sull'1y si muovono anche la heatmap, il picco del periodo, gli unici e la provenienza, e tutti includono il giorno in corso.
+
+Cadenze diverse producevano una domanda a cui il pannello non sapeva rispondere: lo stesso dato appariva fresco sul 24h e fermo a un quarto d'ora prima sul 90g, e per accorgersi che le due schermate non erano in disaccordo bisognava sapere a memoria la tabella. **Un selettore di intervallo cambia cosa si guarda, non quanto è vecchio.**
+
+Il costo che giustificava lo scaglionamento è stato tolto, non accettato: `buildAll` prende ora l'elenco delle modalità che servono davvero e salta le tre query per modalità quando è vuoto. Sono la parte cara del giro — `heatmapModeRows` misura 1,7 s sul 90g contro i 25 ms della gemella di rete — e la panoramica non ne legge una riga. Misurato prima e dopo, stesso seme:
+
+| range | prima | dopo |
+|---|---|---|
+| 24h | 73 ms | 55 ms |
+| 7g | 75 ms | 53 ms |
+| 30g | 288 ms | 215 ms |
+| 90g | 816 ms | 605 ms |
+| 1y | 394 ms | 205 ms |
+
+Giro completo ~1,1 s al minuto, sotto il 2%. `buildOverview` passa `[]`; il worker legge l'hot-set **prima** di costruire, non dopo — chiederlo dopo significava costruire il payload di ogni modalità per poi scoprire quali servivano, e a hot-set vuoto era lavoro interamente buttato.
 
 `fresh = 1,5 × warm`. Se fossero uguali, ogni warm arriverebbe un capello in ritardo e ogni richiesta vedrebbe una chiave tecnicamente obsoleta, innescando rivalidazioni all'infinito.
 
-Il 24h scende da 30 a 60 secondi perché il KPI istantaneo non passa più dal payload: il corpo deve solo seguire il bucket da 5 minuti. Nel payload 1y solo l'ultimo punto si muove: ricostruirlo ogni 30 secondi significherebbe ricalcolare 364 numeri identici per aggiornarne uno.
+**Un job, non cinque.** Con la stessa cadenza, cinque timer indipendenti scoccherebbero insieme e lancerebbero cinque costruzioni concorrenti: 65 query in volo su un pool da otto, cioè esattamente il `Promise.all` da cui questo disegno si tiene alla larga. In sequenza il picco resta uno, e un range che va in timeout non fa invecchiare gli altri quattro.
 
 ### 7.4 Il giro di warm: `warm()`, mai `getOrSet()`
 

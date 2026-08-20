@@ -17,8 +17,8 @@
 
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { StatsCache } from '#src/stats/cache.ts';
-import type { ModePayload, OverviewPayload } from '#src/stats/contract.ts';
+import { decode, StatsCache } from '#src/stats/cache.ts';
+import { type ModePayload, type OverviewPayload, RANGES } from '#src/stats/contract.ts';
 import { civilDay, K, markHot, startStatsWorker, warmOnBoot, warmRange } from '#src/stats/warm.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
 import { startTestApp, type TestApp } from '#tests/support/app.ts';
@@ -174,15 +174,13 @@ describe('il giro di warm', () => {
     await new Promise((r) => setTimeout(r, 400));
     worker.stop();
 
-    // Se i cinque job partissero subito, rilancerebbero INSIEME le stesse
-    // cinque aggregazioni che warmOnBoot ha appena fatto una alla volta —
-    // e lo farebbero al momento peggiore, con le sessioni che si
-    // riconnettono e il percorso di login che ha bisogno di CPU.
-    for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {
-      const state = t.ctx.maintenance.registry.state(`stats-warm-${range}`);
-      expect(state.successes, `range ${range}`).toBe(0);
-      expect(state.failures, `range ${range}`).toBe(0);
-    }
+    // Se il job partisse subito rifarebbe le stesse cinque aggregazioni
+    // che warmOnBoot ha appena fatto, e lo farebbe al momento peggiore: con
+    // le sessioni che si riconnettono e il percorso di login che ha bisogno
+    // di CPU.
+    const state = t.ctx.maintenance.registry.state('stats-warm');
+    expect(state.successes).toBe(0);
+    expect(state.failures).toBe(0);
   });
 
   it('il cancello: venti richieste su una chiave fredda costruiscono UNA volta', async () => {
@@ -366,5 +364,26 @@ describe('la chiave di cache porta il giorno civile', () => {
 
   it("l'hot-set NON porta il giorno: cio' che si e' guardato non scade a mezzanotte", () => {
     expect(K.hot('7d')).toBe('stats:v2:hot:7d');
+  });
+});
+
+describe('nessun range e` piu` fresco di un altro', () => {
+  it('i cinque involucri hanno la stessa finestra di validita`', async () => {
+    await warmOnBoot(deps());
+
+    const finestre = new Map<string, string>();
+    for (const range of RANGES) {
+      const raw = await t.ctx.cacheRedis.getBuffer(K.ov(range));
+      const env = decode(raw);
+      expect(env, `range ${range} non riscaldato`).not.toBeNull();
+      if (!env) continue;
+      finestre.set(range, `${env.freshUntil - env.builtAt}/${env.staleUntil - env.builtAt}`);
+    }
+
+    // IL SINTOMO CHE QUESTO TEST DIFENDE: con una tabella di cadenze per
+    // range, lo stesso dato appariva fresco sul 24h e vecchio di un quarto
+    // d'ora sul 90g. Il selettore in alto cambia COSA si guarda, non quanto
+    // e` vecchio cio` che si guarda.
+    expect(new Set(finestre.values()).size, [...finestre].join(' ')).toBe(1);
   });
 });

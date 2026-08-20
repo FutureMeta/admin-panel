@@ -753,13 +753,32 @@ export type AllBuild = {
  * significherebbe pagare N volte la stessa lettura.
  */
 export async function buildOverview(db: Database, range: Range, now = new Date()): Promise<BuildResult> {
-  const all = await buildAll(db, range, now);
+  // Nessun payload per modalita': questa funzione ne butterebbe via ventuno.
+  const all = await buildAll(db, range, now, []);
   return { payload: all.overview, queryMs: all.queryMs };
 }
 
-export async function buildAll(db: Database, range: Range, now = new Date()): Promise<AllBuild> {
+export async function buildAll(
+  db: Database,
+  range: Range,
+  now = new Date(),
+  wanted?: readonly string[],
+): Promise<AllBuild> {
   const plan = PLAN[range];
   const w = windowOf(range, now);
+
+  // QUALI PAYLOAD PER MODALITA' SERVONO DAVVERO. Non e' un'ottimizzazione
+  // marginale: le tre query per modalita' sono le piu' care del lotto —
+  // `heatmapModeRows` da sola misura 1,7 s sul range 90g contro i 25 ms
+  // della sua gemella di rete — e la panoramica non ne usa nemmeno una riga.
+  // Pagarle sempre significava che aprire il pannello sul 90g costava
+  // ventuno heatmap che nessuno avrebbe guardato, e che il range lungo era
+  // troppo caro per essere riscaldato spesso: e' da li' che nasceva il
+  // sintomo visibile, cioe' 24h fresco e 90g fermo a un quarto d'ora prima.
+  //
+  // `undefined` significa «tutte», che e' il comportamento di prima.
+  const want = wanted ? new Set(wanted) : null;
+  const anyMode = want === null || want.size > 0;
 
   const t0 = Date.now();
   const [
@@ -779,13 +798,13 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
   ] = await Promise.all([
     seriesRows(db, range, w),
     heatmapRows(db, w.curFrom, now),
-    heatmapModeRows(db, w.curFrom, now),
+    anyMode ? heatmapModeRows(db, w.curFrom, now) : [],
     deltasIn(db, w),
     modeLabels(db),
     uniquesRows(db, now, daysOf(range)),
-    uniquesByModeRows(db, now, daysOf(range)),
+    anyMode ? uniquesByModeRows(db, now, daysOf(range)) : [],
     distinctPlayers(db, w.curFrom, w.curTo),
-    distinctPlayersByMode(db, w.curFrom, w.curTo),
+    anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo) : new Map<string, number>(),
     geoRows(db, w.curFrom, now),
     networkFacts(db),
     currentMix(db),
@@ -991,6 +1010,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
 
   const perMode = new Map<string, ModePayload>();
   for (const m of modes) {
+    if (want && !want.has(m)) continue;
     const line = series[m] ?? [];
     const kpiMode = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec, (b) => b.byMode.get(m) ?? 0, false);
     kpiMode.uniques = distinctModeNow.get(m) ?? null;

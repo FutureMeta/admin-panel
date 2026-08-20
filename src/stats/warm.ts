@@ -20,7 +20,7 @@
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import type { Database } from '#src/db/pool.ts';
-import { type JobRegistry, type RunningJob, startJob } from '#src/jobs/scheduler.ts';
+import { type JobRegistry, startJob } from '#src/jobs/scheduler.ts';
 import type { StatsCache, Ttl } from './cache.ts';
 import { assertPayload, type ModePayload, type OverviewPayload, RANGES, type Range } from './contract.ts';
 import { buildAll } from './read.ts';
@@ -71,39 +71,41 @@ export const K = {
   hot: (r: Range) => `stats:v2:hot:${r}`,
 };
 
-export type Cadence = {
-  /** Ogni quanto il worker ricostruisce. */
-  warm: number;
-  /** Validita' piena. Sempre 1,5 volte `warm`, vedi sotto. */
-  fresh: number;
-  /** Finestra ULTERIORE in cui il payload si serve mentre si rifa'. */
-  stale: number;
-};
+/**
+ * UNA CADENZA SOLA, per tutti e cinque i range.
+ *
+ * Il §7.3 ne prevedeva cinque diverse — sessanta secondi per il 24h,
+ * un'ora per l'1y — e la ragione scritta era che «nel payload 1y solo
+ * l'ultimo punto si muove». Era vero finche' i range lunghi erano viste di
+ * solo storico. Non lo e' piu': il selettore in alto governa OGNI riquadro
+ * della panoramica, quindi sull1y si muovono anche la heatmap, il picco del
+ * periodo, gli unici e la provenienza, e tutti includono il giorno in corso.
+ *
+ * Cadenze diverse producevano una domanda a cui il pannello non sapeva
+ * rispondere: lo stesso dato appariva fresco sul 24h e fermo a un quarto
+ * d'ora prima sul 90g, e per accorgersi che non erano in disaccordo
+ * bisognava sapere a memoria questa tabella. Un selettore di intervallo
+ * cambia COSA si guarda, non quanto e' vecchio.
+ *
+ * Il costo che giustificava lo scaglionamento non c'e' piu': saltando i
+ * payload per modalita` quando nessuno li ha chiesti (vedi `buildAll`), il
+ * giro completo dei cinque range misura ~1,1 s, sotto il 2% di un minuto.
+ */
+export const WARM_MS = 60 * S;
 
 /**
- * `fresh = 1,5 x warm`, e la mezza volta non e' arbitraria: se fossero uguali
- * ogni giro arriverebbe un capello in ritardo, ogni richiesta troverebbe una
- * chiave tecnicamente obsoleta, e la rivalidazione partirebbe all'infinito.
- *
- * Il 24h sta a sessanta secondi e non a trenta perche' il numero istantaneo
- * non passa piu' dal payload (viaggia come intestazione): al corpo basta
- * seguire il bucket da cinque minuti. Nell'1y si muove solo l'ultimo punto:
- * ricostruirlo ogni mezzo minuto vorrebbe dire ricalcolare 364 numeri identici
- * per aggiornarne uno.
+ * `fresh = 1,5 x warm`, e la mezza volta non e' arbitraria: se fossero
+ * uguali ogni giro arriverebbe un capello in ritardo, ogni richiesta
+ * troverebbe una chiave tecnicamente obsoleta, e la rivalidazione partirebbe
+ * all'infinito. `stale` e' la finestra ULTERIORE in cui il payload si serve
+ * mentre si rifa': quanto a lungo si accetta di mostrare numeri vecchi
+ * piuttosto che una schermata vuota.
  */
-export const CADENCE: Record<Range, Cadence> = {
-  '24h': { warm: 60 * S, fresh: 90 * S, stale: 10 * M },
-  '7d': { warm: 5 * M, fresh: 7.5 * M, stale: 30 * M },
-  '30d': { warm: 15 * M, fresh: 22.5 * M, stale: 120 * M },
-  '90d': { warm: 15 * M, fresh: 22.5 * M, stale: 120 * M },
-  '1y': { warm: 60 * M, fresh: 90 * M, stale: 360 * M },
-};
+export const TTL: Ttl = { fresh: 90 * S, stale: 10 * M };
 
-export function ttlOf(range: Range): Ttl {
-  const c = CADENCE[range];
-  return { fresh: c.fresh, stale: c.stale };
+export function ttlOf(): Ttl {
+  return TTL;
 }
-
 /** Quanto puo' durare la parte «modalita'» di un giro prima di rimandare. */
 export const WARM_BUDGET_MS = 250;
 
@@ -169,7 +171,13 @@ export type WarmResult = {
  */
 export async function warmRange(deps: WarmDeps, range: Range): Promise<WarmResult> {
   const t0 = Date.now();
-  const built = await buildAll(deps.statsDb, range);
+  // L'HOT-SET SI LEGGE PRIMA DI COSTRUIRE, non dopo. Chiederlo dopo voleva
+  // dire costruire il payload di ogni modalita' per poi scoprire quali
+  // servivano, e le query per modalita' sono la parte cara del giro: a
+  // hot-set vuoto — cioe' sempre, finche' nessuno apre il dettaglio di una
+  // modalita' — erano lavoro interamente buttato.
+  const hot = await hotModes(deps.redis, range);
+  const built = await buildAll(deps.statsDb, range, undefined, hot);
   deps.cache.recordBuild(K.ov(range), { query: built.queryMs });
 
   // Le invarianti si verificano PRIMA che i byte entrino in cache. Un payload
@@ -178,14 +186,14 @@ export async function warmRange(deps: WarmDeps, range: Range): Promise<WarmResul
   // il grafico disegna numeri corretti sotto l'etichetta sbagliata.
   assertPayload(built.overview);
 
-  const ttl = ttlOf(range);
+  const ttl = ttlOf();
   // q11 sulle panoramiche: si costruiscono una volta e si servono molte
   // (~60 letture per build), quindi i 34 ms di compressione si ammortizzano.
   await deps.cache.warmEnvelope(K.ov(range), async () => serialize(built.overview), ttl, 11);
 
   let payloads = 1;
   let deferred = 0;
-  for (const mode of await hotModes(deps.redis, range)) {
+  for (const mode of hot) {
     const payload = built.perMode.get(mode);
     if (!payload) continue;
     if (Date.now() - t0 > WARM_BUDGET_MS || deps.cache.underPressure) {
@@ -204,34 +212,54 @@ export async function warmRange(deps: WarmDeps, range: Range): Promise<WarmResul
 
 export type StatsWorker = { stop: () => void };
 
+/**
+ * UN job, cinque range in sequenza — non cinque job.
+ *
+ * Con la stessa cadenza cinque timer indipendenti scoccherebbero insieme e
+ * lancerebbero cinque costruzioni concorrenti: sessantacinque query in volo
+ * su un pool da otto, che e` esattamente il `Promise.all` da cui questo
+ * disegno si tiene alla larga. In sequenza il picco resta uno.
+ */
 export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWorker {
-  const jobs: RunningJob[] = [];
-  for (const range of RANGES) {
-    const cadence = CADENCE[range];
-    jobs.push(
-      startJob(
-        {
-          name: `stats-warm-${range}`,
-          intervalMs: cadence.warm,
-          retryMs: Math.min(cadence.warm, 30 * S),
-          // `warmOnBoot` ha appena riempito questo range, in sequenza con gli
-          // altri quattro. Partire subito rifarebbe lo stesso lavoro, e lo
-          // rifarebbe per tutti e cinque INSIEME.
-          runImmediately: false,
-          run: async () => ({ ...(await warmRange(deps, range)) }),
-          successMessage: `payload ${range} ricostruito`,
-          failureMessage: `il pannello statistiche servira\` numeri vecchi per il range ${range}`,
-        },
-        deps.logger,
-        registry,
-      ),
-    );
-  }
-  return {
-    stop: () => {
-      for (const j of jobs) j.stop();
+  const job = startJob(
+    {
+      name: 'stats-warm',
+      intervalMs: WARM_MS,
+      retryMs: 30 * S,
+      // `warmOnBoot` ha appena riempito tutti e cinque i range, in sequenza.
+      // Partire subito rifarebbe lo stesso identico lavoro.
+      runImmediately: false,
+      run: async () => {
+        const pronti: Range[] = [];
+        const falliti: Range[] = [];
+        let payloads = 0;
+        let deferred = 0;
+        for (const range of RANGES) {
+          try {
+            const r = await warmRange(deps, range);
+            payloads += r.payloads;
+            deferred += r.deferred;
+            pronti.push(range);
+          } catch {
+            // UN range rotto non ne ferma altri quattro: il 90g che va in
+            // timeout non deve far invecchiare il 24h.
+            falliti.push(range);
+          }
+        }
+        // Caduti tutti non e` un giro parziale: e` il database che non
+        // risponde, e deve contare come fallimento e riprovare prima.
+        if (pronti.length === 0) {
+          throw new Error(`nessun range ricostruito: ${falliti.join(', ')}`);
+        }
+        return { pronti, falliti, payloads, deferred };
+      },
+      successMessage: 'payload statistiche ricostruiti',
+      failureMessage: 'il pannello statistiche servira` numeri vecchi',
     },
-  };
+    deps.logger,
+    registry,
+  );
+  return { stop: () => job.stop() };
 }
 
 /**

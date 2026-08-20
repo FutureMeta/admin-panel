@@ -158,6 +158,20 @@ const RULES: Rule[] = [
     exempt: (rel) => !inGeoScope(rel),
     multiline: true,
   },
+  {
+    id: 'stats/per-mode-behind-the-gate',
+    why: 'le tre query per modalita` sono la parte cara del giro — `heatmapModeRows` misura 1,7 s sul 90g contro i 25 ms della gemella di rete — e la panoramica non ne legge una riga. Fuori dal cancello `anyMode` si pagano anche quando nessuno ha aperto una modalita`, e il range lungo torna troppo caro per essere riscaldato come gli altri: e` da li` che nasceva il 24h fresco e il 90g fermo a un quarto d`ora prima.',
+    // La chiamata deve stare sul ramo vero di `anyMode ? ... : []`. Una riga
+    // che nomina una di queste funzioni con `db` senza il cancello davanti e`
+    // esattamente la regressione: non rompe niente, costa e basta — e un
+    // difetto che non rompe niente non lo trova nessun test di correttezza.
+    // `(db,` e non `(db`: la seconda forma colpisce anche la DICHIARAZIONE
+    // `function distinctPlayersByMode(db: Database, ...)`, che ovviamente non
+    // ha nessun cancello davanti — una guardia che grida sulla definizione
+    // della cosa che protegge si disattiva da sola alla prima occhiata.
+    pattern: /^(?!.*anyMode \?).*\b(heatmapModeRows|uniquesByModeRows|distinctPlayersByMode)\(db,/,
+    exempt: (rel) => rel !== join('src', 'stats', 'read.ts'),
+  },
 ];
 
 function walk(dir: string, out: string[]): void {

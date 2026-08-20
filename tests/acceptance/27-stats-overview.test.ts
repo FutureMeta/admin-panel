@@ -23,7 +23,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { assertPayload } from '#src/stats/contract.ts';
-import { buildOverview } from '#src/stats/read.ts';
+import { buildAll, buildOverview } from '#src/stats/read.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 let testDb: TestDatabase;
@@ -33,6 +33,8 @@ let db: Database;
 let sql: pg.Client;
 
 const ARENA = 'duels_1';
+/** Un istante fissato: due `new Date()` diversi sposterebbero gli assi. */
+const FISSO = new Date();
 const EVENTO = 'evento_1';
 
 beforeAll(async () => {
@@ -457,5 +459,33 @@ describe("l'istante del picco non dipende da quanto e` largo un bucket", () => {
     const at = payload.kpi.peakAt as number;
     // 37 minuti dopo lo scoccare dell`ora, come seminato.
     expect(new Date(at * 1000).getUTCMinutes()).toBe(37);
+  });
+});
+
+describe('la panoramica non paga i payload per modalita` che nessuno ha chiesto', () => {
+  beforeEach(async () => {
+    await dictionary();
+    await seedHours(10);
+  });
+
+  it('costruisce solo le modalita` richieste', async () => {
+    const nessuna = await buildAll(db, '7d', undefined, []);
+    const una = await buildAll(db, '7d', undefined, ['arena']);
+    const tutte = await buildAll(db, '7d');
+
+    expect(nessuna.perMode.size).toBe(0);
+    expect([...una.perMode.keys()]).toEqual(['arena']);
+    expect(tutte.perMode.size).toBeGreaterThan(1);
+  });
+
+  it('e la panoramica esce IDENTICA nei tre casi', async () => {
+    // IL PUNTO DI QUESTO TEST. Saltare le query per modalita` e` lecito
+    // solo se la panoramica non ne legge nemmeno una riga: se un giorno
+    // ne leggesse una, aprire il pannello e aprire il dettaglio di una
+    // modalita` mostrerebbero due panoramiche diverse — e la differenza
+    // dipenderebbe da cosa qualcun altro ha guardato di recente.
+    const nessuna = await buildAll(db, '90d', FISSO, []);
+    const tutte = await buildAll(db, '90d', FISSO);
+    expect(nessuna.overview).toEqual(tutte.overview);
   });
 });

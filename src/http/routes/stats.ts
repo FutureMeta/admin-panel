@@ -179,7 +179,7 @@ export async function registerStatsRoutes(app: FastifyInstance, ctx: AppContext)
           ctx.statsCache.recordBuild(K.ov(range), { query: built.queryMs });
           return Buffer.from(JSON.stringify(built.overview), 'utf8');
         },
-        ttlOf(range),
+        ttlOf(),
         11,
       );
 
@@ -231,7 +231,7 @@ export async function registerStatsRoutes(app: FastifyInstance, ctx: AppContext)
           ctx.statsCache.recordBuild(K.md(mode, range), { query: built.queryMs });
           return Buffer.from(JSON.stringify(payload), 'utf8');
         },
-        ttlOf(range),
+        ttlOf(),
         5,
       );
 

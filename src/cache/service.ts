@@ -1,13 +1,15 @@
-// §16.4 — interfaccia `CacheService`, con la SOLA implementazione passthrough.
+// §16.4 — l'interfaccia `CacheService`.
 //
-// In fase 1 non c'e' nulla da cachare: un solo processo, e gli unici dati
-// caldi (sessione e authz) stanno gia' in Redis con una semantica loro. Il §4
-// e' esplicito: nessuna libreria di cache, e quando servira' saranno ~120
-// righe su lru-cache + ioredis, non una dipendenza dormiente.
+// SCRITTA IN FASE 1, IMPLEMENTATA IN FASE 2. In fase 1 non c'era nulla da
+// cachare — un solo processo, e gli unici dati caldi (sessione e authz) gia'
+// in Redis con una semantica loro — ma l'interfaccia costava cinque minuti e
+// prometteva che la cache vera si sarebbe scritta dietro di essa senza
+// toccare i chiamanti. `StatsCache` (src/stats/cache.ts) la implementa, e la
+// promessa e' stata mantenuta: nessun chiamante e' cambiato.
 //
-// L'interfaccia esiste ora perche' costa cinque minuti e perche' la cache di
-// fase 2 (singleflight + SWR davanti ai payload statistici) si scrive dietro
-// di essa senza toccare i chiamanti.
+// L'implementazione passthrough che stava qui e' stata tolta quando quella
+// vera e' arrivata: nessuno la costruiva piu', e in questo repository il
+// codice che nessuno esercita e' codice che nessuno verifica.
 
 export type CacheStats = {
   hits: number;
@@ -16,7 +18,7 @@ export type CacheStats = {
 };
 
 export type GetOrSetOptions = {
-  /** Secondi. Ignorato dall'implementazione passthrough. */
+  /** Secondi. `StatsCache` lo usa come finestra fresca E come finestra obsoleta. */
   ttl?: number;
   /** Etichette per l'invalidazione di gruppo. */
   tags?: readonly string[];
@@ -29,36 +31,3 @@ export type CacheService = {
   warm(key: string, factory: () => Promise<unknown>, options?: GetOrSetOptions): Promise<void>;
   stats(): Promise<CacheStats>;
 };
-
-/**
- * Non memorizza nulla: esegue sempre la factory.
- *
- * Non e' un segnaposto vuoto — e' la semantica corretta per la fase 1. Un
- * chiamante scritto contro questa implementazione e' automaticamente corretto
- * anche quando dietro ci sara' una cache vera, perche' non puo' aver assunto
- * che un valore resti fresco.
- */
-export class PassthroughCache implements CacheService {
-  #calls = 0;
-
-  async getOrSet<T>(_key: string, factory: () => Promise<T>): Promise<T> {
-    this.#calls += 1;
-    return factory();
-  }
-
-  async invalidate(_key: string): Promise<void> {
-    // Niente da invalidare: e' corretto, non incompleto.
-  }
-
-  async invalidateTag(_tag: string): Promise<void> {
-    // Idem.
-  }
-
-  async warm(_key: string, _factory: () => Promise<unknown>): Promise<void> {
-    // Scaldare una cache che non esiste sarebbe solo lavoro sprecato.
-  }
-
-  async stats(): Promise<CacheStats> {
-    return { hits: 0, misses: this.#calls, entries: 0 };
-  }
-}

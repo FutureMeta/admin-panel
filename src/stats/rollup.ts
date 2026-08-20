@@ -108,15 +108,26 @@ export async function runRollup(db: Database, level: RollupLevel, now = Date.now
     const state = await lockState(tx, level);
     const { from, to } = windowOf(state, level, now);
 
-    const rowsWritten = to.getTime() <= state.watermark.getTime() ? 0 : await aggregate(tx, level, from, to);
+    // Fra un confine di bucket e l'altro non c'e' niente di nuovo da
+    // aggregare, e il giro non fa nulla: e' il caso NORMALE, non un guasto.
+    const idle = to.getTime() <= state.watermark.getTime();
+    const rowsWritten = idle ? 0 : await aggregate(tx, level, from, to);
 
     const stride = SOURCE_STRIDE_MS[level];
     const closed = Math.floor(now / stride) * stride;
     const behindBuckets = Math.max(0, Math.round((closed - to.getTime()) / stride));
 
+    // `rows_written` conserva l'ultimo giro che ha SCRITTO, non l'ultimo giro.
+    //
+    // Azzerarlo a ogni passaggio a vuoto faceva leggere zero quasi sempre, e
+    // chi apre questa tabella per sapere se il rollup funziona ne concludeva
+    // che fosse fermo. Una diagnostica che fa sospettare un guasto inesistente
+    // e' peggio di una diagnostica assente: manda a cercare nel posto
+    // sbagliato.
     await sql`
       UPDATE stats.rollup_state
-         SET watermark = ${to}, rows_written = ${rowsWritten},
+         SET watermark = ${to},
+             rows_written = ${idle ? sql`rows_written` : rowsWritten},
              behind_buckets = ${behindBuckets}, updated_at = now()
        WHERE level = ${level}
     `.execute(tx);

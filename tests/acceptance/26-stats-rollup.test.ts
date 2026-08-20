@@ -70,6 +70,12 @@ beforeEach(async () => {
     DELETE FROM stats.sample_server;
     DELETE FROM stats.poll_cycle;
     DELETE FROM stats.server WHERE server_id > 1;`);
+  // Lo stato dei livelli e' condiviso fra i test di questo file: il test sul
+  // recupero limitato abbassa `max_buckets` e senza questo ripristino i test
+  // successivi non sarebbero mai in pari — un guasto che dipende dall'ORDINE
+  // di esecuzione, cioe' quello che si scopre il giorno in cui se ne aggiunge
+  // uno in mezzo.
+  await sql.query('UPDATE stats.rollup_state SET max_buckets = 288, rows_written = 0, behind_buckets = 0');
   // Un'ora piena, oggi, gia' passata rispetto al momento in cui i test
   // chiamano il rollup: cosi' nessun bucket e' «in corso».
   const res = await sql.query<{ h: Date }>(`SELECT date_trunc('hour', now()) - interval '2 hours' AS h`);
@@ -290,5 +296,28 @@ describe('il giorno civile non e` il giorno UTC', () => {
     const r = await rows('SELECT DISTINCT expected_s FROM stats.rollup_1d');
     expect(r).toHaveLength(1);
     expect([82_800, 86_400, 90_000]).toContain(Number(r[0]?.['expected_s']));
+  });
+});
+
+describe('la diagnostica non deve far sospettare un guasto che non c e', () => {
+  beforeEach(seedHour);
+
+  it('un giro a vuoto non azzera il conteggio dell`ultimo giro che ha scritto', async () => {
+    // Fra un confine di cinque minuti e l'altro il rollup non ha niente di
+    // nuovo da aggregare: e' il caso NORMALE. Azzerando `rows_written` a ogni
+    // passaggio a vuoto, chi apre stats.rollup_state per sapere se il rollup
+    // funziona legge zero quasi sempre e conclude che sia fermo — ed e'
+    // esattamente quello che e' successo in produzione. Una diagnostica che
+    // manda a cercare nel posto sbagliato e' peggio di una assente.
+    await rollAll();
+    const dopoLavoro = await rows(`SELECT rows_written FROM stats.rollup_state WHERE level = '5m'`);
+    expect(Number(dopoLavoro[0]?.['rows_written'])).toBeGreaterThan(0);
+
+    // Stesso istante, watermark gia' avanti: il giro non aggrega niente.
+    const fermo = await runRollup(db, '5m', hourStart.getTime() + 3_600_000 + 600_000);
+    expect(fermo.rowsWritten).toBe(0);
+
+    const dopoVuoto = await rows(`SELECT rows_written FROM stats.rollup_state WHERE level = '5m'`);
+    expect(Number(dopoVuoto[0]?.['rows_written'])).toBe(Number(dopoLavoro[0]?.['rows_written']));
   });
 });

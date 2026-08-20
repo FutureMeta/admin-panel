@@ -15,8 +15,8 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { PageHeader, Panel, PanelBar } from '../components/page.tsx';
-import { Banner, Button, EmptyState, SkeletonRows } from '../components/ui.tsx';
+import { PageHeader, Panel, PanelBar, SelectField } from '../components/page.tsx';
+import { Banner, Button, EmptyState, Field, SkeletonRows } from '../components/ui.tsx';
 import { api, type Me } from '../lib/api.ts';
 
 type MatchKind = 'server' | 'prefix' | 'suffix' | 'contains';
@@ -321,43 +321,29 @@ function ServerSource({
         </div>
       ) : (
         <div>
-          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8 }}>
-            <select
+          {/*
+            Il menù a tendina è quello del pannello, non uno scritto qui.
+
+            Ne avevo fatto uno a mano con stili in linea: fuori dallo stile
+            degli altri e con il testo bianco sulle opzioni, che è esattamente
+            il difetto sistemato in fase 1 — la `select` nativa disegna il
+            proprio menù con i colori del sistema, e le regole che glielo
+            impediscono stanno in `SelectField` e in `app.css`. Riscriverlo
+            significava rifare quel lavoro male.
+          */}
+          <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr', gap: 8, alignItems: 'end' }}>
+            <SelectField
+              label="Il nome del server"
               value={op}
-              aria-label="Come confrontare il nome del server"
-              onChange={(e) => setOp(e.target.value as MatchKind)}
-              style={{
-                height: 38,
-                padding: '0 12px',
-                border: '1px solid var(--bd-subtle)',
-                borderRadius: 'var(--r-sm)',
-                background: 'var(--s-inset)',
-                color: 'var(--tx-primary)',
-                fontSize: 12.5,
-              }}
-            >
-              {PATTERN_OPS.map((o) => (
-                <option key={o.kind} value={o.kind}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <input
+              onChange={(v) => setOp(v as MatchKind)}
+              options={PATTERN_OPS.map((o) => ({ value: o.kind, label: o.label }))}
+            />
+            <Field
+              label="Testo da confrontare"
               className="mono"
               value={pattern}
               placeholder="duels_"
-              aria-label="Testo da confrontare"
               onChange={(e) => setPattern(e.target.value)}
-              style={{
-                height: 38,
-                padding: '0 12px',
-                border: `1px solid ${pattern ? 'var(--ac)' : 'var(--bd-subtle)'}`,
-                borderRadius: 'var(--r-sm)',
-                background: 'var(--s-inset)',
-                color: 'var(--tx-primary)',
-                fontSize: 12.5,
-                outline: 'none',
-              }}
             />
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--tx-muted)', marginTop: 9 }}>

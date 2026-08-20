@@ -280,15 +280,24 @@ function OnlineChart({
 
       {/* Il buco è tratteggiato e ha un'etichetta: non si interpola, e non
           diventa uno zero. È l'unica operazione irreversibile della catena. */}
+      {/*
+        Solo il tratteggio, senza etichetta.
+
+        L'etichetta diceva anche l'orario, e su un intervallo che attraversa la
+        mezzanotte usciva «19:40–18:55»: corretto e illeggibile, perché senza
+        la data sembra invertito. Il tratteggio da solo dice l'unica cosa che
+        conta — qui non è stato rilevato niente — e il quando si legge
+        dall'asse, che ce l'ha già.
+      */}
       {gaps(values).map(([a, b]) => (
-        <g key={`gap-${a}`}>
-          <rect x={x(a)} y={TOP} width={Math.max(2, x(b) - x(a))} height={BOTTOM - TOP} fill="url(#mmGap)" />
-          {b - a > n / 40 ? (
-            <text x={x(a)} y={286} fill="var(--tx-muted)" fontSize="10.5">
-              dati non raccolti {hhmm(data.online.t[a] as number)}–{hhmm(data.online.t[b] as number)}
-            </text>
-          ) : null}
-        </g>
+        <rect
+          key={`gap-${a}`}
+          x={x(a)}
+          y={TOP}
+          width={Math.max(2, x(b) - x(a))}
+          height={BOTTOM - TOP}
+          fill="url(#mmGap)"
+        />
       ))}
 
       {area ? <path d={area} fill="url(#mmArea)" /> : null}
@@ -435,7 +444,25 @@ function Distribution({
             online adesso
           </text>
         </svg>
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/*
+          Si ferma all'altezza della ciambella e poi scorre.
+
+          Con sette modalità la lista sfonderebbe il riquadro e spingerebbe giù
+          la heatmap che ha accanto, disallineando le due colonne. 180px sono
+          esattamente l'altezza della ciambella: le due metà restano allineate
+          qualunque sia il numero di modalità, che è ignoto e cresce.
+        */}
+        <div
+          style={{
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+            maxHeight: 180,
+            overflowY: 'auto',
+            paddingRight: 4,
+          }}
+        >
           {slices.length === 0 ? (
             <span style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
               Nessuna misura ancora: il campionamento non ha prodotto bucket chiusi.

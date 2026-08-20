@@ -244,6 +244,38 @@ queryClient.setQueryData(['me'], ME);
 queryClient.setQueryData(['users'], { users: USERS });
 queryClient.setQueryData(['invites'], { invites: INVITES });
 queryClient.setQueryData(['roles'], ROLES_MATRIX);
+// Il dettaglio di u-2: serve a guardare le sezioni Ruoli e Override, che
+// senza dati non renderizzano niente.
+queryClient.setQueryData(['user', 'u-2'], {
+  user: { ...USERS[1], twoFactorEnabled: true },
+  permissions: {
+    utenti: 2,
+    ruoli: 1,
+    inviti: 2,
+    sessioni: 1,
+    registro: 3,
+    impostazioni: 0,
+    statistiche: 1,
+    server: 0,
+  },
+  // Su `registro` l'effettivo (3) viene dall'override; su `utenti` l'override
+  // e' piu' basso del ruolo e non fa niente: sono i due casi che la nota del §7
+  // deve rendere comprensibili.
+  overrides: { registro: 3, utenti: 1 },
+  roles: [{ id: 3, key: 'moderatore', name: 'Moderatore', isSystem: false, granted_at: hoursAgo(200) }],
+  sessions: [
+    {
+      id: 's-1',
+      createdAt: hoursAgo(3),
+      updatedAt: hoursAgo(1),
+      ipAddress: '203.0.113.9',
+      userAgent: 'Chrome 141 · Windows',
+      aal: 2,
+    },
+  ],
+  canManage: true,
+});
+
 queryClient.setQueryData(['grantable-roles'], {
   roles: [
     { id: 2, key: 'sr-admin', name: 'Sr. Admin' },

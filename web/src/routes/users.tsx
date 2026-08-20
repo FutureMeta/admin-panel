@@ -400,16 +400,30 @@ function UserDialog({
   });
 
   const act = useMutation({
-    mutationFn: (input: { path: string; body?: unknown }) =>
-      api(input.path, { method: 'POST', ...(input.body ? { body: input.body } : {}) }),
+    mutationFn: (input: { path: string; body?: unknown; method?: 'POST' | 'PUT' | 'DELETE' }) =>
+      api(input.path, { method: input.method ?? 'POST', ...(input.body ? { body: input.body } : {}) }),
     onSuccess: () => {
       setError(undefined);
       void detail.refetch();
       onChanged();
     },
     onError: (err) => {
-      // SEC-36 — un'operazione sui privilegi richiede step-up. Il client non
-      // decide se serve: lo dice il server, e qui si apre la challenge.
+      // SEC-07 — nessuno concede cio' che non ha. E' un rifiuto che si puo'
+      // spiegare per intero: non rivela niente che l'attore non sappia gia',
+      // perche' parla dei permessi di chi sta agendo, non di quelli altrui.
+      if (
+        err instanceof ApiError &&
+        (err.code === 'RUOLO_NON_CONCEDIBILE' || err.code === 'LIVELLO_NON_CONCEDIBILE')
+      ) {
+        setError(
+          'Non puoi concedere un livello che tu non hai. Chiedi a chi sta più in alto, oppure fatti alzare prima il tuo.',
+        );
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'RUOLO_NON_ASSEGNABILE') {
+        setError('I ruoli di sistema non si assegnano dal pannello.');
+        return;
+      }
       if (err instanceof ApiError && err.code === 'SERVONO_DUE_OWNER') {
         setError(
           'Devono restare almeno due owner: senza, il reset del secondo fattore a quattro occhi non esiste più.',
@@ -420,9 +434,14 @@ function UserDialog({
         setError('Non puoi eliminare te stesso.');
         return;
       }
+      // SEC-08 — la dominanza fallita risponde 404, identico a un utente che
+      // non esiste, e il §14 test 9 lo pretende: distinguerli direbbe a un
+      // admin quali account stanno sopra di lui. Il messaggio resta quindi
+      // volutamente ambiguo — dire di piu' significherebbe rispondere alla
+      // domanda che il 404 esiste per non rispondere.
       setError(
         err instanceof ApiError && err.isNotFound
-          ? 'Operazione non consentita su questa persona.'
+          ? 'Questa persona non esiste, oppure non è tua da gestire.'
           : 'Operazione non riuscita.',
       );
     },
@@ -447,9 +466,13 @@ function UserDialog({
     );
   }
 
-  const { user, permissions, roles, sessions, canManage } = detail.data;
+  const { user, permissions, overrides, roles, sessions, canManage } = detail.data;
   const canManageUsers = (me.permissions.utenti ?? 0) >= 3 && canManage;
   const canManageSessions = (me.permissions.sessioni ?? 0) >= 2 && canManage;
+  // Il modulo che governa ruoli e override e' `ruoli`, non `utenti`: sono due
+  // permessi diversi di proposito, e chi puo' bannare non puo' per questo
+  // promuovere. La dominanza vale comunque (SEC-08).
+  const canManageRoles = (me.permissions.ruoli ?? 0) >= 2 && canManage;
 
   return (
     <Modal title={user.name} subtitle={user.email} width={520} onClose={onClose}>
@@ -490,6 +513,32 @@ function UserDialog({
               ))}
           </div>
         </div>
+
+        {canManageRoles ? (
+          <RolesEditor
+            userId={userId}
+            roles={roles}
+            busy={act.isPending}
+            onAssign={(roleId) => act.mutate({ path: `/api/users/${userId}/roles`, body: { roleId } })}
+            onRemove={(roleId) =>
+              act.mutate({ path: `/api/users/${userId}/roles/${roleId}`, method: 'DELETE' })
+            }
+          />
+        ) : null}
+
+        {canManageRoles ? (
+          <OverridesEditor
+            permissions={permissions}
+            overrides={overrides}
+            onSet={(moduleKey, level) =>
+              act.mutate({
+                path: `/api/users/${userId}/permissions`,
+                method: 'PUT',
+                body: { moduleKey, level },
+              })
+            }
+          />
+        ) : null}
 
         <div>
           <div className="t-group" style={{ marginBottom: 9 }}>
@@ -971,5 +1020,175 @@ export function RolesPage({ me }: { me: Me }) {
         </div>
       </Panel>
     </>
+  );
+}
+
+/**
+ * Ruoli assegnati, e assegnazione di uno nuovo.
+ *
+ * L'elenco dei ruoli assegnabili arriva dal server (`grantable-roles`) e il
+ * client non lo ricalcola: mostrarne di piu' e poi farsi rifiutare sarebbe una
+ * promessa rotta, e mostrarne di meno nasconderebbe qualcosa che l'attore puo'
+ * davvero fare (SEC-07).
+ */
+function RolesEditor({
+  userId,
+  roles,
+  busy,
+  onAssign,
+  onRemove,
+}: {
+  userId: string;
+  roles: UserDetail['roles'];
+  busy: boolean;
+  onAssign: (roleId: number) => void;
+  onRemove: (roleId: number) => void;
+}) {
+  const [picked, setPicked] = useState('');
+  const grantable = useQuery({
+    queryKey: ['grantable-roles'],
+    queryFn: () =>
+      api<{ roles: Array<{ id: number; key: string; name: string }> }>('/api/users/grantable-roles'),
+  });
+
+  // Un ruolo gia' assegnato non si ripropone: assegnarlo due volte non fa
+  // niente, e offrirlo suggerirebbe che faccia qualcosa.
+  const assigned = new Set(roles.map((r) => r.id));
+  const options = (grantable.data?.roles ?? [])
+    .filter((r) => !assigned.has(r.id))
+    .map((r) => ({ value: String(r.id), label: r.name }));
+
+  return (
+    <div>
+      <div className="t-group" style={{ marginBottom: 9 }}>
+        Ruoli
+      </div>
+
+      {roles.length === 0 ? (
+        <p className="t-lead" style={{ margin: '0 0 10px' }}>
+          Nessun ruolo: questa persona vede il pannello vuoto.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {roles.map((r) => (
+            <span key={r.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Chip tone={r.isSystem ? 'ac' : 'neutral'}>{r.name}</Chip>
+              {/* I ruoli di sistema non si tolgono dal pannello (SEC-09):
+                  senza owner non esiste piu' nessuno che possa rimetterlo. */}
+              {r.isSystem ? null : (
+                <button
+                  type="button"
+                  aria-label={`Togli il ruolo ${r.name}`}
+                  disabled={busy}
+                  onClick={() => onRemove(r.id)}
+                  style={{
+                    border: 0,
+                    background: 'transparent',
+                    color: 'var(--tx-muted)',
+                    cursor: busy ? 'default' : 'pointer',
+                    fontSize: 14,
+                    lineHeight: 1,
+                    padding: 2,
+                  }}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {options.length === 0 ? (
+        <p className="t-lead" style={{ margin: 0, fontSize: 12 }}>
+          Non ci sono altri ruoli che tu possa concedere.
+        </p>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <SelectField
+              label="Ruolo da assegnare"
+              id={`assign-role-${userId}`}
+              value={picked}
+              onChange={setPicked}
+              placeholder="Scegli un ruolo"
+              options={options}
+            />
+          </div>
+          <Button
+            disabled={picked === '' || busy}
+            loading={busy}
+            onClick={() => {
+              onAssign(Number(picked));
+              setPicked('');
+            }}
+          >
+            Assegna
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * L'override individuale per modulo.
+ *
+ * §7 — l'override ALZA e basta: non esiste semantica di deny, e il permesso
+ * effettivo e' GREATEST(ruolo, override). Per questo la riga mostra due
+ * numeri: quello che la persona ha davvero e quello che l'override sta
+ * chiedendo. Sceglierne uno piu' basso del ruolo non toglie niente, e la nota
+ * lo dice invece di lasciarlo scoprire.
+ */
+function OverridesEditor({
+  permissions,
+  overrides,
+  onSet,
+}: {
+  permissions: Record<string, number>;
+  overrides: Record<string, number>;
+  onSet: (moduleKey: string, level: number) => void;
+}) {
+  const modules = Object.keys(permissions).sort((a, b) => a.localeCompare(b));
+
+  return (
+    <div>
+      <div className="t-group" style={{ marginBottom: 9 }}>
+        Override individuali
+      </div>
+      <p style={{ margin: '0 0 10px', fontSize: 12, lineHeight: '18px', color: 'var(--tx-muted)' }}>
+        Un override alza il livello, non lo abbassa. Se il ruolo concede già di più, non cambia nulla.
+      </p>
+
+      <div style={{ display: 'grid', gap: 8 }}>
+        {modules.map((moduleKey) => {
+          const effective = permissions[moduleKey] ?? 0;
+          const override = overrides[moduleKey];
+          return (
+            <div
+              key={moduleKey}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
+            >
+              <span
+                style={{ textTransform: 'capitalize', fontSize: 12.5, color: 'var(--tx-secondary)' }}
+              >
+                {moduleKey}
+                <span style={{ color: 'var(--tx-muted)' }}>
+                  {' · '}
+                  {LEVELS[effective] ?? effective}
+                </span>
+              </span>
+              <FilterSelect
+                label={`Override per ${moduleKey}`}
+                value={override === undefined ? '' : String(override)}
+                emptyLabel="Nessun override"
+                onChange={(v) => onSet(moduleKey, Number(v))}
+                options={LEVELS.map((name, level) => ({ value: String(level), label: name }))}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

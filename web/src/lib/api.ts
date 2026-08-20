@@ -133,6 +133,14 @@ export type UserRow = {
 export type UserDetail = {
   user: UserRow & { twoFactorEnabled: boolean };
   permissions: Record<string, number>;
+  /**
+   * L'override INDIVIDUALE per modulo, distinto da `permissions`.
+   *
+   * `permissions` e' l'effettivo, cioe' GREATEST(ruolo, override): da solo non
+   * dice quale dei due lo produce. La schermata che modifica l'override deve
+   * poter mostrare quello che modifica.
+   */
+  overrides: Record<string, number>;
   roles: Array<{ id: number; key: string; name: string; isSystem: boolean; granted_at: string }>;
   sessions: Array<{
     id: string;

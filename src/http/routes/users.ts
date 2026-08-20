@@ -193,7 +193,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       .executeTakeFirst();
     if (!user) throw new NotFound();
 
-    const [permissions, roles, sessions] = await Promise.all([
+    const [permissions, roles, sessions, overrides] = await Promise.all([
       ctx.db
         .selectFrom('auth.effective_permissions')
         .select(['module_key', 'level'])
@@ -211,6 +211,19 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         .where('userId', '=', id)
         .orderBy('createdAt', 'desc')
         .execute(),
+      // §7 — l'override INDIVIDUALE, distinto dal permesso effettivo.
+      //
+      // Serve alla schermata che lo modifica: l'effettivo e' GREATEST(ruolo,
+      // override), quindi da solo non dice quale dei due lo sta producendo.
+      // Senza questo, l'interfaccia modificherebbe un valore che non e' in
+      // grado di mostrare, e chi la usa non saprebbe mai se un override c'e'
+      // gia' o se sta guardando il livello che arriva dal ruolo.
+      ctx.db
+        .selectFrom('auth.user_permissions as up')
+        .innerJoin('auth.modules as m', 'm.id', 'up.module_id')
+        .select(['m.key as moduleKey', 'up.level'])
+        .where('up.user_id', '=', id)
+        .execute(),
     ]);
 
     return reply.send({
@@ -226,6 +239,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         twoFactorEnabled: user.twoFactorEnabled,
       },
       permissions: Object.fromEntries(permissions.map((p) => [p.module_key, p.level])),
+      overrides: Object.fromEntries(overrides.map((o) => [o.moduleKey, o.level])),
       roles,
       sessions,
       // Cosa l'attore puo' effettivamente fare su questa persona: la UI non
@@ -235,7 +249,13 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
   });
 
   // -------------------------------------------------------------------------
-  // POST /api/users/:id/roles — assegnazione. Step-up (§8.5).
+  // POST /api/users/:id/roles — assegnazione di un ruolo.
+  //
+  // SEC-07 (nessuno concede cio' che non ha) e SEC-08 (nessuno tocca chi lo
+  // domina) sono i due rifiuti possibili, e rispondono in modo diverso di
+  // proposito: il primo e' un 400 con codice, il secondo un 404 identico a
+  // quello di un utente inesistente — distinguerli direbbe a un admin quali
+  // account esistono sopra di lui (§14 test 9).
   // -------------------------------------------------------------------------
   app.post(
     '/api/users/:id/roles',

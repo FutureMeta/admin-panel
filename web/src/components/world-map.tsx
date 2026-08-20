@@ -28,6 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ALPHA2_TO_NUMERIC } from '../lib/country-codes.ts';
 import { type CountryShape, loadWorld, MAP_HEIGHT, MAP_WIDTH, pathOf } from '../lib/world.ts';
+import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
 export type GeoData = { cc: string[]; v: number[]; asOf: number; exact: boolean };
 
@@ -97,18 +98,18 @@ function clampView(v: View): View {
   };
 }
 
-type Hover = { cc: string; v: number; pct: string; left: number; top: number };
-
 // ---------------------------------------------------------------------------
 
 export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
   const [shapes, setShapes] = useState<CountryShape[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [view, setView] = useState<View>(FULL);
-  const [hover, setHover] = useState<Hover | null>(null);
   const [grabbing, setGrabbing] = useState(false);
+  /** Solo il codice: il riquadro lo tiene `useHoverTip`. */
+  const [lit, setLit] = useState<string | null>(null);
 
-  const boxRef = useRef<HTMLDivElement | null>(null);
+  const hover = useHoverTip();
+  const boxRef = hover.boxRef;
   const drag = useRef<{ px: number; py: number; view: View } | null>(null);
 
   useEffect(() => {
@@ -191,10 +192,11 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
     (e: React.PointerEvent<HTMLDivElement>) => {
       drag.current = { px: e.clientX, py: e.clientY, view };
       setGrabbing(true);
-      setHover(null);
+      setLit(null);
+      hover.clear();
       e.currentTarget.setPointerCapture(e.pointerId);
     },
-    [view],
+    [view, hover],
   );
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
@@ -269,7 +271,8 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
           onPointerCancel={endDrag}
           onPointerLeave={() => {
             endDrag();
-            setHover(null);
+            setLit(null);
+            hover.clear();
           }}
           style={{
             position: 'relative',
@@ -295,7 +298,7 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
               <title>Giocatori unici per paese</title>
               {shapes.map((s) => {
                 const hit = byNumeric.get(s.id);
-                const active = hit !== undefined && hover?.cc === hit.cc;
+                const active = hit !== undefined && lit === hit.cc;
                 return (
                   <path
                     key={s.id || s.name}
@@ -307,18 +310,13 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
                     strokeWidth={(active ? 1.4 : 0.4) * (view.w / MAP_WIDTH)}
                     onPointerMove={(e) => {
                       if (drag.current) return;
-                      const rect = boxRef.current?.getBoundingClientRect();
-                      if (!rect || !hit) {
-                        setHover(null);
+                      if (!hit) {
+                        setLit(null);
+                        hover.clear();
                         return;
                       }
-                      setHover({
-                        cc: hit.cc,
-                        v: hit.v,
-                        pct: pct(hit.v),
-                        left: e.clientX - rect.left,
-                        top: e.clientY - rect.top,
-                      });
+                      setLit(hit.cc);
+                      hover.at(e, nameOf(hit.cc), `${numero.format(hit.v)} giocatori · ${pct(hit.v)}`);
                     }}
                   />
                 );
@@ -338,36 +336,7 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
             </div>
           )}
 
-          {hover ? (
-            <div
-              style={{
-                position: 'absolute',
-                left: Math.max(4, Math.min(hover.left + 12, (boxRef.current?.clientWidth ?? 300) - 170)),
-                top: Math.max(4, hover.top - 48),
-                pointerEvents: 'none',
-                background: 'var(--s-overlay)',
-                border: '1px solid var(--bd-strong)',
-                borderRadius: 'var(--r-xs)',
-                padding: '6px 9px',
-                boxShadow: '0 4px 14px rgba(0,0,0,.35)',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-primary)' }}>
-                {nameOf(hover.cc)}
-              </div>
-              <div
-                style={{
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11.5,
-                  color: 'var(--tx-secondary)',
-                  fontVariantNumeric: 'tabular-nums',
-                }}
-              >
-                {numero.format(hover.v)} giocatori · {hover.pct}
-              </div>
-            </div>
-          ) : null}
+          <HoverTip tip={hover.tip} boxRef={boxRef} />
         </div>
 
         <div>

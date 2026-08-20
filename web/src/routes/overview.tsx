@@ -20,6 +20,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { HoverTip, useHoverTip } from '../components/hover-tip.tsx';
 import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
 import { labelOf, useRange } from '../lib/range.tsx';
@@ -425,8 +426,10 @@ function Distribution({
     const span = total > 0 ? (s.value / total) * Math.PI * 2 : 0;
     const d = arc(90, 90, 84, 58, angle, angle + span);
     angle += span;
-    return { key: s.key, d };
+    return { key: s.key, d, value: s.value };
   });
+
+  const hover = useHoverTip();
 
   return (
     <section
@@ -445,10 +448,28 @@ function Distribution({
         {data.current ? ` · ${hhmm(data.current.at)}` : ''}. «Non classificata» raccoglie i server non ancora
         tracciati.
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+      <div
+        ref={hover.boxRef}
+        onPointerLeave={hover.clear}
+        style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 20 }}
+      >
+        <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
         <svg viewBox="0 0 180 180" style={{ width: 180, height: 180, flex: 'none' }} aria-hidden="true">
           {paths.map((p) => (
-            <path key={p.key} d={p.d} fill={colorOf(p.key)} />
+            <path
+              key={p.key}
+              d={p.d}
+              fill={colorOf(p.key)}
+              onPointerMove={(e) =>
+                hover.at(
+                  e,
+                  data.labels[p.key] ?? p.key,
+                  `${numero.format(Math.round(p.value))} giocatori · ${
+                    total > 0 ? ((p.value / total) * 100).toFixed(1).replace('.', ',') : '—'
+                  }%`,
+                )
+              }
+            />
           ))}
           <text x="90" y="86" textAnchor="middle" fill="var(--tx-primary)" fontSize="26" fontWeight="700">
             {onlineNow === null ? '—' : numero.format(onlineNow)}
@@ -531,6 +552,7 @@ const GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
 function Heatmap({ data, label }: { data: Overview; label: string }) {
+  const hover = useHoverTip();
   const { v, w, n } = data.heatmap;
   // TRE array, mai la media già divisa. Nei giorni di cambio ora una cella
   // locale ha zero occorrenze (l'ora saltata di marzo) o due (quella ripetuta
@@ -592,7 +614,12 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
           <span>{numero.format(Math.round(max))}</span>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <div
+        ref={hover.boxRef}
+        onPointerLeave={hover.clear}
+        style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 3 }}
+      >
+        <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
         {GIORNI.map((giorno, row) => (
           <div key={giorno} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ width: 28, fontSize: 11, color: 'var(--tx-muted)', flex: 'none' }}>{giorno}</span>
@@ -602,10 +629,18 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
                 return (
                   <div
                     key={`${giorno}-${hour}`}
-                    title={
-                      c.occurrences === 0
-                        ? `${giorno} ${hour}:00 · ora inesistente per il cambio d'ora`
-                        : `${giorno} ${hour}:00 · ${c.avg === null ? 'non rilevato' : `${numero.format(Math.round(c.avg))} gioc.`}`
+                    onPointerMove={(e) =>
+                      hover.at(
+                        e,
+                        `${giorno} ${String(hour).padStart(2, '0')}:00`,
+                        c.occurrences === 0
+                          ? "ora inesistente per il cambio d'ora"
+                          : c.avg === null
+                            ? 'non rilevato'
+                            : `${numero.format(Math.round(c.avg))} giocatori · media di ${c.occurrences} ${
+                                c.occurrences === 1 ? 'ora' : 'ore'
+                              }`,
+                      )
                     }
                     style={{ height: 20, borderRadius: 3, background: colour(c) }}
                   />
@@ -640,6 +675,7 @@ const GIORNO_MESE = new Intl.DateTimeFormat('it-IT', {
 });
 
 function DailyUniques({ data, label }: { data: Overview; label: string }) {
+  const hover = useHoverTip();
   const { t, v, final } = data.uniques;
   const scale = niceScale(Math.max(1, ...v.filter((x): x is number => x !== null)), 2);
   const max = scale.top;
@@ -689,61 +725,88 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
           Nessun giorno chiuso ancora: il primo punto compare domani.
         </div>
       ) : (
-        <svg
-          viewBox={`0 0 ${W2} ${H2}`}
-          preserveAspectRatio="none"
-          style={{ width: '100%', height: 240, display: 'block' }}
-          role="img"
-          aria-label="Giocatori unici per giorno"
-        >
-          {scale.values.map((tick) => (
-            <g key={tick}>
-              <line x1={L2} x2={W2} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
-              <text
-                x={36}
-                y={y(tick) + 4}
-                textAnchor="end"
-                fill="var(--tx-muted)"
-                fontSize="11"
-                fontFamily="JetBrains Mono"
-              >
-                {numero.format(tick)}
-              </text>
-            </g>
-          ))}
+        <div ref={hover.boxRef} onPointerLeave={hover.clear} style={{ position: 'relative' }}>
+          <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
+          <svg
+            viewBox={`0 0 ${W2} ${H2}`}
+            preserveAspectRatio="none"
+            style={{ width: '100%', height: 240, display: 'block' }}
+            role="img"
+            aria-label="Giocatori unici per giorno"
+          >
+            {scale.values.map((tick) => (
+              <g key={tick}>
+                <line x1={L2} x2={W2} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
+                <text
+                  x={36}
+                  y={y(tick) + 4}
+                  textAnchor="end"
+                  fill="var(--tx-muted)"
+                  fontSize="11"
+                  fontFamily="JetBrains Mono"
+                >
+                  {numero.format(tick)}
+                </text>
+              </g>
+            ))}
 
-          {v.map((n, i) =>
-            n === null ? null : (
+            {v.map((n, i) => (
+              /* Una fascia INVISIBILE a tutta altezza per ogni giorno: puntare
+               una barra alta dieci pixel e' un esercizio di mira, e i giorni
+               senza dato non avrebbero nulla da puntare. */
               <rect
-                key={t[i]}
-                x={x(i) - barW / 2}
-                y={y(n)}
-                width={barW}
-                height={Math.max(0, B2 - y(n))}
-                rx="2"
-                fill="var(--ac)"
-                /* Il giorno ancora aperto è più chiaro: il suo numero deve
+                key={`hit-${t[i]}`}
+                x={x(i) - barW / 2 - 1}
+                y={T2}
+                width={barW + 2}
+                height={B2 - T2}
+                fill="transparent"
+                onPointerMove={(e) =>
+                  hover.at(
+                    e,
+                    GIORNO_MESE.format(new Date((t[i] as number) * 1000)),
+                    n === null
+                      ? 'non rilevato'
+                      : `${numero.format(n)} giocatori${final[i] ? '' : ' · giorno in corso'}`,
+                  )
+                }
+              />
+            ))}
+
+            {v.map((n, i) =>
+              n === null ? null : (
+                <rect
+                  key={t[i]}
+                  x={x(i) - barW / 2}
+                  y={y(n)}
+                  width={barW}
+                  height={Math.max(0, B2 - y(n))}
+                  rx="2"
+                  fill="var(--ac)"
+                  pointerEvents="none"
+                  /* Il giorno ancora aperto è più chiaro: il suo numero deve
                    ancora salire, e mostrarlo pieno accanto ai definitivi
                    suggerisce un calo che non c'è. */
-                opacity={final[i] ? 1 : 0.45}
-              />
-            ),
-          )}
+                  opacity={final[i] ? 1 : 0.45}
+                />
+              ),
+            )}
 
-          <text x={L2} y={232} fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">
-            {t.length > 0 ? GIORNO_MESE.format(new Date((t[0] as number) * 1000)) : ''}
-          </text>
-          <text
-            x={W2 - 20}
-            y={232}
-            textAnchor="end"
-            fill="var(--tx-muted)"
-            fontSize="11"
-            fontFamily="JetBrains Mono"
-          >
-            {t.length > 0 ? GIORNO_MESE.format(new Date((t[t.length - 1] as number) * 1000)) : ''}
-          </text>
-        </svg>
+            <text x={L2} y={232} fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">
+              {t.length > 0 ? GIORNO_MESE.format(new Date((t[0] as number) * 1000)) : ''}
+            </text>
+            <text
+              x={W2 - 20}
+              y={232}
+              textAnchor="end"
+              fill="var(--tx-muted)"
+              fontSize="11"
+              fontFamily="JetBrains Mono"
+            >
+              {t.length > 0 ? GIORNO_MESE.format(new Date((t[t.length - 1] as number) * 1000)) : ''}
+            </text>
+          </svg>
+        </div>
       )}
 
       {/* Cio' che manca si dichiara, invece di dividere il totale a caso. */}

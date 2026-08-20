@@ -343,7 +343,7 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
 
       // SEC-11 — la guardia anti-replay vale anche qui: l'enrollment non e'
       // un percorso privilegiato in cui rilassare il controllo.
-      const replay = await ctx.totpGuard.check(userId);
+      const replay = await ctx.totpGuard.check(userId, body.code);
       if (!replay.allowed) throw new Unauthorized();
 
       const headers = new Headers();
@@ -362,7 +362,7 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
         throw new Unauthorized();
       }
 
-      await ctx.totpGuard.markUsed(userId);
+      await ctx.totpGuard.markUsed(userId, body.code);
       await ctx.rateLimit.reward('twoFactorAccount', userId);
 
       const result = await securityTransaction(ctx.db, async (trx) => {

@@ -9,7 +9,7 @@ import { writeAudit } from '#src/audit/log.ts';
 import { installErrorHandler } from './errors.ts';
 import { assertNoStateChangingGet, registerSecurityHooks } from './hooks.ts';
 import { contentSecurityPolicy, newNonce } from './index-html.ts';
-import { auditContextOf, requestIps } from './request-context.ts';
+import { auditContextOf, authSubjectOf, requestIps } from './request-context.ts';
 import { registerAccountRoutes } from './routes/account.ts';
 import { registerAuditRoutes } from './routes/audit.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
@@ -248,10 +248,16 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
       await writeAudit(ctx.db, {
         action,
         outcome: ok ? 'success' : 'failure',
-        // L'attore non e' noto sui fallimenti, ed e' giusto cosi': registrare
-        // l'email tentata trasformerebbe l'audit in un elenco di indirizzi
-        // provati da chiunque.
-        actor: { userId: null, email: null, displayName: null, sessionId: null },
+        // Sui SUCCESSI l'attore c'e': lo deposita la rotta, che lo conosce —
+        // sul login perche' ha appena verificato quella password, sul 2FA
+        // perche' ha appena emesso la sessione. Prima era `null` in ogni caso,
+        // e il registro non sapeva rispondere a «chi e' entrato e quando», che
+        // e' una delle poche domande per cui esiste.
+        //
+        // Sui FALLIMENTI resta null, e li' e' giusto: l'utente sarebbe pure
+        // noto, ma registrarlo farebbe del registro l'elenco degli indirizzi
+        // provati da chiunque passi di qui.
+        actor: { userId: authSubjectOf(request), email: null, displayName: null, sessionId: null },
         request: auditContextOf(request, ips),
         moduleKey: null,
         meta: { status: reply.statusCode },

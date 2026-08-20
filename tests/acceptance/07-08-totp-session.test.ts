@@ -122,7 +122,9 @@ describe('SEC-11 / test 7 — anti-replay TOTP', () => {
     expect((await s.verify(totpAt(s.secret, step))).statusCode).toBe(200);
 
     // Con window=1 il codice dello step precedente e quello successivo
-    // sarebbero accettabili: la guardia marca tutti e tre gli step.
+    // sarebbero accettabili dal verificatore. A rifiutarli e' la regola
+    // monotona su Postgres — `last_totp_step >= step corrente` — non la
+    // marcatura in Redis, che oggi riguarda il singolo codice speso.
     for (const delta of [-1, 1]) {
       expect((await s.verify(totpAt(s.secret, step + delta))).statusCode).toBe(401);
     }
@@ -280,5 +282,56 @@ describe('SEC-14 / test 14 — le rotte backup-code del plugin sono chiuse', () 
       payload: { code: 'x' },
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+describe('SEC-11 — la guardia vieta il CODICE, non la finestra', () => {
+  // Questi girano sulla guardia con un istante iniettato: la proprieta' e'
+  // sui secondi che passano, e farli passare davvero renderebbe il test lento
+  // e a rischio di sfiorare un confine di step per caso.
+
+  it('lo stesso codice non passa due volte, per tutta la sua durata', async () => {
+    const user = await seedUser(t, { roleKey: 'moderatore' });
+    const at = Date.now();
+
+    await t.ctx.totpGuard.markUsed(user.id, '123456', at);
+
+    // Subito, e a uno e due step di distanza: sempre lo stesso codice.
+    for (const delta of [0, 30_000, 60_000]) {
+      const v = await t.ctx.totpGuard.check(user.id, '123456', at + delta);
+      expect(v.allowed, `riaccettato dopo ${delta / 1000}s`).toBe(false);
+    }
+  });
+
+  it('un codice DIVERSO passa allo step successivo: niente attesa di 90 secondi', async () => {
+    const user = await seedUser(t, { roleKey: 'moderatore' });
+    const at = Date.now();
+
+    await t.ctx.totpGuard.markUsed(user.id, '111111', at);
+
+    // Nello stesso step resta bloccato, e non dalla marcatura: e' la regola
+    // monotona, che vale mezzo minuto ed e' il prezzo dichiarato.
+    const sameStep = await t.ctx.totpGuard.check(user.id, '222222', at);
+    expect(sameStep.allowed).toBe(false);
+    expect(sameStep.allowed === false && sameStep.reason).toBe('step_not_monotonic');
+
+    // Allo step dopo, un codice nuovo deve passare. Prima marcavamo anche gli
+    // step adiacenti, e questa riga falliva per altri sessanta secondi: chi si
+    // disconnetteva e rientrava subito si vedeva rifiutare codici corretti con
+    // il messaggio di un codice sbagliato.
+    const nextStep = await t.ctx.totpGuard.check(user.id, '222222', at + 30_000);
+    expect(nextStep.allowed, 'codice nuovo rifiutato allo step successivo').toBe(true);
+  });
+
+  it('due utenti non si bruciano il codice a vicenda', async () => {
+    const uno = await seedUser(t, { roleKey: 'moderatore' });
+    const due = await seedUser(t, { roleKey: 'moderatore' });
+    const at = Date.now();
+
+    await t.ctx.totpGuard.markUsed(uno.id, '424242', at);
+
+    // Stesso codice, altra persona: l'impronta e' namespaced sull'utente.
+    const v = await t.ctx.totpGuard.check(due.id, '424242', at);
+    expect(v.allowed).toBe(true);
   });
 });

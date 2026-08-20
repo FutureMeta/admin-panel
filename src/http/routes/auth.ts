@@ -20,7 +20,13 @@ import { withPepperSubject } from '#src/auth/pepper-context.ts';
 import { visibleModules } from '#src/authz/can.ts';
 import { issueCsrfCookie } from '../csrf.ts';
 import { requireAuth } from '../guards.ts';
-import { actorOf, auditContextOf, rateLimitIpKey, requestIps } from '../request-context.ts';
+import {
+  actorOf,
+  auditContextOf,
+  rateLimitIpKey,
+  requestIps,
+  setAuthSubject,
+} from '../request-context.ts';
 
 /** Rotte better-auth su cui si consuma il rate limit di login (SEC-25). */
 const LOGIN_PATHS = new Set(['/sign-in/email', '/forget-password', '/reset-password']);
@@ -55,6 +61,13 @@ function headersFrom(request: FastifyRequest): Headers {
     else if (Array.isArray(v)) for (const vv of v) headers.append(k, vv);
   }
   return headers;
+}
+
+/** Il codice a sei cifre dal corpo della richiesta, se c'e'. */
+function totpCodeOf(body: unknown): string {
+  if (typeof body !== 'object' || body === null) return '';
+  const code = (body as { code?: unknown }).code;
+  return typeof code === 'string' ? code : '';
 }
 
 function accountKeyOf(body: unknown): string | undefined {
@@ -168,6 +181,10 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // ---------------------------------------------------------------------
       // SEC-11 — anti-replay TOTP, PRIMA che l'handler valuti il codice.
       // ---------------------------------------------------------------------
+      // Il codice presentato: serve alla guardia, che ora vieta il singolo
+      // codice invece dell'intera finestra.
+      const totpCode = totpCodeOf(request.body);
+
       let totpUserId: string | undefined;
       if (subPath === TOTP_VERIFY_PATH) {
         await ctx.rateLimit.consume('twoFactorGlobal', 'rotta');
@@ -179,7 +196,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         if (totpUserId) {
           await ctx.rateLimit.consume('twoFactorAccount', totpUserId);
 
-          const verdict = await ctx.totpGuard.check(totpUserId);
+          const verdict = await ctx.totpGuard.check(totpUserId, totpCode);
           if (!verdict.allowed) {
             await writeAudit(ctx.db, {
               action: AUDIT_ACTIONS.twoFactorReplayBlocked,
@@ -231,6 +248,15 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         ? await withPepperSubject(subject, () => ctx.auth.handler(proxied))
         : await ctx.auth.handler(proxied);
 
+      // Chi ha superato il passo password. SOLO se e' andato bene: su un
+      // fallimento l'utente e' comunque noto — lo abbiamo appena cercato per
+      // il pepper — ma registrarlo trasformerebbe il registro nell'elenco
+      // degli indirizzi provati da chiunque, che e' esattamente cio' che il
+      // commento dell'hook vuole evitare.
+      if (subPath === '/sign-in/email' && res.status < 400 && subject) {
+        setAuthSubject(request, subject.userId);
+      }
+
       // ---------------------------------------------------------------------
       // SEC-11 — seconda meta' della guardia anti-replay.
       //
@@ -264,7 +290,9 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
             request.log.warn({ userId, seconds }, 'SEC-26: backoff 2FA');
           }
         } else if (userId) {
-          const post = totpUserId ? { allowed: true as const } : await ctx.totpGuard.check(userId);
+          const post = totpUserId
+            ? { allowed: true as const }
+            : await ctx.totpGuard.check(userId, totpCode);
           if (!post.allowed) {
             if (newSessionId) {
               await ctx.db.deleteFrom('auth.session').where('id', '=', newSessionId).execute();
@@ -281,7 +309,9 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
             return reply.code(401).send({ error: 'unauthorized' });
           }
 
-          await ctx.totpGuard.markUsed(userId);
+          // Chi e' entrato: l'hook di audit non puo' risolverlo da solo.
+          setAuthSubject(request, userId);
+          await ctx.totpGuard.markUsed(userId, totpCode);
           await ctx.rateLimit.reward('twoFactorAccount', userId);
           // Il 2FA completato porta la sessione ad aal=2 e alza
           // authenticated_at: e' cio' che lo step-up misura.

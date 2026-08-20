@@ -46,6 +46,25 @@ export function rateLimitIpKey(ips: RequestIps): string {
   return ips.socketIp ?? ips.ip ?? 'sconosciuto';
 }
 
+/**
+ * L'utente che una rotta di autenticazione ha riconosciuto.
+ *
+ * Non e' un AuthzContext e non da' accesso a niente: serve solo a far sapere
+ * all'hook di audit CHI e' entrato. L'hook gira dopo la risposta e non ha modo
+ * di risolverlo da se' — sul login la sessione nasce dentro l'handler.
+ */
+const AUTH_SUBJECT_KEY = Symbol('auth-subject');
+
+type WithAuthSubject = FastifyRequest & { [AUTH_SUBJECT_KEY]?: { userId: string } };
+
+export function setAuthSubject(request: FastifyRequest, userId: string): void {
+  (request as WithAuthSubject)[AUTH_SUBJECT_KEY] = { userId };
+}
+
+export function authSubjectOf(request: FastifyRequest): string | null {
+  return (request as WithAuthSubject)[AUTH_SUBJECT_KEY]?.userId ?? null;
+}
+
 const AUTHZ_KEY = Symbol('authz');
 
 type WithAuthz = FastifyRequest & { [AUTHZ_KEY]?: AuthzContext };

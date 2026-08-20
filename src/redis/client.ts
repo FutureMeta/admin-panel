@@ -60,7 +60,12 @@ export const KEYS = {
   /** Revoca puntuale di una sessione. */
   sessionRevoked: (sessionId: string) => `sessrev:${sessionId}`,
   /** SEC-11 — guardia anti-replay TOTP. */
-  totpUsed: (userId: string, step: number) => `totp:used:${userId}:${step}`,
+  /**
+   * Un codice TOTP gia' speso. La chiave e' l'IMPRONTA DEL CODICE, non lo
+   * step: marcare la finestra bloccava anche i codici successivi, che sono
+   * codici diversi e non un replay.
+   */
+  totpUsed: (userId: string, codeHash: string) => `totp:used:${userId}:${codeHash}`,
   /** Dedupe dei webhook Resend. */
   webhookSeen: (svixId: string) => `swh:${svixId}`,
   /** Rate limit: il prefisso lo gestisce rate-limiter-flexible. */

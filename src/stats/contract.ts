@@ -41,6 +41,22 @@ export function isRange(v: unknown): v is Range {
   return typeof v === 'string' && (RANGES as readonly string[]).includes(v);
 }
 
+/**
+ * Attiva, e non risolta. Un secchiello che cresce e' il primo sintomo che il
+ * campo `ip` ha cambiato semantica: e' un DATO, e si mostra.
+ */
+export const UNRESOLVED_COUNTRY = 'XX';
+
+/**
+ * Non rilevata: la geolocalizzazione era spenta quando quel giocatore e' stato
+ * visto. NON E' LA STESSA COSA DI `XX`, e tenerle separate non e' pedanteria:
+ * il giorno in cui si accende la funzione, tutto lo storico precedente e'
+ * senza paese, e confonderlo con «non risolto» produrrebbe una barra XX
+ * all'ottanta per cento — cioe' l'allarme che XX esiste per dare, acceso da
+ * un guasto che non c'e'.
+ */
+export const NOT_COLLECTED_COUNTRY = '--';
+
 export type Kpi = {
   /** Media normalizzata sul profilo orario. `null` se la copertura e' zero. */
   avg: number | null;

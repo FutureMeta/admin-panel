@@ -15,6 +15,16 @@ export type PoolOptions = {
   /** §5.3: 2s per il pool applicativo, 10s per quello statistiche in fase 2. */
   statementTimeout?: string;
   /**
+   * Quanto si aspetta una connessione dal pool, CODA COMPRESA.
+   *
+   * Il default di cinque secondi e' tarato sul percorso di login, dove
+   * fallire in fretta e' preferibile a restare appesi. Non vale per chi apre
+   * molte connessioni insieme: su un host dove aprirne una costa centinaia di
+   * millisecondi, otto in parallelo sforano quel limite e a scadere non e'
+   * una query — e' la costruzione intera del payload.
+   */
+  connectionTimeoutMillis?: number;
+  /**
    * Lo schema di default della connessione.
    *
    * I ruoli della fase 2 ce l'hanno gia' impostato con `ALTER ROLE ... SET`,
@@ -36,7 +46,7 @@ export function createPool(opts: PoolOptions): pg.Pool {
     connectionString: opts.connectionString,
     max: opts.max ?? 6,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 5_000,
+    connectionTimeoutMillis: opts.connectionTimeoutMillis ?? 5_000,
     application_name: opts.applicationName ?? 'metamc-admin',
   });
 

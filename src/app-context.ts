@@ -233,7 +233,17 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   const statsPool = env.DATABASE_STATS_URL
     ? createPool({
         connectionString: env.DATABASE_STATS_URL,
-        max: 4,
+        // OTTO, come prescrive il §7.8, e la ragione e' aritmetica: un payload
+        // si costruisce con NOVE query lanciate insieme. Con quattro
+        // connessioni cinque restano in coda, e la coda conta nel timeout di
+        // acquisizione: sotto carico scade, e a scadere non e' una query — e'
+        // la costruzione INTERA del payload.
+        max: 8,
+        // Un grafico puo' aspettare; fallire no. Il default di cinque
+        // secondi e' del percorso di login, dove fallire in fretta e' la
+        // cosa giusta: qui significherebbe buttare via un payload gia'
+        // meta' costruito perche' l'ottava connessione ha tardato.
+        connectionTimeoutMillis: 20_000,
         applicationName: 'metamc-stats-read',
         statementTimeout: '10s',
         searchPath: 'stats, public',

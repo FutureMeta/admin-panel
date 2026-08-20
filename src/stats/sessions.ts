@@ -421,11 +421,13 @@ export class SessionTracker {
         SELECT * FROM unnest(
           ${sessions.map((x) => x.playerId)}::int[],
           ${sessions.map((x) => x.accountedThrough)}::timestamptz[],
-          ${sessions.map((x) => x.endedAt)}::timestamptz[]) AS c(player_id, from_at, to_at)
+          ${sessions.map((x) => x.endedAt)}::timestamptz[],
+          ${sessions.map((x) => x.country)}::stats.country_code[]) AS c(player_id, from_at, to_at, country)
         WHERE to_at > from_at
       ),
       slices AS (
         SELECT c.player_id,
+               c.country,
                g::date AS day,
                GREATEST(c.from_at, ( g            ::timestamp AT TIME ZONE 'Europe/Rome')) AS lo,
                LEAST   (c.to_at,   ((g + interval '1 day') AT TIME ZONE 'Europe/Rome')) AS hi
@@ -433,13 +435,15 @@ export class SessionTracker {
                                   stats.civil_day(c.to_at)::timestamp,
                                   interval '1 day') g
       )
-      INSERT INTO stats.player_day AS t (day, player_id, first_seen_at, last_seen_at, seconds_online)
-      SELECT day, player_id, lo, hi, GREATEST(0, extract(epoch FROM (hi - lo)))::int
+      INSERT INTO stats.player_day AS t
+        (day, player_id, first_seen_at, last_seen_at, seconds_online, country)
+      SELECT day, player_id, lo, hi, GREATEST(0, extract(epoch FROM (hi - lo)))::int, country
         FROM slices WHERE hi > lo
       ON CONFLICT (day, player_id) DO UPDATE SET
         first_seen_at  = LEAST(t.first_seen_at, EXCLUDED.first_seen_at),
         last_seen_at   = GREATEST(t.last_seen_at, EXCLUDED.last_seen_at),
-        seconds_online = t.seconds_online + EXCLUDED.seconds_online
+        seconds_online = t.seconds_online + EXCLUDED.seconds_online,
+        country        = COALESCE(t.country, EXCLUDED.country)
     `.execute(db);
   }
 

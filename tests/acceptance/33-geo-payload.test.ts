@@ -32,8 +32,14 @@ beforeAll(async () => {
   testDb = await createTestDatabase('geopayload');
   pool = createPool({
     connectionString: testDb.statsUrl,
+    // QUATTRO, non otto come in produzione. Su questa macchina Postgres
+    // accetta le connessioni UNA ALLA VOLTA, ~750 ms ciascuna (misurato):
+    // otto pool aperti insieme da piu` suite parallele sforano qualunque
+    // timeout di acquisizione. Le nove query del payload si accodano su
+    // quattro connessioni e le riusano, che qui costa meno che aprirne altre.
     max: 4,
     applicationName: 'metamc-test-geo-read',
+    connectionTimeoutMillis: 20_000,
     statementTimeout: '10s',
     searchPath: 'stats, public',
   });

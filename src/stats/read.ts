@@ -17,6 +17,7 @@ import {
   CONTRACT_VERSION,
   type Kpi,
   type ModePayload,
+  NOT_COLLECTED_COUNTRY,
   type OverviewPayload,
   type Range,
   round1,
@@ -354,8 +355,8 @@ async function distinctPlayers(db: Database, from: Date, to: Date): Promise<numb
 /**
  * La mappa: unici del periodo per paese, di rete e per modalita'.
  *
- * DALLA STESSA POPOLAZIONE DEL KPI, e non e' un dettaglio implementativo: e'
- * l'invariante I5. Se la mappa contasse una cosa e il KPI un'altra, si
+ * E' LA FONTE ANCHE DI , e non e' un dettaglio implementativo:
+ * e' l'invariante I5. Se la mappa contasse una cosa e il KPI un'altra, si
  * finirebbe con «37.800 italiani» accanto a «5.000 giocatori» sullo stesso
  * schermo, con scritto «giocatori» in entrambe le legende. Qui la CTE `ranged`
  * produce UNA riga per giocatore, e sia la somma delle barre sia il conteggio
@@ -609,9 +610,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     labels,
     daily,
     dailyByMode,
-    distinctNow,
     distinctBefore,
-    distinctModeNow,
     distinctModeBefore,
     geo,
   ] = await Promise.all([
@@ -622,9 +621,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     modeLabels(db),
     uniquesRows(db, w.curTo),
     uniquesByModeRows(db, w.curTo),
-    distinctPlayers(db, w.curFrom, w.curTo),
     distinctPlayers(db, w.prevFrom, w.curFrom),
-    distinctPlayersByMode(db, w.curFrom, w.curTo),
     distinctPlayersByMode(db, w.prevFrom, w.curFrom),
     geoRows(db, w.curFrom, w.curTo),
   ]);
@@ -694,12 +691,24 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
   // Se invece e' attiva e non risolve, le barre esistono e sono tutte `XX`:
   // quello e' un DATO, ed e' il primo sintomo che il campo `ip` ha cambiato
   // significato. Nasconderlo sarebbe nascondere proprio il guasto.
+  // GLI UNICI DEL PERIODO CORRENTE ESCONO DA QUI, non da una seconda query.
+  //
+  // E' cio' che rende I5 vera per COSTRUZIONE invece che per fortuna. Con due
+  // query separate i due numeri girerebbero su connessioni diverse e quindi su
+  // snapshot MVCC diversi: basta che una riga di `player_day` venga committata
+  // fra l'una e l'altra — e a mezzanotte succede, quando il versamento dei
+  // secondi crea le righe del giorno nuovo — perche' la somma delle barre non
+  // torni con il KPI e `assertPayload` rifiuti l'INTERO payload. Raro,
+  // notturno, e indistinguibile da un difetto vero.
+  const uniquesOf = (modeKey: string): number =>
+    geo.filter((g) => g.mode_key === modeKey).reduce((a, g) => a + g.uniques, 0);
+
   const geoActive = geo.some((g) => g.cc !== null);
   const geoByMode = new Map<string, Array<{ cc: string; v: number }>>();
   if (geoActive) {
     for (const g of geo) {
       const list = geoByMode.get(g.mode_key) ?? [];
-      list.push({ cc: g.cc ?? 'XX', v: g.uniques });
+      list.push({ cc: g.cc ?? NOT_COLLECTED_COUNTRY, v: g.uniques });
       geoByMode.set(g.mode_key, list);
     }
     for (const list of geoByMode.values()) list.sort((a, b) => b.v - a.v || a.cc.localeCompare(b.cc));
@@ -720,7 +729,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
 
   const kpi = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec);
   const kpiPrev = kpiOf(prev, w.prevFrom, w.curFrom, plan.bucketSec);
-  kpi.uniques = distinctNow;
+  kpi.uniques = uniquesOf('__network__');
   kpiPrev.uniques = distinctBefore;
 
   // Il grafico degli unici mostra gli ultimi trenta giorni e li confronta con
@@ -804,7 +813,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       (b) => b.byMode.get(m) ?? 0,
       false,
     );
-    kpiMode.uniques = distinctModeNow.get(m) ?? null;
+    kpiMode.uniques = uniquesOf(m);
     kpiModePrev.uniques = distinctModeBefore.get(m) ?? null;
 
     const byDay = dailyModeIndex.get(m);

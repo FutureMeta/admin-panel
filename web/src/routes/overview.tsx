@@ -360,29 +360,22 @@ function OnlineChart({
           )),
         )}
 
+      {/*
+        Il picco lo segna il pallino, non una scritta.
+
+        Il valore e l'ora stanno già sulla carta «Picco odierno», due
+        centimetri più in alto: ripeterli dentro il grafico è rumore sopra la
+        linea, proprio nel punto in cui la linea dice più cose.
+      */}
       {peakIndex >= 0 ? (
-        <g>
-          <circle
-            cx={x(peakIndex)}
-            cy={y(data.online.peak[peakIndex] as number)}
-            r="4.5"
-            fill="var(--ac)"
-            stroke="var(--s-surface)"
-            strokeWidth="2"
-          />
-          <text
-            x={x(peakIndex)}
-            y={Math.max(TOP + 12, y(data.online.peak[peakIndex] as number) - 12)}
-            textAnchor="middle"
-            fill="var(--tx-primary)"
-            fontSize="11.5"
-            fontWeight="600"
-            fontFamily="JetBrains Mono"
-          >
-            {numero.format(data.online.peak[peakIndex] as number)} ·{' '}
-            {hhmm(data.online.t[peakIndex] as number)}
-          </text>
-        </g>
+        <circle
+          cx={x(peakIndex)}
+          cy={y(data.online.peak[peakIndex] as number)}
+          r="4.5"
+          fill="var(--ac)"
+          stroke="var(--s-surface)"
+          strokeWidth="2"
+        />
       ) : null}
 
       {data.online.t

@@ -23,6 +23,7 @@ import type { Mailer } from '#src/email/mailer.ts';
 import { AuthzMiddleware } from '#src/http/authz-middleware.ts';
 import type { IndexHtml } from '#src/http/index-html.ts';
 import { createLogger } from '#src/http/logger.ts';
+import { startMaintenance, type MaintenanceKeeper } from '#src/jobs/keeper.ts';
 import { MinecraftSkins } from '#src/minecraft/skins.ts';
 import { RateLimitService } from '#src/ratelimit/limiter.ts';
 import { createRedis } from '#src/redis/client.ts';
@@ -43,6 +44,8 @@ export type AppContext = {
   hibp: HibpClient;
   /** Skin Minecraft: le facce passano dal nostro dominio, non dal CDN. */
   skins: MinecraftSkins;
+  /** I lavori periodici. Nei test e' inerte: nessun timer parte. */
+  maintenance: MaintenanceKeeper;
   totpGuard: TotpReplayGuard;
   mailer: Mailer;
   /** Fase 2: la cache vera si scrive dietro questa interfaccia (§16.4). */
@@ -62,6 +65,12 @@ export type BuildOptions = {
   /** Iniettabili nei test: nessuna chiamata reale esce durante la suite. */
   hibpFetch?: typeof fetch;
   minecraftFetch?: typeof fetch;
+  /**
+   * Avvia i lavori periodici. Solo il processo server lo chiede: nei test
+   * partirebbero contro il database effimero a ogni suite, senza aggiungere
+   * niente a cio' che i test verificano.
+   */
+  startJobs?: boolean;
   /**
    * Nei test il rate limiter gira in memoria: mini-redis non implementa EVAL,
    * e rate-limiter-flexible su Redis usa uno script Lua. La POLITICA e' la
@@ -114,6 +123,13 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     redis,
     ...(opts.minecraftFetch ? { fetchImpl: opts.minecraftFetch } : {}),
   });
+  const maintenance = startMaintenance({
+    db,
+    anchorKey: keys.auditAnchor,
+    anchorPath: env.AUDIT_ANCHOR_PATH,
+    logger,
+    enabled: opts.startJobs === true,
+  });
   const totpGuard = new TotpReplayGuard(redis, db);
 
   const shuttingDown = { value: false };
@@ -133,6 +149,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     rateLimit,
     hibp,
     skins,
+    maintenance,
     totpGuard,
     mailer: opts.mailer,
     cache: new PassthroughCache(),
@@ -140,6 +157,11 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     startedAt: new Date(),
     shuttingDown,
     close: async () => {
+      // Prima i timer, poi le connessioni: un job che partisse mentre il pool
+      // si chiude fallirebbe con un errore che non significa niente, e la
+      // riga error nel log farebbe cercare un guasto che e' solo uno
+      // spegnimento.
+      maintenance.stop();
       await db.destroy().catch(() => undefined);
       await redis.quit().catch(() => undefined);
     },

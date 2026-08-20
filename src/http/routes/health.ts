@@ -110,6 +110,38 @@ export async function registerHealthRoutes(app: FastifyInstance, ctx: AppContext
       '# TYPE metamc_uptime_seconds counter',
       `metamc_uptime_seconds ${Math.floor((Date.now() - ctx.startedAt.getTime()) / 1000)}`,
     ];
+
+    // §10 — la condizione piu' grave che il sistema sappia rilevare. Vale 0
+    // quando la verifica ha trovato una partizione che non torna, e NON torna
+    // a 1 da sola: una catena rotta e' un fatto storico. E' la metrica da
+    // agganciare all'alerting per prima.
+    lines.push(
+      '# HELP metamc_audit_chain_ok 1 se la catena audit torna, 0 se e` stata trovata compromessa',
+      '# TYPE metamc_audit_chain_ok gauge',
+      `metamc_audit_chain_ok ${ctx.maintenance.chainOk() ? 1 : 0}`,
+    );
+
+    // Un job che non gira e' invisibile finche' non serve. `last_success` a 0,
+    // o vecchio di giorni, dice che non sta girando piu' — che per
+    // l'ancoraggio significa nessuna prova esterna, e per la verifica
+    // significa che una manomissione passerebbe inosservata.
+    const jobs = ctx.maintenance.registry.entries();
+    if (jobs.length > 0) {
+      lines.push(
+        '# HELP metamc_job_last_success_timestamp epoch dell`ultimo giro riuscito, 0 se mai',
+        '# TYPE metamc_job_last_success_timestamp gauge',
+        ...jobs.map(([name, s]) => `metamc_job_last_success_timestamp{job="${name}"} ${s.lastSuccessAt}`),
+        '# HELP metamc_job_last_failure_timestamp epoch dell`ultimo giro fallito, 0 se mai',
+        '# TYPE metamc_job_last_failure_timestamp gauge',
+        ...jobs.map(([name, s]) => `metamc_job_last_failure_timestamp{job="${name}"} ${s.lastFailureAt}`),
+        '# HELP metamc_job_failures_total giri falliti dall`avvio',
+        '# TYPE metamc_job_failures_total counter',
+        ...jobs.map(([name, s]) => `metamc_job_failures_total{job="${name}"} ${s.failures}`),
+        '# HELP metamc_job_successes_total giri riusciti dall`avvio',
+        '# TYPE metamc_job_successes_total counter',
+        ...jobs.map(([name, s]) => `metamc_job_successes_total{job="${name}"} ${s.successes}`),
+      );
+    }
     reply.header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
     reply.header('Cache-Control', 'no-store');
     return reply.send(`${lines.join('\n')}\n`);

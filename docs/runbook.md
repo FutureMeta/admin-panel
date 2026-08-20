@@ -82,6 +82,7 @@ mai il valore (SEC-41).
 | `RESEND_API_KEY` | sì in prod | senza, gli inviti non partono |
 | `RESEND_WEBHOOK_SECRET` | sì in prod | senza, il webhook risponde 503 e non accetta nulla |
 | `MAIL_FROM` | no | default `MetaMC Admin <no-reply@metamc.it>` |
+| `AUDIT_ANCHOR_PATH` | no | dove il job `anchor` scrive le teste firmate. Default `./audit-anchor.jsonl` |
 
 `MASTER_KEY` si genera con:
 
@@ -205,10 +206,42 @@ guarda ogni tanto.
 
 ## 8. Manutenzione mensile
 
-- **Partizioni dell'audit log — non serve fare niente.** Le tiene l'applicazione:
-  all'avvio e poi una volta al giorno garantisce 12 mesi avanti, e in caso di
-  errore riprova dopo un'ora invece di aspettarne ventiquattro. Cerca
-  `partizioni audit verificate` nei log per confermare che sta girando.
+- **I quattro lavori periodici — non serve fare niente.** Li tiene
+  l'applicazione (`src/jobs/keeper.ts`), partono con il server e si fermano
+  con lui. Nessun cron.
+
+  | Job | Cadenza | Cosa succede se non gira |
+  |---|---|---|
+  | `partitions` | giornaliero | quando le partizioni finiscono, **ogni scrittura del pannello fallisce** |
+  | `anchor` | giornaliero | la catena resta verificabile solo contro se stessa: nessuna prova esterna |
+  | `verify` | giornaliero | una manomissione del registro passa inosservata |
+  | `cleanup` | orario | restano segreti TOTP mai confermati e token scaduti |
+
+  Ognuno riprova prima del solito se fallisce (un'ora, quindici minuti per
+  `cleanup`), e un fallimento non abbatte il processo: viene loggato a livello
+  `error` con la **conseguenza**, non con «errore».
+
+  **Da agganciare all'alerting**, in ordine di gravità:
+
+  - `metamc_audit_chain_ok` — vale 0 quando la verifica ha trovato una
+    partizione che non torna, e **non torna a 1 da sola**. Significa che
+    qualcuno ha riscritto il registro passando dal database, cioè aggirando
+    ogni difesa dell'applicazione. Nei log è una riga `fatal`. Il pannello
+    resta acceso di proposito: un registro compromesso è un fatto
+    sull'integrità dei dati, non sulla capacità di servire, e spegnerlo
+    toglierebbe la possibilità di leggerlo proprio quando serve.
+  - `metamc_job_last_success_timestamp{job="..."}` — se invecchia oltre la
+    cadenza, quel lavoro ha smesso di girare.
+  - `metamc_job_failures_total{job="..."}` — cresce a ogni giro fallito.
+
+  Per lanciarne uno subito senza aspettare il giro: `node
+  scripts/maintenance.ts <anchor|partitions|cleanup|verify>`.
+
+  **L'ancoraggio scrive un file locale** — il percorso è `AUDIT_ANCHOR_PATH`,
+  default `./audit-anchor.jsonl`. Portarlo su uno storage append-only fuori da
+  questa macchina resta da fare, ed è una decisione infrastrutturale: finché il
+  file vive accanto al database, protegge da chi tocca il database ma non da
+  chi ha la macchina.
 
   Perché non un cron: se le partizioni finiscono, **ogni INSERT di audit
   fallisce**, e siccome l'audit sta nella stessa transazione delle modifiche di

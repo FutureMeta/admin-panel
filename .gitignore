@@ -8,3 +8,7 @@ coverage/
 .vite/
 .vitest/
 spikes/_probe.ts
+
+# Ancoraggio della catena audit: prodotto a runtime, non appartiene al repository.
+# Il default di AUDIT_ANCHOR_PATH scrive qui.
+audit-anchor.jsonl

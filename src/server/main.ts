@@ -8,7 +8,6 @@
 import { fileURLToPath } from 'node:url';
 import closeWithGrace from 'close-with-grace';
 import { buildContext } from '#src/app-context.ts';
-import { startPartitionKeeper } from '#src/audit/partitions.ts';
 import { parseEnv } from '#src/config/env.ts';
 import { InMemoryMailer, type Mailer, ResendMailer } from '#src/email/mailer.ts';
 import { loadIndexHtml } from '#src/http/index-html.ts';
@@ -83,13 +82,19 @@ if (rateLimitInMemory && env.NODE_ENV === 'production') {
   );
 }
 
-const ctx = await buildContext({ env, mailer, indexHtml, logger, rateLimitInMemory });
+// `startJobs`: i quattro lavori periodici partono con il server e si
+// fermano con `ctx.close()`. Il primo giro di ognuno e' immediato, perche' le
+// partizioni servono prima della prima scrittura e l'integrita' va saputa
+// subito, non fra ventiquattro ore.
+const ctx = await buildContext({
+  env,
+  mailer,
+  indexHtml,
+  logger,
+  rateLimitInMemory,
+  startJobs: true,
+});
 const app = await buildServer(ctx);
-
-// Le partizioni del registro prima di aprire la porta: se mancano, la prima
-// scrittura fallirebbe — e con lei la modifica che l'ha provocata. Non blocca
-// l'avvio se non riesce, ma il tentativo va fatto adesso, non fra un giorno.
-const partitions = startPartitionKeeper(ctx.db, logger);
 
 await app.listen({ host: env.HOST, port: env.PORT });
 logger.info(
@@ -111,7 +116,6 @@ closeWithGrace({ delay: 15_000, logger }, async ({ signal, err }) => {
   if (err) logger.error({ err }, 'chiusura per errore');
   else logger.info({ signal }, 'chiusura richiesta');
 
-  partitions.stop();
   ctx.shuttingDown.value = true;
   // Un istante perche' la sonda successiva veda il 503 prima che le
   // connessioni comincino a cadere.

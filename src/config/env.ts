@@ -43,6 +43,16 @@ const EnvSchema = z.object({
   /** SEC-40 — la versione del pepper in uso per i NUOVI hash. */
   PEPPER_VERSION: z.coerce.number().int().min(1).default(1),
 
+  /**
+   * §10 — dove il job di ancoraggio scrive le teste di partizione firmate.
+   *
+   * Facoltativa con un default, non obbligatoria: renderla richiesta
+   * impedirebbe l'avvio a un'installazione che gira gia'. Il file locale e' il
+   * primo passo — portarlo su uno storage append-only fuori da questa macchina
+   * resta una decisione di chi gestisce il server.
+   */
+  AUDIT_ANCHOR_PATH: z.string().min(1).default('./audit-anchor.jsonl'),
+
   // --- Argon2 e threadpool --------------------------------------------------
   /** §5.1: mai il default 4. Il threadpool e' condiviso da Argon2, fs, dns, zlib. */
   UV_THREADPOOL_SIZE: z.coerce.number().int().min(2).max(128).default(8),

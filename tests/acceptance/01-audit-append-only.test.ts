@@ -100,11 +100,27 @@ describe('SEC-47 — audit log append-only', () => {
     );
   });
 
-  it('lo schema stats esiste ed e` vuoto (§16.1)', async () => {
-    const res = await owner.query<{ n: number }>(
-      `SELECT count(*)::int AS n FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-       WHERE n.nspname = 'stats' AND c.relkind IN ('r','p','m','v')`,
+  it('lo schema stats non da` niente a metamc_app (§16.1)', async () => {
+    // Fino alla fase 2 questo test verificava che lo schema `stats` fosse
+    // VUOTO: la 001 lo creava apposta senza tabelle, e la riga a zero era il
+    // modo di dire «la fase 2 non e` ancora iniziata». Adesso e` iniziata, e
+    // quella asserzione misurerebbe solo il calendario.
+    //
+    // Cio` che invece vale ancora, e vale di piu` adesso che le tabelle
+    // esistono: il ruolo che regge i login non tocca i fatti delle
+    // statistiche. La 011 gli concede il solo dizionario delle modalita`,
+    // perche` quel modulo passa dal pannello e deve scrivere nel registro
+    // attivita`. Tutto il resto e` di `metamc_stats_rw`.
+    await expect(app.query('SELECT 1 FROM stats.sample_server LIMIT 1')).rejects.toThrow(
+      /permission denied|permesso negato/i,
     );
-    expect(res.rows[0]?.n).toBe(0);
+    await expect(app.query('SELECT 1 FROM stats.poll_cycle LIMIT 1')).rejects.toThrow(
+      /permission denied|permesso negato/i,
+    );
+    await expect(app.query('SELECT 1 FROM stats.rollup_1h LIMIT 1')).rejects.toThrow(
+      /permission denied|permesso negato/i,
+    );
+    // Il dizionario si', ed e` l'unica eccezione.
+    await expect(app.query('SELECT 1 FROM stats.mode LIMIT 1')).resolves.toBeDefined();
   });
 });

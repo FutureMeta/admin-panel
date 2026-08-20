@@ -105,11 +105,14 @@ describe('il fuso: Europe/Rome vive in due funzioni e da nessun`altra parte', ()
   it('il giorno civile non e` il giorno UTC', async () => {
     // Alle 22:30 UTC di giugno, a Roma e' gia' il giorno dopo. E' esattamente
     // la coda notturna che un processo con TZ=UTC perderebbe ogni notte.
-    const giorno = await one<Date | string>(
+    // Il cast a text si fa in SQL: node-postgres restituisce un Date, e
+    // formattarlo in JS reintrodurrebbe proprio il fuso del processo che
+    // questa funzione esiste per togliere di mezzo.
+    const giorno = await one<string>(
       mig,
-      `SELECT stats.civil_day('2026-06-14 22:30:00+00'::timestamptz)`,
+      `SELECT stats.civil_day('2026-06-14 22:30:00+00'::timestamptz)::text`,
     );
-    expect(String(giorno).slice(0, 10)).toBe('2026-06-15');
+    expect(giorno).toBe('2026-06-15');
   });
 
   it('un giorno non dura 86400 secondi, due volte l`anno', async () => {

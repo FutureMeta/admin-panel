@@ -183,9 +183,17 @@ describe('un ciclo normale', () => {
     // scadenza del TTL. Contarle entrambe gonfierebbe il totale per sempre, e
     // le sessioni direbbero un altro numero sulla stessa schermata.
     const now = Date.now();
+    // I due server sono DIVERSI di proposito: contare una volta sola non
+    // basta, serve che vinca la chiave piu' recente. Con la vecchia, il
+    // giocatore risulterebbe sul server di novanta secondi fa — un
+    // breakdown sbagliato che nessun conteggio totale rivelerebbe.
+    // La VECCHIA si semina per prima, ed e' deliberato: e' l'unico ordine in
+    // cui «vince la piu' recente» e «vince la prima che capita» danno
+    // risultati diversi. Con l'ordine comodo il test passerebbe anche con la
+    // regola sbagliata, cioe' non proverebbe niente.
     await online([
-      { id: 401, server: 'duels_1', connectionMs: now - 1_000, key: 'NomeNuovo' },
       { id: 401, server: 'duels_1', connectionMs: now - 90_000, key: 'NomeVecchio' },
+      { id: 401, server: 'ffa_1', connectionMs: now - 1_000, key: 'NomeNuovo' },
     ]);
     const at = slot(now);
     await (await poller()).runOnce(now);
@@ -198,6 +206,15 @@ describe('un ciclo normale', () => {
     // hanno prodotto un'identita'.
     expect(Number(cycle?.['keys_read'])).toBe(2);
     expect(Number(cycle?.['keys_skipped'])).toBe(0);
+
+    // E sul server GIUSTO: quello della chiave nuova.
+    const suFfa = await sql.query(
+      `SELECT s.players FROM stats.sample_server s
+         JOIN stats.server v ON v.server_id = s.server_id
+        WHERE s.tick_at = $1 AND v.server_key = 'ffa_1'`,
+      [at],
+    );
+    expect(Number(suFfa.rows[0]?.players)).toBe(1);
   });
 
   it('una chiave malformata si conta e non ferma il ciclo', async () => {

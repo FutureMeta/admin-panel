@@ -301,6 +301,9 @@ function Preview() {
           breadcrumb={screen === 'registro' ? 'Registro attività' : 'Utenti & Ruoli'}
           onLogout={() => {}}
           feedDisconnected={false}
+          // L'anteprima mostra solo Utenti e Registro, che il periodo non lo
+          // usano: mostrarne i pulsanti sarebbe un comando senza effetto.
+          showFilters={false}
         />
         <main className="app-main">
           {screen === 'registro' ? (

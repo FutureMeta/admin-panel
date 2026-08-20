@@ -64,7 +64,7 @@ function rampColor(t: number): string {
 
 // ---------------------------------------------------------------------------
 
-export function WorldMap({ geo }: { geo: GeoData }) {
+export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
   const [shapes, setShapes] = useState<CountryShape[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -125,7 +125,7 @@ export function WorldMap({ geo }: { geo: GeoData }) {
             Provenienza geografica
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            Giocatori unici oggi · scala per quantili, non lineare
+            Giocatori unici · {label} · scala per quantili, non lineare
           </div>
         </div>
       </div>

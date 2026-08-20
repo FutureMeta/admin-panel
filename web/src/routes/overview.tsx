@@ -22,6 +22,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
+import { labelOf, useRange } from '../lib/range.tsx';
 
 type Series = {
   t: number[];
@@ -526,7 +527,7 @@ const GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 /** Le ventiquattro ore come VALORI: la cella è identificata dall'ora, non dalla posizione. */
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
-function Heatmap({ data }: { data: Overview }) {
+function Heatmap({ data, label }: { data: Overview; label: string }) {
   const { v, w, n } = data.heatmap;
   // TRE array, mai la media già divisa. Nei giorni di cambio ora una cella
   // locale ha zero occorrenze (l'ora saltata di marzo) o due (quella ripetuta
@@ -570,7 +571,7 @@ function Heatmap({ data }: { data: Overview }) {
             Heatmap di affluenza
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            Media giocatori online · 7 giorni × 24 ore · Europe/Rome
+            Media giocatori online · {label} su griglia 7×24 · Europe/Rome
           </div>
         </div>
         <div
@@ -825,11 +826,15 @@ function NotYet({ title, sub, what }: { title: string; sub: string; what: React.
 // ---------------------------------------------------------------------------
 
 export function OverviewPage() {
+  const { range } = useRange();
   const [hidden, setHidden] = useState<Set<string>>(new Set());
 
   const q = useQuery({
-    queryKey: ['stats-overview', '24h'],
-    queryFn: () => apiWithHeaders<Overview>('/api/stats/overview?range=24h'),
+    // La chiave PORTA il periodo: senza, cambiando selettore react-query
+    // servirebbe la risposta gia' in cache per un altro intervallo, e la
+    // pagina mostrerebbe i numeri di prima sotto l'etichetta nuova.
+    queryKey: ['stats-overview', range],
+    queryFn: () => apiWithHeaders<Overview>(`/api/stats/overview?range=${range}`),
     refetchInterval: 60_000,
   });
 
@@ -966,7 +971,8 @@ export function OverviewPage() {
             Andamento online nel tempo
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            Giocatori connessi · 24h ({data.online.t.length > 0 ? hhmm(data.online.t[0] as number) : '—'}–
+            Giocatori connessi · {labelOf(range)} (
+            {data.online.t.length > 0 ? hhmm(data.online.t[0] as number) : '—'}–
             {data.online.t.length > 0 ? hhmm(data.online.t[data.online.t.length - 1] as number) : '—'},
             Europe/Rome) · copertura {Math.round(data.kpi.coverage * 100)}%
           </div>
@@ -1013,7 +1019,7 @@ export function OverviewPage() {
 
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16 }}>
         <Distribution data={data} onlineNow={onlineNow ? Number(onlineNow) : null} colorOf={colorOf} />
-        <Heatmap data={data} />
+        <Heatmap data={data} label={labelOf(range)} />
       </div>
 
       <DailyUniques data={data} />
@@ -1026,11 +1032,11 @@ export function OverviewPage() {
         funzione accesa che non risolve — cioe' un guasto, e va visto.
       */}
       {data.geo ? (
-        <WorldMap geo={data.geo} />
+        <WorldMap geo={data.geo} label={labelOf(range)} />
       ) : (
         <NotYet
           title="Provenienza geografica"
-          sub="Giocatori unici oggi · scala per quantili, non lineare"
+          sub={`Giocatori unici · ${labelOf(range)} · scala per quantili, non lineare`}
           what={
             data.geoEnabled
               ? 'nessun giocatore ancora registrato con un paese, oggi'

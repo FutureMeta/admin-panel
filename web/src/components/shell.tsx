@@ -7,6 +7,7 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Me, ModuleKey } from '../lib/api.ts';
+import { RANGES, useRange } from '../lib/range.tsx';
 import { loadWorld } from '../lib/world.ts';
 import { Avatar, ICONS, Icon } from './ui.tsx';
 
@@ -357,13 +358,23 @@ export function Topbar({
   breadcrumb,
   onLogout,
   feedDisconnected,
+  showFilters,
 }: {
   me: Me;
   breadcrumb: string;
   onLogout: () => void;
   feedDisconnected: boolean;
+  /**
+   * I pulsanti del periodo si mostrano solo dove hanno un effetto.
+   *
+   * Su «Utenti» e «Registro» non governano niente: lasciarli visibili sarebbe
+   * peggio che toglierli, perche' un comando che non fa niente si prova una
+   * volta e poi non ci si fida piu' nemmeno dove funziona.
+   */
+  showFilters: boolean;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { range, setRange } = useRange();
 
   return (
     <header
@@ -397,6 +408,43 @@ export function Topbar({
           {breadcrumb}
         </span>
       </div>
+
+      {showFilters ? (
+        <div
+          style={{
+            display: 'flex',
+            gap: 2,
+            marginLeft: 12,
+            padding: 3,
+            background: 'var(--s-inset)',
+            border: '1px solid var(--bd-subtle)',
+            borderRadius: 'var(--r-sm)',
+          }}
+        >
+          {RANGES.map((r) => (
+            <button
+              key={r.key}
+              type="button"
+              onClick={() => setRange(r.key)}
+              aria-pressed={r.key === range}
+              style={{
+                border: 'none',
+                borderRadius: 'var(--r-xs)',
+                background: r.key === range ? 'var(--s-overlay)' : 'transparent',
+                color: r.key === range ? 'var(--tx-primary)' : 'var(--tx-muted)',
+                fontFamily: 'var(--font-ui)',
+                fontSize: 12,
+                fontWeight: 600,
+                padding: '5px 10px',
+                cursor: 'pointer',
+                transition: 'all var(--dur) var(--ease)',
+              }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
 
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
         {/* Il prototipo mette la campanella in un quadrato da 32px con un

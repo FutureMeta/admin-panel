@@ -19,6 +19,7 @@ import { createRoot } from 'react-dom/client';
 import { type Command, CommandPalette, Sidebar, Topbar } from './components/shell.tsx';
 import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
+import { RangeProvider } from './lib/range.tsx';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
@@ -138,27 +139,34 @@ function AppShell() {
       ? 'Registro attività'
       : 'Console';
 
-  return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
-      <Sidebar me={data} onOpenPalette={() => setPaletteOpen(true)} />
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-        <Topbar
-          me={data}
-          breadcrumb={breadcrumb}
-          onLogout={() => {
-            void api('/api/session/logout-all', { method: 'POST' }).finally(() =>
-              window.location.assign('/login'),
-            );
-          }}
-          feedDisconnected={false}
-        />
-        <main className="app-main">
-          <Outlet />
-        </main>
-      </div>
+  // Il periodo governa solo le schermate che hanno un periodo. Sono le
+  // stesse che il design elenca: non «Utenti», non «Registro».
+  const showFilters = !pathname.startsWith('/utenti') && !pathname.startsWith('/registro');
 
-      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
-    </div>
+  return (
+    <RangeProvider>
+      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
+        <Sidebar me={data} onOpenPalette={() => setPaletteOpen(true)} />
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+          <Topbar
+            me={data}
+            breadcrumb={breadcrumb}
+            onLogout={() => {
+              void api('/api/session/logout-all', { method: 'POST' }).finally(() =>
+                window.location.assign('/login'),
+              );
+            }}
+            feedDisconnected={false}
+            showFilters={showFilters}
+          />
+          <main className="app-main">
+            <Outlet />
+          </main>
+        </div>
+
+        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      </div>
+    </RangeProvider>
   );
 }
 

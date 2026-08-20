@@ -90,7 +90,15 @@ function parseCommands(buf: Buffer): { commands: string[][]; rest: Buffer } {
         incomplete = true;
         break;
       }
-      args.push(buf.subarray(start, start + len).toString('utf8'));
+      // `latin1` e non `utf8`, ed e' l'unica codifica che va bene qui.
+      //
+      // Un argomento puo' essere BINARIO — i payload delle statistiche sono
+      // Brotli — e `utf8` sostituisce ogni sequenza non valida con U+FFFD:
+      // il giro di andata e ritorno non restituisce i byte scritti, in
+      // silenzio. `latin1` mappa un byte su un carattere e viceversa, quindi
+      // e' esatta per QUALUNQUE contenuto. Il resto del file la rispecchia:
+      // ovunque un argomento torni a essere Buffer si scrive 'latin1'.
+      args.push(buf.subarray(start, start + len).toString('latin1'));
       cursor = start + len + 2;
     }
 
@@ -136,7 +144,7 @@ export class MiniRedis {
 
     switch (cmd) {
       case 'PING':
-        return a[0] === undefined ? encodeSimple('PONG') : encodeBulk(Buffer.from(a[0]));
+        return a[0] === undefined ? encodeSimple('PONG') : encodeBulk(Buffer.from(a[0], 'latin1'));
       case 'QUIT':
         return encodeSimple('OK');
       case 'AUTH':
@@ -168,7 +176,7 @@ export class MiniRedis {
         if (nx && existing) return encodeBulk(null);
         if (xx && !existing) return encodeBulk(null);
         this.#store.set(key, {
-          value: Buffer.from(value),
+          value: Buffer.from(value, 'latin1'),
           expiresAt: ttlMs !== null ? Date.now() + ttlMs : keepTtl ? (existing?.expiresAt ?? null) : null,
         });
         return encodeSimple('OK');
@@ -179,7 +187,10 @@ export class MiniRedis {
         if (key === undefined || seconds === undefined || value === undefined) {
           return encodeError('wrong number of arguments');
         }
-        this.#store.set(key, { value: Buffer.from(value), expiresAt: Date.now() + Number(seconds) * 1000 });
+        this.#store.set(key, {
+          value: Buffer.from(value, 'latin1'),
+          expiresAt: Date.now() + Number(seconds) * 1000,
+        });
         return encodeSimple('OK');
       }
 
@@ -241,7 +252,7 @@ export class MiniRedis {
         for (let i = 1; i < a.length; i += 2) {
           const field = a[i] as string;
           if (!hash.has(field)) created += 1;
-          hash.set(field, Buffer.from(a[i + 1] as string));
+          hash.set(field, Buffer.from(a[i + 1] as string, 'latin1'));
         }
         this.#store.set(key, { hash, expiresAt: existing?.expiresAt ?? null });
         return encodeInteger(created);
@@ -261,7 +272,7 @@ export class MiniRedis {
         if (!hash) return encodeArray([]);
         const out: Buffer[] = [];
         for (const [field, value] of hash) {
-          out.push(encodeBulk(Buffer.from(field)), encodeBulk(value));
+          out.push(encodeBulk(Buffer.from(field, 'latin1')), encodeBulk(value));
         }
         return encodeArray(out);
       }
@@ -326,7 +337,7 @@ export class MiniRedis {
             .replace(/\?/g, '.')}$`,
         );
         const keys = [...this.#store.keys()].filter((k) => this.#live(k) && re.test(k));
-        return encodeArray(keys.map((k) => encodeBulk(Buffer.from(k))));
+        return encodeArray(keys.map((k) => encodeBulk(Buffer.from(k, 'latin1'))));
       }
 
       case 'SCAN': {
@@ -346,7 +357,7 @@ export class MiniRedis {
         const keys = [...this.#store.keys()].filter((k) => this.#live(k) && re.test(k));
         return encodeArray([
           encodeBulk(Buffer.from('0')),
-          encodeArray(keys.map((k) => encodeBulk(Buffer.from(k)))),
+          encodeArray(keys.map((k) => encodeBulk(Buffer.from(k, 'latin1')))),
         ]);
       }
 

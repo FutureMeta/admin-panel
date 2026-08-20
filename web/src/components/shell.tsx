@@ -27,6 +27,13 @@ const NAV: Array<{ modules: ModuleKey[]; label: string; to: string; area: string
     icon: ICONS.users,
   },
   {
+    modules: ['statistiche'],
+    label: 'Modalità',
+    to: '/modalita',
+    area: 'Network',
+    icon: ICONS.log,
+  },
+  {
     modules: ['audit'],
     label: 'Registro attività',
     to: '/registro',

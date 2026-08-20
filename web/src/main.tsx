@@ -24,6 +24,7 @@ import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
 import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
+import { ModesPage } from './routes/modes.tsx';
 import { ForgotPasswordPage, ResetPasswordPage } from './routes/password.tsx';
 import { ForbiddenPage, NotFoundPage } from './routes/states.tsx';
 import { RolesPage, UsersPage } from './routes/users.tsx';
@@ -201,6 +202,13 @@ function UsersRoute() {
   );
 }
 
+function ModesRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
+  return <ModesPage me={me.data} />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -229,6 +237,11 @@ const resetRoute = createRoute({
 const shellRoute = createRoute({ getParentRoute: () => rootRoute, id: 'shell', component: AppShell });
 const homeRoute = createRoute({ getParentRoute: () => shellRoute, path: '/', component: HomePage });
 const usersRoute = createRoute({ getParentRoute: () => shellRoute, path: '/utenti', component: UsersRoute });
+const modesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/modalita',
+  component: ModesRoute,
+});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -240,7 +253,7 @@ const routeTree = rootRoute.addChildren([
   acceptRoute,
   forgotRoute,
   resetRoute,
-  shellRoute.addChildren([homeRoute, usersRoute, auditRoute]),
+  shellRoute.addChildren([homeRoute, usersRoute, modesRoute, auditRoute]),
 ]);
 
 const router = createRouter({ routeTree, defaultPreload: false });

@@ -218,14 +218,30 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
  * per prima.
  */
 export async function warmOnBoot(deps: WarmDeps): Promise<void> {
+  const t0 = Date.now();
+  const done: Range[] = [];
+  const failed: Range[] = [];
+
   for (const range of RANGES) {
     try {
       await warmRange(deps, range);
+      done.push(range);
     } catch (err) {
+      failed.push(range);
       deps.logger.warn(
         { range, err },
         'warm iniziale fallito: la prima richiesta di questo range paghera` l`aggregazione',
       );
     }
   }
+
+  // UNA riga, e non e' rumore: senza, un riempimento riuscito e uno mai
+  // partito sono indistinguibili nel log, e il secondo si scopre solo quando
+  // qualcuno apre la schermata e aspetta.
+  deps.logger.info(
+    { job: 'stats-warm-boot', pronti: done, falliti: failed, ms: Date.now() - t0 },
+    failed.length === 0
+      ? 'cache statistiche riempita: le schermate partono calde'
+      : 'cache statistiche riempita solo in parte',
+  );
 }

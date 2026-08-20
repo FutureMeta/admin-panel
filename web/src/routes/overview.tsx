@@ -267,11 +267,6 @@ function OnlineChart({
       ? `${totalSegments[0]} L${x(values.length - 1).toFixed(1)},${BOTTOM} L${x(0).toFixed(1)},${BOTTOM} Z`
       : '';
 
-  let peakIndex = -1;
-  data.online.peak.forEach((v, i) => {
-    if (v !== null && (peakIndex === -1 || v > (data.online.peak[peakIndex] ?? 0))) peakIndex = i;
-  });
-
   const xTickEvery = Math.max(1, Math.round(n / 8));
 
   return (
@@ -359,24 +354,6 @@ function OnlineChart({
             />
           )),
         )}
-
-      {/*
-        Il picco lo segna il pallino, non una scritta.
-
-        Il valore e l'ora stanno già sulla carta «Picco odierno», due
-        centimetri più in alto: ripeterli dentro il grafico è rumore sopra la
-        linea, proprio nel punto in cui la linea dice più cose.
-      */}
-      {peakIndex >= 0 ? (
-        <circle
-          cx={x(peakIndex)}
-          cy={y(data.online.peak[peakIndex] as number)}
-          r="4.5"
-          fill="var(--ac)"
-          stroke="var(--s-surface)"
-          strokeWidth="2"
-        />
-      ) : null}
 
       {data.online.t
         .map((t, i) => ({ t, i }))

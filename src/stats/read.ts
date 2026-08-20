@@ -191,6 +191,16 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
 /**
  * La heatmap 7x24, dalla sola riga di rete.
  *
+ * FINO A ORA, non fino alla mezzanotte scorsa. La finestra dei confronti
+ * escludeva il giorno in corso per non mettere un periodo parziale contro uno
+ * completo; qui non si confronta niente, e quella regola faceva sparire le ore
+ * di oggi da tutti i range a giorni.
+ *
+ * La cella dell'ora IN CORSO resta comunque vuota: i bucket orari nascono
+ * quando l'ora e' chiusa, quindi si colora circa cinque minuti dopo lo
+ * scoccare dell'ora successiva. Non e' un ritardo che si possa togliere senza
+ * inventare una media su un'ora incompleta.
+ *
  * TRE array e mai la media gia' divisa. Nei giorni di cambio ora una cella
  * locale ha zero occorrenze (l'ora saltata di marzo) o due (l'ora ripetuta di
  * ottobre): con la sola media quella cella mente e nessuno puo' accorgersene
@@ -198,7 +208,8 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
  */
 async function heatmapRows(
   db: Database,
-  w: Window,
+  from: Date,
+  to: Date,
 ): Promise<Array<{ cell: number; v: string; w: string; n: number }>> {
   const res = await sql<{ cell: number; v: string; w: string; n: number }>`
     SELECT (extract(isodow FROM bucket AT TIME ZONE ${ROME})::int - 1) * 24
@@ -207,7 +218,7 @@ async function heatmapRows(
            sum(covered_s)::bigint::text      AS w,
            count(*)::int                     AS n
       FROM stats.v_online_1h
-     WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo} AND server_id = 0
+     WHERE bucket >= ${from} AND bucket < ${to} AND server_id = 0
      GROUP BY cell
   `.execute(db);
   return res.rows;
@@ -224,7 +235,8 @@ async function heatmapRows(
  */
 async function heatmapModeRows(
   db: Database,
-  w: Window,
+  from: Date,
+  to: Date,
 ): Promise<Array<{ cell: number; mode_key: string; v: string }>> {
   const res = await sql<{ cell: number; mode_key: string; v: string }>`
     SELECT (extract(isodow FROM bucket AT TIME ZONE ${ROME})::int - 1) * 24
@@ -232,7 +244,7 @@ async function heatmapModeRows(
            mode_key,
            sum(player_seconds)::bigint::text AS v
       FROM stats.v_online_1h
-     WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo} AND server_id <> 0
+     WHERE bucket >= ${from} AND bucket < ${to} AND server_id <> 0
      GROUP BY cell, mode_key
   `.execute(db);
   return res.rows;
@@ -743,8 +755,8 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     liveUniques,
   ] = await Promise.all([
     seriesRows(db, range, w),
-    heatmapRows(db, w),
-    heatmapModeRows(db, w),
+    heatmapRows(db, w.curFrom, now),
+    heatmapModeRows(db, w.curFrom, now),
     deltasIn(db, w),
     modeLabels(db),
     uniquesRows(db, now, daysOf(range)),

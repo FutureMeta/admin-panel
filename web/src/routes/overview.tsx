@@ -71,6 +71,35 @@ const ROME = new Intl.DateTimeFormat('it-IT', {
 
 const numero = new Intl.NumberFormat('it-IT');
 
+/**
+ * Una scala LEGGIBILE per l'asse verticale.
+ *
+ * Prendere il massimo osservato come cima dell'asse produce tacche come 206,
+ * 412, 617, 823: numeri esatti e inutilizzabili, perché nessuno legge un
+ * grafico per sapere quanto vale un quarto del picco. Si arrotonda il passo a
+ * 1, 2, 2,5 o 5 volte una potenza di dieci — gli unici incrementi che l'occhio
+ * somma da solo — e la cima al primo multiplo sopra il massimo.
+ *
+ * Con 823 giocatori l'asse diventa 0, 250, 500, 750, 1.000.
+ */
+function niceScale(max: number, ticks = 4): { top: number; values: number[] } {
+  if (!Number.isFinite(max) || max <= 0) return { top: 1, values: [0, 1] };
+  const raw = max / ticks;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const norm = raw / magnitude;
+  // Passo minimo 1: sono conteggi di PERSONE, e mezzo giocatore non esiste.
+  // Senza questo pavimento, una rete quasi vuota produce tacche «0, 0, 1, 1»
+  // — cioè un asse che si ripete.
+  const step = Math.max(
+    1,
+    magnitude * (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10),
+  );
+  const top = Math.ceil(max / step) * step;
+  const values: number[] = [];
+  for (let v = 0; v <= top + step / 2; v += step) values.push(Math.round(v));
+  return { top, values };
+}
+
 function hhmm(epochSec: number): string {
   return ROME.format(new Date(epochSec * 1000));
 }
@@ -221,15 +250,17 @@ function OnlineChart({
 }) {
   const values = data.online.total;
   const n = Math.max(1, values.length);
-  const max = Math.max(
+  const observed = Math.max(
     1,
     ...values.filter((v): v is number => v !== null),
     ...data.online.peak.filter((v): v is number => v !== null),
   );
+  const scale = niceScale(observed);
+  const max = scale.top;
   const x = (i: number) => LEFT + ((RIGHT - LEFT) * i) / Math.max(1, n - 1);
   const y = (v: number) => BOTTOM - ((BOTTOM - TOP) * v) / max;
 
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => ({ v: max * f, y: y(max * f) }));
+  const ticks = scale.values.map((v) => ({ v, y: y(v) }));
   const totalSegments = segments(values, x, y);
   const area =
     totalSegments.length > 0
@@ -636,7 +667,8 @@ function movingAverage(values: (number | null)[], window = 7): (number | null)[]
 
 function DailyUniques({ data }: { data: Overview }) {
   const { t, v, final } = data.uniques;
-  const max = Math.max(1, ...v.filter((x): x is number => x !== null));
+  const scale = niceScale(Math.max(1, ...v.filter((x): x is number => x !== null)), 2);
+  const max = scale.top;
   const avg = movingAverage(v);
 
   const W2 = 1000;
@@ -697,18 +729,18 @@ function DailyUniques({ data }: { data: Overview }) {
           role="img"
           aria-label="Giocatori unici per giorno"
         >
-          {[0, 0.5, 1].map((f) => (
-            <g key={f}>
-              <line x1={L2} x2={W2} y1={y(max * f)} y2={y(max * f)} stroke="var(--grid)" />
+          {scale.values.map((tick) => (
+            <g key={tick}>
+              <line x1={L2} x2={W2} y1={y(tick)} y2={y(tick)} stroke="var(--grid)" />
               <text
                 x={36}
-                y={y(max * f) + 4}
+                y={y(tick) + 4}
                 textAnchor="end"
                 fill="var(--tx-muted)"
                 fontSize="11"
                 fontFamily="JetBrains Mono"
               >
-                {numero.format(Math.round(max * f))}
+                {numero.format(tick)}
               </text>
             </g>
           ))}

@@ -19,19 +19,27 @@ import { Avatar, ICONS, Icon } from './ui.tsx';
  * e la schermata poi disegna solo le sezioni che gli competono.
  */
 const NAV: Array<{ modules: ModuleKey[]; label: string; to: string; area: string; icon: string }> = [
+  // L'ordine di questo array E' l'ordine della barra: i gruppi si formano
+  // nell'ordine in cui compaiono le voci. «Analisi» sta sopra, come nel
+  // design — e' la ragione per cui il pannello esiste, l'amministrazione e'
+  // cio' che serve per farlo funzionare.
+  //
+  // I nomi vengono da `frontend/support.js`, che porta i dati veri dietro i
+  // segnaposto dei mockup: area «Analisi», voci «Panoramica network» e
+  // «Dettaglio modalita'».
+  {
+    modules: ['statistiche'],
+    label: 'Dettaglio modalità',
+    to: '/modalita',
+    area: 'Analisi',
+    icon: ICONS.log,
+  },
   {
     modules: ['utenti', 'ruoli', 'inviti'],
     label: 'Utenti & Ruoli',
     to: '/utenti',
     area: 'Amministrazione',
     icon: ICONS.users,
-  },
-  {
-    modules: ['statistiche'],
-    label: 'Modalità',
-    to: '/modalita',
-    area: 'Network',
-    icon: ICONS.log,
   },
   {
     modules: ['audit'],

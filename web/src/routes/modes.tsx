@@ -811,7 +811,7 @@ export function ModesPage({ me }: { me: Me }) {
   return (
     <>
       <PageHeader
-        title="Modalità"
+        title="Dettaglio modalità"
         sub="Come i server della rete si raggruppano nei grafici. Cambiare una regola cambia i numeri per modalità dal giro successivo e non tocca lo storico: si può cambiare idea."
         action={
           canManage ? (
@@ -822,6 +822,7 @@ export function ModesPage({ me }: { me: Me }) {
         }
       />
 
+      {dict.isPending ? <SkeletonRows rows={3} /> : null}
       {dict.data ? <ColourNotices warnings={dict.data.warnings} modes={modes} /> : null}
 
       {/* Le schede, come nel design: pallino del colore piu` il nome. */}
@@ -880,49 +881,17 @@ export function ModesPage({ me }: { me: Me }) {
         </Panel>
       ) : null}
 
-      <Panel>
-        <PanelBar>
-          <span style={{ fontSize: 12.5, color: 'var(--tx-secondary)' }}>Server non classificati</span>
-          <span className="mono" style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--tx-muted)' }}>
-            {dict.data?.unclassified.length ?? 0}
-          </span>
-        </PanelBar>
-        {dict.isPending ? (
-          <SkeletonRows rows={2} />
-        ) : allServers.length === 0 ? (
-          <EmptyState
-            title="Nessun server osservato"
-            description="I server non si configurano: li scopre il campionamento leggendo chi è online. Finché non è acceso, qui non c'è niente da raggruppare — e i grafici non hanno dati."
-          />
-        ) : (dict.data?.unclassified.length ?? 0) === 0 ? (
-          <EmptyState
-            title="Ogni server ha una modalità"
-            description="Quando la rete ne aggiunge uno nuovo comparirà qui, e nel frattempo finirà nella serie «Non classificata» dei grafici."
-          />
-        ) : (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, padding: 16 }}>
-            {dict.data?.unclassified.map((s) => (
-              <span
-                key={s}
-                className="mono"
-                style={{
-                  height: 26,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  padding: '0 10px',
-                  borderRadius: 'var(--r-full)',
-                  background: 'var(--s-inset)',
-                  border: '1px solid var(--bd-subtle)',
-                  fontSize: 11.5,
-                  color: 'var(--tx-secondary)',
-                }}
-              >
-                {s}
-              </span>
-            ))}
-          </div>
-        )}
-      </Panel>
+      {/*
+        Quando il campionamento non ha ancora osservato niente lo si dice qui,
+        e si dice che i grafici non hanno dati: «nessuna modalita'» e «nessun
+        server» si assomigliano e non sono la stessa cosa.
+      */}
+      {!dict.isPending && allServers.length === 0 ? (
+        <EmptyState
+          title="Nessun server osservato"
+          description="I server non si configurano: li scopre il campionamento leggendo chi è online. Finché non è acceso, qui non c'è niente da raggruppare — e i grafici non hanno dati."
+        />
+      ) : null}
 
       {modes.length === 0 && !dict.isPending ? (
         <EmptyState

@@ -56,6 +56,32 @@ export const LIMITS = {
   /** Recovery code: identico al TOTP (§8.4). */
   recoveryAccount: { points: 5, duration: 900, blockDuration: 900 },
 
+  /**
+   * SEC-25 — le rotte AUTENTICATE che finiscono in Argon2: cambio password,
+   * attivazione e disattivazione del secondo fattore.
+   *
+   * Misure del TOTP, non del login, perche' il profilo d'uso e' lo stesso:
+   * sono operazioni che una persona fa una volta ogni tanto, non venti al
+   * minuto. Un tetto basso qui non da' fastidio a nessuno e toglie il modo
+   * piu' economico di saturare il threadpool.
+   *
+   * La coppia si consuma in AND, ma i due secchi hanno pesi diversi e non e'
+   * un caso. Quello per UTENTE e' il controllo vero: cinque tentativi in un
+   * quarto d'ora bastano a chiunque cambi la propria password davvero, e non
+   * bastano a nessun altro. Quello per IP e' il secondario — serve a chi
+   * guida molte sessioni diverse da un posto solo — e va tenuto largo perche'
+   * dietro un IP c'e' spesso un ufficio intero: sessanta in un quarto d'ora
+   * sono quattro al minuto sostenuti, stretti per chi abusa e lontani da
+   * qualunque uso legittimo, anche in una giornata di onboarding.
+   *
+   * (A trenta la suite di accettazione consumava esattamente il budget del
+   * file: si rompeva alla prima prova aggiunta, con un 429 che sembrava un
+   * difetto del codice. Il numero e' scelto per la produzione, ma vale la
+   * pena sapere che stava anche stretto ai test.)
+   */
+  hashingAccount: { points: 5, duration: 900, blockDuration: 900 },
+  hashingIp: { points: 60, duration: 900, blockDuration: 300 },
+
   /** Fondo scala per tutte le rotte autenticate. */
   apiIp: { points: 600, duration: 60 },
 } as const satisfies Record<string, LimitSpec>;

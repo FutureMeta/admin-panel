@@ -80,6 +80,21 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         return reply.code(503).send({ error: 'overloaded' });
       }
 
+      // SEC-25 — le rotte di hashing AUTENTICATE. Il consumo sta qui, prima
+      // che better-auth veda la richiesta e quindi prima di qualunque Argon2.
+      //
+      // `HASHING_PATHS` meno `LOGIN_PATHS`: le tre che restavano scoperte
+      // perche' il consumo viveva dentro il ramo del login. Sono autenticate,
+      // quindi il soggetto da limitare e' l'utente della sessione — chi ha
+      // rubato una sessione cambia indirizzo a piacere — e l'IP resta come
+      // secondo vincolo per chi prova molte sessioni da un posto solo.
+      if (HASHING_PATHS.has(subPath) && !LOGIN_PATHS.has(subPath)) {
+        await ctx.rateLimit.consume('hashingIp', ipKey);
+        const session = await ctx.auth.api.getSession({ headers: headersFrom(request) });
+        const userId = session?.session?.userId;
+        if (userId) await ctx.rateLimit.consume('hashingAccount', userId);
+      }
+
       if (LOGIN_PATHS.has(subPath)) {
         const account = accountKeyOf(request.body);
         await ctx.rateLimit.consume('loginGlobal', 'rotta');

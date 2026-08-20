@@ -10,7 +10,7 @@ import { require as requireLevel } from '#src/authz/can.ts';
 import type { ModuleKey, RequiredLevel } from '#src/authz/modules.ts';
 import { issueCsrfCookie } from './csrf.ts';
 import { Unauthorized } from './errors.ts';
-import { actorOf, setAuthz } from './request-context.ts';
+import { actorOf, rateLimitIpKey, requestIps, setAuthz } from './request-context.ts';
 
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -20,6 +20,15 @@ export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promi
  */
 export function requireAuth(ctx: AppContext): PreHandler {
   return async (request, reply) => {
+    // SEC-26 — il fondo scala per indirizzo, consumato PRIMA di risolvere la
+    // sessione: e' un tetto, e un tetto che si paga solo dopo aver fatto il
+    // lavoro non e' un tetto. 600 al minuto non tocca la navigazione normale
+    // — una pagina di registro con cinquanta avatar ne usa una frazione — e
+    // morde solo chi insiste. E' l'unica difesa quando gli indirizzi sono
+    // falsificati o distribuiti, dove i limiti per-IP piu' stretti non
+    // arrivano mai a scattare.
+    await ctx.rateLimit.consume('apiIp', rateLimitIpKey(requestIps(request)));
+
     const headers = new Headers();
     for (const [k, v] of Object.entries(request.headers)) {
       if (typeof v === 'string') headers.set(k, v);

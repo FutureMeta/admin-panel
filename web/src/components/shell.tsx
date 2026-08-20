@@ -29,6 +29,13 @@ const NAV: Array<{ modules: ModuleKey[]; label: string; to: string; area: string
   // «Dettaglio modalita'».
   {
     modules: ['statistiche'],
+    label: 'Panoramica network',
+    to: '/panoramica',
+    area: 'Analisi',
+    icon: ICONS.log,
+  },
+  {
+    modules: ['statistiche'],
     label: 'Dettaglio modalità',
     to: '/modalita',
     area: 'Analisi',

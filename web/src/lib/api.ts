@@ -87,6 +87,38 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   return (await res.json()) as T;
 }
 
+/**
+ * Come `api`, ma restituisce anche le intestazioni.
+ *
+ * Serve a una cosa sola: «online adesso» viaggia in `X-Online-Now` e non nel
+ * corpo. Dentro un payload costruito ogni pochi minuti quel numero sarebbe
+ * vecchio di minuti — ed è proprio il numero che si confronta con quello che
+ * si vede sul server. Come intestazione è letto a ogni richiesta e sopravvive
+ * anche al 304, che è il caso del polling.
+ */
+export async function apiWithHeaders<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<{ data: T; headers: Headers }> {
+  const res = await fetch(path, {
+    method: options.method ?? 'GET',
+    headers: { accept: 'application/json' },
+    credentials: 'same-origin',
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
+  if (!res.ok) {
+    let code: string | undefined;
+    try {
+      const parsed = (await res.json()) as { code?: string };
+      code = parsed.code;
+    } catch {
+      // Uno status senza corpo JSON basta a dire cos'e' successo.
+    }
+    throw new ApiError(res.status, code);
+  }
+  return { data: (await res.json()) as T, headers: res.headers };
+}
+
 // ---------------------------------------------------------------------------
 // Tipi di risposta. Scritti a mano come l'interfaccia DB: sono pochi, e una
 // divergenza col server diventa un errore di compilazione invece che un campo

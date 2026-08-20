@@ -14,7 +14,8 @@
       "!frontend",
       "!spikes",
       "!web/src/app.css",
-      "!web/src/fonts.css"
+      "!web/src/fonts.css",
+      "!web/src/assets/countries-110m.json"
     ]
   },
   "formatter": {

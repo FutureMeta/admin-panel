@@ -43,10 +43,14 @@ const DIRS: Record<string, { path: string; maxAge: number; immutable: boolean }>
 /** Un nome di file, non un percorso. Tutto il resto e' 404. */
 const SAFE_NAME = /^[A-Za-z0-9._-]+$/;
 
-const CONTENT_TYPES: Record<string, string> = {
+export const CONTENT_TYPES: Record<string, string> = {
   '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.map': 'application/json; charset=utf-8',
+  // I contorni della mappa (§8.9). Senza questa riga il file riceve un 404 e
+  // la mappa non carica mai — e non lo dice nessuno, perche' il componente
+  // degrada elegantemente a «contorni non disponibili».
+  '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
   '.woff2': 'font/woff2',

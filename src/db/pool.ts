@@ -44,7 +44,16 @@ export function createPool(opts: PoolOptions): pg.Pool {
   const searchPath = opts.searchPath ?? 'auth, public';
   pool.on('connect', (client) => {
     void client.query(
+      // TIME ZONE FISSATO, e non e' ridondanza. §7.8
+      //
+      // Tutte le query che dipendono dal fuso lo scrivono esplicitamente
+      // (`AT TIME ZONE 'Europe/Rome'`, `date_trunc(..., 'Europe/Rome')`), ma un
+      // `::date` o un `extract` dimenticato seguirebbe il DEFAULT DEL SERVER —
+      // che su questa macchina di sviluppo e' Europe/Rome e in un container
+      // e' quasi sempre UTC. Un difetto del genere non si vede qui e compare
+      // in produzione, spostato di un'ora, due volte l'anno.
       `SET search_path = ${searchPath};
+       SET TIME ZONE 'Europe/Rome';
        SET statement_timeout = '${statementTimeout}';
        SET idle_in_transaction_session_timeout = '10s';
        SET lock_timeout = '2s';`,

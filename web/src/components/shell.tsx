@@ -7,6 +7,7 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Me, ModuleKey } from '../lib/api.ts';
+import { loadWorld } from '../lib/world.ts';
 import { Avatar, ICONS, Icon } from './ui.tsx';
 
 /**
@@ -18,7 +19,24 @@ import { Avatar, ICONS, Icon } from './ui.tsx';
  * l'utente ha accesso ad almeno uno dei moduli che quella schermata mostra —
  * e la schermata poi disegna solo le sezioni che gli competono.
  */
-const NAV: Array<{ modules: ModuleKey[]; label: string; to: string; area: string; icon: string }> = [
+type NavItem = {
+  modules: ModuleKey[];
+  label: string;
+  to: string;
+  area: string;
+  icon: string;
+  /**
+   * Da chiamare al passaggio del mouse. §8.9
+   *
+   * Il file dei contorni pesa 108 kB e serve a una schermata sola: scaricarlo
+   * per tutti sarebbe uno spreco, scaricarlo all'apertura significa vedere il
+   * riquadro vuoto per un istante. Anticiparlo al passaggio del mouse toglie
+   * la latenza senza costare un byte a chi quella schermata non la apre mai.
+   */
+  prefetch?: () => void;
+};
+
+const NAV: NavItem[] = [
   // L'ordine di questo array E' l'ordine della barra: i gruppi si formano
   // nell'ordine in cui compaiono le voci. «Analisi» sta sopra, come nel
   // design — e' la ragione per cui il pannello esiste, l'amministrazione e'
@@ -33,6 +51,7 @@ const NAV: Array<{ modules: ModuleKey[]; label: string; to: string; area: string
     to: '/panoramica',
     area: 'Analisi',
     icon: ICONS.log,
+    prefetch: () => void loadWorld().catch(() => undefined),
   },
   {
     modules: ['statistiche'],
@@ -143,6 +162,8 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
                 to={item.to}
                 className="nav-item"
                 data-active={pathname.startsWith(item.to)}
+                onMouseEnter={item.prefetch}
+                onFocus={item.prefetch}
               >
                 <Icon path={item.icon} />
                 <span className="nav-label">{item.label}</span>

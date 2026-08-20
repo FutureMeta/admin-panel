@@ -20,6 +20,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
 
 type Series = {
@@ -1005,11 +1006,22 @@ export function OverviewPage() {
 
       <DailyUniques data={data} />
 
-      <NotYet
-        title="Provenienza geografica"
-        sub="Giocatori unici oggi · scala per quantili, non lineare"
-        what="mappa coropletica mondiale — richiede il layer geo"
-      />
+      {/*
+        La mappa compare SOLO quando c'e' qualcosa da mostrare.
+
+        `geo: null` significa geolocalizzazione non attiva, ed e' diverso da
+        una mappa tutta `XX`: la prima e' una funzione spenta, la seconda una
+        funzione accesa che non risolve — cioe' un guasto, e va visto.
+      */}
+      {data.geo ? (
+        <WorldMap geo={data.geo} />
+      ) : (
+        <NotYet
+          title="Provenienza geografica"
+          sub="Giocatori unici del periodo · scala per quantili, non lineare"
+          what="geolocalizzazione non attiva — manca GEO_MMDB_PATH"
+        />
+      )}
     </main>
   );
 }

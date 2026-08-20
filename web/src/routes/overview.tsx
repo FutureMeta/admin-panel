@@ -633,8 +633,14 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
                       hover.at(
                         e,
                         `${giorno} ${String(hour).padStart(2, '0')}:00`,
+                        // Zero occorrenze non significa «ora inesistente»: quel
+                        // caso — l'ora saltata di marzo — e' raro, mentre la
+                        // causa normale e' che quella coppia giorno/ora non e'
+                        // ancora capitata nel periodo, o che allora non si
+                        // stava campionando. La dicitura precedente spacciava
+                        // per cambio d'ora quasi tutte le celle vuote.
                         c.occurrences === 0
-                          ? "ora inesistente per il cambio d'ora"
+                          ? 'dati non presenti'
                           : c.avg === null
                             ? 'non rilevato'
                             : `${numero.format(Math.round(c.avg))} giocatori`,

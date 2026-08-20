@@ -23,7 +23,7 @@ import type { Mailer } from '#src/email/mailer.ts';
 import { AuthzMiddleware } from '#src/http/authz-middleware.ts';
 import type { IndexHtml } from '#src/http/index-html.ts';
 import { createLogger } from '#src/http/logger.ts';
-import { startMaintenance, type MaintenanceKeeper } from '#src/jobs/keeper.ts';
+import { type MaintenanceKeeper, startMaintenance } from '#src/jobs/keeper.ts';
 import { MinecraftSkins } from '#src/minecraft/skins.ts';
 import { RateLimitService } from '#src/ratelimit/limiter.ts';
 import { createRedis } from '#src/redis/client.ts';
@@ -136,10 +136,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
             : "pepper_version riallineata: l'hash era gia' quello corrente",
         );
       } catch (err) {
-        logger.error(
-          { err, userId },
-          'ri-hash del pepper non riuscito: si riprova al prossimo accesso',
-        );
+        logger.error({ err, userId }, 'ri-hash del pepper non riuscito: si riprova al prossimo accesso');
       }
     },
   });

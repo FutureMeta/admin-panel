@@ -1169,9 +1169,7 @@ function OverridesEditor({
               key={moduleKey}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
             >
-              <span
-                style={{ textTransform: 'capitalize', fontSize: 12.5, color: 'var(--tx-secondary)' }}
-              >
+              <span style={{ textTransform: 'capitalize', fontSize: 12.5, color: 'var(--tx-secondary)' }}>
                 {moduleKey}
                 <span style={{ color: 'var(--tx-muted)' }}>
                   {' · '}

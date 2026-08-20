@@ -17,8 +17,8 @@
 // nate prima restano alla 1: e' esattamente lo stato in cui si trova una
 // installazione il giorno dopo una rotazione.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import argon2 from '@node-rs/argon2';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ARGON2_PARAMS, normalizePassword } from '#src/auth/password.ts';
 import { pepperFor, pepperRing } from '#src/crypto/keys.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
@@ -91,11 +91,7 @@ describe('SEC-40 — un utente nato prima della rotazione', () => {
       .where('userId', '=', user.id)
       .where('providerId', '=', 'credential')
       .execute();
-    await t.ctx.db
-      .updateTable('auth.user')
-      .set({ pepper_version: 1 })
-      .where('id', '=', user.id)
-      .execute();
+    await t.ctx.db.updateTable('auth.user').set({ pepper_version: 1 }).where('id', '=', user.id).execute();
 
     const before = await stored(user.id);
     expect(before.version).toBe(1);
@@ -122,11 +118,7 @@ describe('SEC-40 — un utente nato prima della rotazione', () => {
       .where('userId', '=', user.id)
       .where('providerId', '=', 'credential')
       .execute();
-    await t.ctx.db
-      .updateTable('auth.user')
-      .set({ pepper_version: 1 })
-      .where('id', '=', user.id)
-      .execute();
+    await t.ctx.db.updateTable('auth.user').set({ pepper_version: 1 }).where('id', '=', user.id).execute();
 
     const before = await stored(user.id);
 
@@ -171,9 +163,7 @@ describe('SEC-40 — un utente nato prima della rotazione', () => {
     });
 
     const after = await stored(user.id);
-    expect(after.phc, 'un hash gia` alla versione corrente e` stato rifatto per niente').toBe(
-      before.phc,
-    );
+    expect(after.phc, 'un hash gia` alla versione corrente e` stato rifatto per niente').toBe(before.phc);
   });
 
   it('una password sbagliata non migra niente', async () => {
@@ -184,11 +174,7 @@ describe('SEC-40 — un utente nato prima della rotazione', () => {
       .where('userId', '=', user.id)
       .where('providerId', '=', 'credential')
       .execute();
-    await t.ctx.db
-      .updateTable('auth.user')
-      .set({ pepper_version: 1 })
-      .where('id', '=', user.id)
-      .execute();
+    await t.ctx.db.updateTable('auth.user').set({ pepper_version: 1 }).where('id', '=', user.id).execute();
 
     const before = await stored(user.id);
 

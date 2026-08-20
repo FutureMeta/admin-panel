@@ -20,13 +20,7 @@ import { withPepperSubject } from '#src/auth/pepper-context.ts';
 import { visibleModules } from '#src/authz/can.ts';
 import { issueCsrfCookie } from '../csrf.ts';
 import { requireAuth } from '../guards.ts';
-import {
-  actorOf,
-  auditContextOf,
-  rateLimitIpKey,
-  requestIps,
-  setAuthSubject,
-} from '../request-context.ts';
+import { actorOf, auditContextOf, rateLimitIpKey, requestIps, setAuthSubject } from '../request-context.ts';
 
 /** Rotte better-auth su cui si consuma il rate limit di login (SEC-25). */
 const LOGIN_PATHS = new Set(['/sign-in/email', '/forget-password', '/reset-password']);
@@ -317,9 +311,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
             request.log.warn({ userId, seconds }, 'SEC-26: backoff 2FA');
           }
         } else if (userId) {
-          const post = totpUserId
-            ? { allowed: true as const }
-            : await ctx.totpGuard.check(userId, totpCode);
+          const post = totpUserId ? { allowed: true as const } : await ctx.totpGuard.check(userId, totpCode);
           if (!post.allowed) {
             if (newSessionId) {
               await ctx.db.deleteFrom('auth.session').where('id', '=', newSessionId).execute();

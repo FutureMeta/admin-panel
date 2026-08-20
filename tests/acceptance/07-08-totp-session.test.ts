@@ -336,13 +336,13 @@ describe('SEC-11 — la guardia vieta il CODICE, non la finestra', () => {
   });
 });
 
-describe("§10 — il registro dice CHI e entrato", () => {
+describe('§10 — il registro dice CHI e entrato', () => {
   // Si legge cio' che il pannello mostra, cioe' il nome denormalizzato, non
   // l'id. La prima versione di questa correzione impostava il solo
   // `actor_user_id` e un controllo scritto sulla stessa colonna passava senza
   // accorgersi che in pagina restava «anonimo»: un test che verifica esattamente
   // cio' che hai appena scritto non puo' fallire.
-  it("login e verifica 2FA riportano nome ed email di chi ha effettuato l accesso", async () => {
+  it('login e verifica 2FA riportano nome ed email di chi ha effettuato l accesso', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore', name: 'Kryos' });
     await loginAs(t, user);
 
@@ -362,7 +362,7 @@ describe("§10 — il registro dice CHI e entrato", () => {
     }
   });
 
-  it("un tentativo FALLITO resta anonimo: non e l elenco degli indirizzi provati", async () => {
+  it('un tentativo FALLITO resta anonimo: non e l elenco degli indirizzi provati', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
 
     await t.app.inject({

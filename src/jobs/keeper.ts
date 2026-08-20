@@ -66,8 +66,7 @@ export function startMaintenance(opts: {
         retryMs: HOUR,
         run: async () => ({ partitions: (await ensurePartitions(db)).length }),
         successMessage: 'partizioni audit verificate',
-        failureMessage:
-          'partizioni audit NON verificate: se scadono, ogni scrittura del pannello fallisce',
+        failureMessage: 'partizioni audit NON verificate: se scadono, ogni scrittura del pannello fallisce',
       },
       logger,
       registry,
@@ -80,8 +79,7 @@ export function startMaintenance(opts: {
         retryMs: HOUR,
         run: () => anchorHeads(db, anchorKey, anchorPath),
         successMessage: 'teste di partizione ancorate',
-        failureMessage:
-          'ancoraggio NON scritto: la catena resta verificabile solo contro se stessa',
+        failureMessage: 'ancoraggio NON scritto: la catena resta verificabile solo contro se stessa',
       },
       logger,
       registry,
@@ -94,8 +92,7 @@ export function startMaintenance(opts: {
         retryMs: 15 * 60 * 1_000,
         run: () => cleanupAbandoned(db),
         successMessage: 'pulizia periodica eseguita',
-        failureMessage:
-          'pulizia NON eseguita: restano segreti TOTP mai confermati e token scaduti',
+        failureMessage: 'pulizia NON eseguita: restano segreti TOTP mai confermati e token scaduti',
       },
       logger,
       registry,
@@ -129,8 +126,7 @@ export function startMaintenance(opts: {
           return { checked: report.checked, ok: report.ok, broken: report.broken.length };
         },
         successMessage: 'integrita` della catena audit verificata',
-        failureMessage:
-          'verifica dell`integrita` NON eseguita: una manomissione passerebbe inosservata',
+        failureMessage: 'verifica dell`integrita` NON eseguita: una manomissione passerebbe inosservata',
       },
       logger,
       registry,

@@ -7,13 +7,13 @@
 
 import { fileURLToPath } from 'node:url';
 import closeWithGrace from 'close-with-grace';
-import { currentBranch, currentCommit } from './version.ts';
 import { buildContext } from '#src/app-context.ts';
 import { parseEnv } from '#src/config/env.ts';
 import { InMemoryMailer, type Mailer, ResendMailer } from '#src/email/mailer.ts';
 import { loadIndexHtml } from '#src/http/index-html.ts';
 import { createLogger } from '#src/http/logger.ts';
 import { buildServer } from '#src/http/server.ts';
+import { currentBranch, currentCommit } from './version.ts';
 
 const env = parseEnv();
 

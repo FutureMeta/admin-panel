@@ -30,6 +30,18 @@ patch più recente la linea che usi, qualunque sia.
 Se scegli la 18, si installa dal repository PGDG: quello di Debian è indietro
 di una o più minor.
 
+**La 17 non era stata provata davvero.** Abbassare il minimo dalla 18 alla 17
+ha richiesto di riscrivere `uuidv7()` in PL/pgSQL, ma il resto dello schema non
+era stato riletto cercando altre funzioni della stessa generazione. Ne è
+rimasta una — `min(bytea)` in `audit.verify_chain`, aggiunta in PostgreSQL 18 —
+scoperta in produzione il 2026-08-20, quando il job di verifica ha girato per
+la prima volta. Corretta dalla migration 010.
+
+Se in futuro qualcuno tocca lo schema sviluppando su una 18, vale la pena
+ricordare che PL/pgSQL analizza le istruzioni SQL alla PRIMA ESECUZIONE: una
+funzione può essere creata senza errori su entrambe le versioni e fallire solo
+sulla 17, e solo sul ramo che qualcuno percorre.
+
 Redis va configurato con `noeviction`: con una policy LRU, sotto pressione di
 memoria il server butterebbe via sessioni e chiavi `authz:` **senza dirlo**, e
 il sintomo sarebbe "gli utenti vengono buttati fuori a caso".

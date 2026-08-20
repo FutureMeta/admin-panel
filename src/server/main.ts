@@ -7,6 +7,7 @@
 
 import { fileURLToPath } from 'node:url';
 import closeWithGrace from 'close-with-grace';
+import { currentBranch, currentCommit } from './version.ts';
 import { buildContext } from '#src/app-context.ts';
 import { parseEnv } from '#src/config/env.ts';
 import { InMemoryMailer, type Mailer, ResendMailer } from '#src/email/mailer.ts';
@@ -102,6 +103,10 @@ logger.info(
     host: env.HOST,
     port: env.PORT,
     threadpool: process.env.UV_THREADPOOL_SIZE,
+    // Quale versione sta girando: due rilasci di fila non hanno attecchito e
+    // ce ne siamo accorti dal comportamento invece che da una riga di log.
+    commit: currentCommit(),
+    branch: currentBranch(),
     argon2Limit: ctx.semaphore.limit,
   },
   'MetaMC Admin avviato',

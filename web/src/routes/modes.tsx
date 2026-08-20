@@ -322,6 +322,18 @@ export function ModesPage({ me }: { me: Me }) {
   const modes = dict.data?.modes ?? [];
   const current = modes.find((m) => m.modeKey === selected);
 
+  /**
+   * Quanti server il campionamento ha OSSERVATO, in tutto.
+   *
+   * Serve a distinguere due situazioni che si assomigliano e non sono la
+   * stessa cosa: «ogni server ha una modalita'» e «non e' ancora stato
+   * osservato nessun server». La prima e' un traguardo, la seconda e' il
+   * campionamento spento — e dire la prima quando vale la seconda manda a
+   * cercare un problema che non c'e', o peggio a credere che sia tutto a
+   * posto.
+   */
+  const observed = (dict.data?.unclassified.length ?? 0) + modes.reduce((n, m) => n + m.servers.length, 0);
+
   return (
     <>
       <PageHeader
@@ -343,6 +355,11 @@ export function ModesPage({ me }: { me: Me }) {
         </PanelBar>
         {dict.isPending ? (
           <SkeletonRows rows={2} />
+        ) : observed === 0 ? (
+          <EmptyState
+            title="Nessun server osservato"
+            description="I server non si configurano: li scopre il campionamento leggendo chi è online. Finché non è acceso, qui non c'è niente da raggruppare — e i grafici non hanno dati."
+          />
         ) : (dict.data?.unclassified.length ?? 0) === 0 ? (
           <EmptyState
             title="Ogni server ha una modalità"

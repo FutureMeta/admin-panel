@@ -14,6 +14,16 @@ export type PoolOptions = {
   applicationName?: string;
   /** §5.3: 2s per il pool applicativo, 10s per quello statistiche in fase 2. */
   statementTimeout?: string;
+  /**
+   * Lo schema di default della connessione.
+   *
+   * I ruoli della fase 2 ce l'hanno gia' impostato con `ALTER ROLE ... SET`,
+   * ma quello vale al login e questo hook lo sovrascriverebbe: un pool che
+   * imposta `auth, public` su una connessione di `metamc_ingest` annulla in
+   * silenzio la configurazione del ruolo. Meglio dirlo che ereditarlo per
+   * caso.
+   */
+  searchPath?: string;
 };
 
 /**
@@ -31,9 +41,10 @@ export function createPool(opts: PoolOptions): pg.Pool {
   });
 
   const statementTimeout = opts.statementTimeout ?? '2s';
+  const searchPath = opts.searchPath ?? 'auth, public';
   pool.on('connect', (client) => {
     void client.query(
-      `SET search_path = auth, public;
+      `SET search_path = ${searchPath};
        SET statement_timeout = '${statementTimeout}';
        SET idle_in_transaction_session_timeout = '10s';
        SET lock_timeout = '2s';`,

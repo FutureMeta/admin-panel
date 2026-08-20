@@ -27,6 +27,7 @@ import { type MaintenanceKeeper, startMaintenance } from '#src/jobs/keeper.ts';
 import { MinecraftSkins } from '#src/minecraft/skins.ts';
 import { RateLimitService } from '#src/ratelimit/limiter.ts';
 import { createRedis } from '#src/redis/client.ts';
+import { type StatsIngest, startStatsIngest } from '#src/stats/keeper.ts';
 
 export type AppContext = {
   env: Env;
@@ -46,6 +47,12 @@ export type AppContext = {
   skins: MinecraftSkins;
   /** I lavori periodici. Nei test e' inerte: nessun timer parte. */
   maintenance: MaintenanceKeeper;
+  /**
+   * Il campionamento della fase 2. `null` finche' non lo si accende con
+   * STATS_INGEST_ENABLED: senza, il pannello gira esattamente come prima e
+   * nessuna connessione in piu' viene aperta.
+   */
+  statsIngest: StatsIngest | null;
   totpGuard: TotpReplayGuard;
   mailer: Mailer;
   /** Fase 2: la cache vera si scrive dietro questa interfaccia (§16.4). */
@@ -177,6 +184,28 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   });
   const totpGuard = new TotpReplayGuard(redis, db);
 
+  // Il campionamento parte SOLO se acceso e solo con i job attivi: nei test il
+  // contesto si costruisce mille volte e nessuno di quei mille deve aprire una
+  // connessione al Redis di gioco.
+  let statsIngest: StatsIngest | null = null;
+  if (env.STATS_INGEST_ENABLED && env.DATABASE_INGEST_URL && opts.startJobs === true) {
+    try {
+      statsIngest = await startStatsIngest({
+        databaseUrl: env.DATABASE_INGEST_URL,
+        redisUrl: env.GAME_REDIS_URL ?? env.REDIS_URL,
+        pattern: env.GAME_REDIS_PATTERN,
+        logger,
+        registry: maintenance.registry,
+      });
+    } catch (err) {
+      // Un campionamento che non parte NON deve tenere giu' il pannello: le
+      // statistiche sono una funzione in piu', i login sono il mestiere.
+      // Rumoroso pero': un grafico vuoto senza una riga di log e' il modo in
+      // cui ci si accorge dopo settimane.
+      logger.error({ err }, 'campionamento non avviato: il pannello parte, le statistiche restano ferme');
+    }
+  }
+
   const shuttingDown = { value: false };
 
   return {
@@ -195,6 +224,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     hibp,
     skins,
     maintenance,
+    statsIngest,
     totpGuard,
     mailer: opts.mailer,
     cache: new PassthroughCache(),
@@ -207,6 +237,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       // riga error nel log farebbe cercare un guasto che e' solo uno
       // spegnimento.
       maintenance.stop();
+      await statsIngest?.stop().catch(() => undefined);
       await db.destroy().catch(() => undefined);
       await redis.quit().catch(() => undefined);
     },

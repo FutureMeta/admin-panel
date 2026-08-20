@@ -72,6 +72,35 @@ const EnvSchema = z.object({
     .int()
     .default(30 * 60),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  // --- statistiche, fase 2 --------------------------------------------------
+  /**
+   * Il campionamento e' SPENTO finche' non lo si accende.
+   *
+   * Non e' prudenza: e' che accenderlo scrive ~2.900 righe al giorno e apre
+   * una connessione permanente al Redis di gioco. Deve essere una decisione,
+   * non una conseguenza di un aggiornamento.
+   */
+  STATS_INGEST_ENABLED: z
+    .enum(['0', '1'])
+    .default('0')
+    .transform((v) => v === '1'),
+  /**
+   * Il ruolo che scrive le statistiche: `metamc_ingest`, mai `metamc_app`.
+   *
+   * La 011 non da' a `metamc_app` nessun diritto sulle tabelle di fatto, e
+   * questo e' voluto: il ruolo che regge i login non deve poter scrivere nel
+   * grezzo. Senza questa variabile il campionamento non parte.
+   */
+  DATABASE_INGEST_URL: z.string().min(1).optional(),
+  /**
+   * Il Redis di gioco. In questa installazione e' la stessa istanza del
+   * pannello, quindi in assenza si usa REDIS_URL — ma con un client
+   * dedicato, con i suoi timeout e senza autopipelining.
+   */
+  GAME_REDIS_URL: z.string().min(1).optional(),
+  /** Il pattern dell'insieme online, misurato dalla sonda del passo 0. */
+  GAME_REDIS_PATTERN: z.string().min(1).default('metaverse:player:*'),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -87,6 +116,14 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   if (result.data.NODE_ENV === 'production' && !result.data.APP_ORIGIN.startsWith('https://')) {
     throw new Error('APP_ORIGIN deve essere https:// in produzione: i cookie __Host- richiedono Secure.');
+  }
+  if (result.data.STATS_INGEST_ENABLED && !result.data.DATABASE_INGEST_URL) {
+    // Fallire all'avvio invece di partire e non raccogliere: un campionamento
+    // acceso che non scrive e' un buco che nessuno guarda, e ce ne si accorge
+    // settimane dopo davanti a un grafico vuoto.
+    throw new Error(
+      'STATS_INGEST_ENABLED=1 richiede DATABASE_INGEST_URL (ruolo metamc_ingest, non metamc_app).',
+    );
   }
   return result.data;
 }

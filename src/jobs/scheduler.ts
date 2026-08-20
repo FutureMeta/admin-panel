@@ -49,6 +49,23 @@ export type JobDefinition = {
   successMessage: string;
   /** Messaggio quando fallisce: deve dire la CONSEGUENZA, non «errore». */
   failureMessage: string;
+  /**
+   * Se presente, il giro si ripianifica sul prossimo MULTIPLO di questo
+   * intervallo invece che a distanza fissa dalla fine.
+   *
+   * Serve al campionamento della fase 2 e a niente altro. Ripianificare dalla
+   * fine fa scivolare i tick di quanto e' durato il giro: dopo qualche ora si
+   * campiona a :07, :37, :09... I numeri restano giusti — `delta_s` e'
+   * misurato su ogni riga e non e' mai una costante di query — ma
+   * l'invariante che conta gli slot MAI TENTATI si appoggia a una griglia
+   * regolare (`generate_series(..., interval '30 seconds')`), e su tick
+   * sbandati non distingue piu' un buco vero da un tick arrivato tardi.
+   *
+   * Con `alignMs` anche il ritardo dopo un fallimento va al prossimo slot:
+   * ritentare fuori griglia creerebbe proprio i tick che questa opzione
+   * esiste per evitare.
+   */
+  alignMs?: number;
 };
 
 export type RunningJob = { stop: () => void };
@@ -102,6 +119,12 @@ export function startJob(job: JobDefinition, logger: Logger, registry: JobRegist
       logger.error({ job: job.name, err }, job.failureMessage);
     }
     if (stopped) return;
+    if (job.alignMs !== undefined && job.alignMs > 0) {
+      const toNextSlot = job.alignMs - (Date.now() % job.alignMs);
+      // Sul confine esatto `toNextSlot` vale alignMs, non zero: uno slot si
+      // salta, non si campiona due volte.
+      delay = toNextSlot;
+    }
     // `unref` perche' questo timer non e' un motivo per tenere in piedi il
     // processo: se non resta altro da fare, Node deve poter uscire, e lo
     // spegnimento del §13 non deve restare appeso.

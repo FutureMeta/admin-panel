@@ -163,11 +163,17 @@
   font: 400 12px / 18px var(--font-mono);
 }
 
-/* Palette data-viz — un colore per modalità, identico in tutta l'app.
-   Ogni serie ha anche una forma di marker dedicata perché il colore non basta. */
-:root {
-  --viz-vanilla-war: #e8822b; /* marker: cerchio   */
-  --viz-survival: #1f6e95; /* marker: quadrato  */
-  --viz-towny: #f2cc7b; /* marker: triangolo */
-  --viz-oasis: #57b8a6; /* marker: rombo     */
-}
+/* Palette data-viz — NON è più un token.
+   Il colore di una modalità è una proprietà della modalità, e le modalità le
+   crea l'operatore dal pannello: un token per modalità richiederebbe una
+   modifica al foglio di stile ogni volta che nasce una serie, cioè una cosa
+   che nessuno farebbe. Il colore vive in stats.mode.color, validato come
+   esadecimale dal database.
+
+   Il pannello avvisa quando un colore è troppo vicino a quello di un'altra
+   modalità attiva. È un avviso, non un divieto: chi assegna i colori sa cose
+   che il calcolo del contrasto non sa.
+
+   Nota sui quattro valori rimossi: #1F6E95 stava a 2,99:1 sul fondo scuro,
+   sotto la soglia leggibile. Un colore di serie non è decorazione — è
+   l'unica cosa che distingue due linee su un grafico. */

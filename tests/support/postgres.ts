@@ -10,6 +10,7 @@
 // effimero creato con `initdb -A trust` su una porta dedicata.
 
 import pg from 'pg';
+import { STATS_ROLES, STATS_ROLES_SQL } from '#scripts/create-stats-roles.ts';
 import { runMigrations } from '#scripts/migrate.ts';
 
 export const ADMIN_URL = process.env.TEST_PG_ADMIN_URL ?? 'postgres://postgres@127.0.0.1:55432/postgres';
@@ -36,6 +37,10 @@ export type TestDatabase = {
   appUrl: string;
   /** URL del superuser: serve SOLO ai test che devono manomettere l'audit. */
   adminUrl: string;
+  /** Sola lettura sulle statistiche: `default_transaction_read_only` viene dal RUOLO. */
+  statsUrl: string;
+  /** Scrittura sulle statistiche, con i timeout stretti del ciclo di campionamento. */
+  ingestUrl: string;
   drop: () => Promise<void>;
 };
 
@@ -84,6 +89,19 @@ function ensureRoles(): Promise<void> {
           END $$;`);
         await c.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${ROLE_PASSWORD}'`);
       }
+
+      // I quattro ruoli della fase 2. La migration 011 li PRETENDE e non li
+      // crea: sono oggetti di CLUSTER e metamc_migrate non ha CREATEROLE.
+      // Qui gira la stessa identica definizione che il runbook esegue in
+      // produzione, importata e non ricopiata: una copia diverge, e i test
+      // proverebbero uno schema di privilegi che non esiste da nessuna parte.
+      await c.query(STATS_ROLES_SQL);
+      for (const role of STATS_ROLES) {
+        // La password serve ai test che devono CONNETTERSI come questi ruoli:
+        // `default_transaction_read_only` e i timeout sono impostazioni di
+        // ruolo, si applicano al login e non le eredita un SET ROLE.
+        await c.query(`ALTER ROLE ${role} WITH LOGIN PASSWORD '${ROLE_PASSWORD}'`);
+      }
     } finally {
       await c.query('SELECT pg_advisory_unlock(812026082)').catch(() => undefined);
     }
@@ -107,10 +125,14 @@ export async function createTestDatabase(label = 'test'): Promise<TestDatabase> 
   const adminUrl = withDatabase(ADMIN_URL, name);
   const migrateUrl = withDatabase(ADMIN_URL, name, 'metamc_migrate');
   const appUrl = withDatabase(ADMIN_URL, name, 'metamc_app');
+  const statsUrl = withDatabase(ADMIN_URL, name, 'metamc_stats');
+  const ingestUrl = withDatabase(ADMIN_URL, name, 'metamc_ingest');
 
   // Il ruolo applicativo deve potersi collegare al database.
   await withAdmin(async (c) => {
-    await c.query(`GRANT CONNECT ON DATABASE ${name} TO metamc_app, metamc_migrate`);
+    await c.query(
+      `GRANT CONNECT ON DATABASE ${name} TO metamc_app, metamc_migrate, metamc_stats, metamc_ingest`,
+    );
     await c.query('REVOKE ALL ON SCHEMA public FROM PUBLIC');
   }, adminUrl);
 
@@ -121,6 +143,8 @@ export async function createTestDatabase(label = 'test'): Promise<TestDatabase> 
     migrateUrl,
     appUrl,
     adminUrl,
+    statsUrl,
+    ingestUrl,
     drop: async () => {
       await withAdmin(async (c) => {
         await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);

@@ -19,7 +19,7 @@
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "lint:guards": "node scripts/check-guards.ts",
-    "check": "pnpm run lint:guards && pnpm run lint:identifiers && pnpm run lint:deps && pnpm run typecheck && pnpm run lint",
+    "check": "pnpm run lint:guards && pnpm run lint:identifiers && pnpm run lint:deps && pnpm run lint:pg17 && pnpm run typecheck && pnpm run lint",
     "migrate": "node scripts/migrate.ts up",
     "migrate:status": "node scripts/migrate.ts status",
     "bootstrap:owner": "node scripts/bootstrap-owner.ts",
@@ -34,7 +34,9 @@
     "job:anchor": "node scripts/maintenance.ts anchor",
     "job:partitions": "node scripts/maintenance.ts partitions",
     "job:cleanup": "node scripts/maintenance.ts cleanup",
-    "job:verify": "node scripts/maintenance.ts verify"
+    "job:verify": "node scripts/maintenance.ts verify",
+    "lint:pg17": "node scripts/check-pg17.ts",
+    "stats:roles": "node scripts/create-stats-roles.ts"
   },
   "dependencies": {
     "@better-auth/redis-storage": "1.6.29",

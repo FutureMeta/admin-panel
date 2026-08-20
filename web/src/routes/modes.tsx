@@ -216,9 +216,6 @@ function ServerSource({
   mode: 'elenco' | 'pattern';
   setMode: (v: 'elenco' | 'pattern') => void;
 }) {
-  const listId = 'server-disponibili';
-  const [draft, setDraft] = useState('');
-
   return (
     <div>
       <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--tx-secondary)', marginBottom: 9 }}>
@@ -260,6 +257,16 @@ function ServerSource({
 
       {mode === 'elenco' ? (
         <div>
+          {/*
+            SI VEDE E SI CLICCA, non si scrive.
+
+            La prima versione era un campo con `datalist`: bisognava digitare
+            il nome del server e il menù che si apriva era quello nativo del
+            browser, fuori dallo stile del pannello — la stessa classe di
+            difetto dei menù a tendina bianchi su bianco della fase 1. E con
+            ventidue server chiedere di ricordarsi i nomi è chiedere una cosa
+            che il pannello sa già.
+          */}
           <div
             style={{
               display: 'flex',
@@ -273,70 +280,40 @@ function ServerSource({
               alignItems: 'center',
             }}
           >
-            {picked.map((s) => (
-              <span
-                key={s}
-                className="mono"
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  height: 26,
-                  padding: '0 10px',
-                  borderRadius: 'var(--r-full)',
-                  background: 'var(--s-overlay)',
-                  border: '1px solid var(--bd-subtle)',
-                  fontSize: 11.5,
-                }}
-              >
-                {s}
-                <button
-                  type="button"
-                  aria-label={`Togli ${s}`}
-                  onClick={() => setPicked(picked.filter((x) => x !== s))}
-                  style={{
-                    border: 'none',
-                    background: 'none',
-                    color: 'var(--tx-muted)',
-                    cursor: 'pointer',
-                    padding: 0,
-                  }}
-                >
-                  ×
-                </button>
+            {available.length === 0 ? (
+              <span style={{ fontSize: 11.5, color: 'var(--tx-disabled)' }}>
+                Nessun server osservato: il campionamento non è ancora acceso.
               </span>
-            ))}
-            <input
-              list={listId}
-              value={draft}
-              placeholder="aggiungi server…"
-              aria-label="Aggiungi un server all`elenco"
-              onChange={(e) => {
-                const v = e.target.value.trim().toLowerCase();
-                if (available.includes(v) && !picked.includes(v)) {
-                  setPicked([...picked, v]);
-                  setDraft('');
-                } else setDraft(e.target.value);
-              }}
-              style={{
-                flex: 1,
-                minWidth: 130,
-                height: 26,
-                border: 'none',
-                background: 'transparent',
-                color: 'var(--tx-primary)',
-                fontFamily: 'var(--font-mono)',
-                fontSize: 11.5,
-                outline: 'none',
-              }}
-            />
-            <datalist id={listId}>
-              {available
-                .filter((s) => !picked.includes(s))
-                .map((s) => (
-                  <option key={s} value={s} />
-                ))}
-            </datalist>
+            ) : (
+              available.map((s) => {
+                const on = picked.includes(s);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    className="mono"
+                    aria-pressed={on}
+                    onClick={() => setPicked(on ? picked.filter((x) => x !== s) : [...picked, s])}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      height: 26,
+                      padding: '0 10px',
+                      borderRadius: 'var(--r-full)',
+                      background: on ? 'var(--ac-soft)' : 'var(--s-overlay)',
+                      border: `1px solid ${on ? 'var(--ac)' : 'var(--bd-subtle)'}`,
+                      color: on ? 'var(--ac-text)' : 'var(--tx-secondary)',
+                      fontSize: 11.5,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {s}
+                    {on ? <span aria-hidden="true">×</span> : null}
+                  </button>
+                );
+              })
+            )}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--tx-muted)', marginTop: 7 }}>
             I giocatori dei server elencati vengono sommati in un unico valore.

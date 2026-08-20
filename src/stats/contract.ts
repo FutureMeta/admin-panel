@@ -103,19 +103,19 @@ export type OverviewPayload = {
   labels: Record<string, string>;
 
   online: Series;
-  /** Linea fantasma: SOLO il totale, con il suo asse dei tempi. */
-  prev: { t: number[]; total: (number | null)[]; coverage: number[] };
-
   kpi: Kpi;
-  kpiPrev: Kpi;
-  /** `false` => la UI deve RIFIUTARSI di mostrare il delta percentuale. */
-  comparable: boolean;
 
   /** 7x24, cella = (isodow-1)*24 + hour. TRE array, mai la media gia' divisa. */
   heatmap: { v: number[]; w: number[]; n: number[] };
 
-  /** Unici giornalieri esatti. `t` e' la mezzanotte LOCALE di ogni giorno. */
-  uniques: { t: number[]; v: (number | null)[]; prev: (number | null)[]; final: boolean[] };
+  /**
+   * Unici per giorno civile del PERIODO. `t` e' la mezzanotte locale.
+   *
+   * Segue il selettore come tutto il resto della pagina: chi clicca «7g» si
+   * aspetta che la pagina risponda, non che un widget continui a mostrare
+   * trenta giorni per conto suo.
+   */
+  uniques: { t: number[]; v: (number | null)[]; final: boolean[] };
 
   /** `null` quando non c'e' nessun paese nel periodo. Vedi `geoEnabled`. */
   geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
@@ -202,8 +202,6 @@ export function assertPayload(p: OverviewPayload | ModePayload): void {
   for (const [k, a] of Object.entries(p.online.series)) {
     if (a.length !== n) bad.push(`series.${k} ha ${a.length} valori invece di ${n}`);
   }
-  if (p.prev.total.length !== p.prev.t.length) bad.push('prev disallineata');
-  if (p.prev.coverage.length !== p.prev.t.length) bad.push('prev.coverage disallineata');
   if (p.heatmap.v.length !== 168 || p.heatmap.w.length !== 168 || p.heatmap.n.length !== 168) {
     bad.push('la heatmap non e` 7x24');
   }

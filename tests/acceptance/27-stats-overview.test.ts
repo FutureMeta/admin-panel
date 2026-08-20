@@ -218,20 +218,6 @@ describe('i buchi restano buchi', () => {
   });
 });
 
-describe('il confronto fra periodi si rifiuta quando non regge', () => {
-  it('coperture diverse rendono `comparable` falso', async () => {
-    await dictionary();
-    // Solo il periodo corrente ha dati: il precedente e' vuoto.
-    await seedHours(6);
-    const { payload } = await buildOverview(db, '7d');
-    expect(payload.kpiPrev.coverage).toBeLessThan(payload.kpi.coverage);
-    // Un confronto fra due periodi con coperture diverse e' il modo garantito
-    // di produrre un delta falso, ed e' lo scenario piu' probabile in cui il
-    // pannello mente a chi lo paga.
-    expect(payload.comparable).toBe(false);
-  });
-});
-
 describe('il cancello del passo 4', () => {
   it('il range 90g, il piu` pesante, resta servibile senza cache', async () => {
     await dictionary();

@@ -123,38 +123,50 @@ async function seen(
   }
 }
 
-describe('la mappa guarda il giorno in corso', () => {
-  it('mostra chi si e` visto OGGI, non nella finestra del range', async () => {
+describe('la mappa segue il selettore, oggi compreso', () => {
+  it('copre la finestra del range e arriva fino a ORA', async () => {
     await seen(1, 0, 'IT', [ARENA]);
     await seen(2, 0, 'DE', [ARENA]);
-    // Ieri e l`altro ieri NON entrano nella mappa: la domanda e` «da dove
-    // viene la gente adesso», non «da dove veniva la settimana scorsa».
     await seen(3, 1, 'FR', [ARENA]);
-    await seen(4, 5, 'ES', [ARENA]);
+    // Fuori dai sette giorni: non deve entrare.
+    await seen(4, 30, 'ES', [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     expect(() => assertPayload(overview)).not.toThrow();
-    expect(overview.geo?.cc.sort()).toEqual(['DE', 'IT']);
-    expect(overview.geo?.v.reduce((a, b) => a + b, 0)).toBe(2);
+    // IT, DE e FR sì; ES no. E il giorno IN CORSO c'e`: legare la mappa alla
+    // finestra dei grafici, che esclude apposta il giorno parziale, la
+    // renderebbe vecchia di un giorno per sempre.
+    expect(overview.geo?.cc.slice().sort()).toEqual(['DE', 'FR', 'IT']);
+    expect(overview.geo?.v.reduce((a, b) => a + b, 0)).toBe(3);
   });
 
-  it('non cambia al cambiare del range: e` una domanda sul presente', async () => {
+  it('CAMBIA al cambiare del range', async () => {
     await seen(1, 0, 'IT', [ARENA]);
     await seen(2, 3, 'DE', [ARENA]);
+    await seen(3, 40, 'FR', [ARENA]);
 
-    for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {
-      const { overview } = await buildAll(db, range);
-      expect(overview.geo?.cc, `range ${range}`).toEqual(['IT']);
-    }
+    // Il selettore in alto governa tutta la pagina: un widget che lo ignora e`
+    // peggio di un widget assente, perche` chi guarda non ha modo di sapere
+    // che quel riquadro sta rispondendo a un'altra domanda.
+    const day = await buildAll(db, '24h');
+    expect(day.overview.geo?.cc).toEqual(['IT']);
+
+    const week = await buildAll(db, '7d');
+    expect(week.overview.geo?.cc.slice().sort()).toEqual(['DE', 'IT']);
+
+    const quarter = await buildAll(db, '90d');
+    expect(quarter.overview.geo?.cc.slice().sort()).toEqual(['DE', 'FR', 'IT']);
   });
 
-  it('un giocatore conta UNA volta, per quanto giochi', async () => {
-    // `player_day` ha una riga per (giorno, giocatore): su un giorno solo,
-    // giocatori e giocatori-giorno coincidono per definizione. E` la ragione
-    // per cui l`errore di unita` che I5 nasce per impedire — una mappa in
-    // giocatori-giorno accanto a un KPI in giocatori — qui non e`
-    // costruibile.
-    await seen(1, 0, 'IT', [ARENA, EVENTO]);
+  it('un giocatore visto in piu` giorni conta UNA volta', async () => {
+    // E` l'errore che I5 nasce per impedire: una mappa contata in
+    // giocatori-GIORNO accanto a un KPI contato in giocatori. Con poll da
+    // trenta secondi un giocatore connesso un'ora produce 120 campioni, e una
+    // mappa costruita su quelli misurerebbe QUANTO la gente sta online, non DA
+    // DOVE viene.
+    await seen(1, 0, 'IT', [ARENA]);
+    await seen(1, 1, 'IT', [ARENA]);
+    await seen(1, 2, 'IT', [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     expect(overview.geo?.v).toEqual([1]);

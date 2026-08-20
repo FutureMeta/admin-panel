@@ -303,7 +303,6 @@ describe('le due rotte', () => {
     // sarebbe una bugia plausibile.
     expect(payload.online.peak.every((v) => v === null)).toBe(true);
     expect(payload.kpi.peak).toBeNull();
-    expect(payload.kpiPrev.peak).toBeNull();
 
     // La media invece c'e` ed e` quella dell'arena, non quella di rete.
     expect(payload.kpi.avg).toBeCloseTo(150, 0);

@@ -52,12 +52,9 @@ type Overview = {
   modes: string[];
   labels: Record<string, string>;
   online: Series;
-  prev: { t: number[]; total: (number | null)[]; coverage: number[] };
   kpi: Kpi;
-  kpiPrev: Kpi;
-  comparable: boolean;
   heatmap: { v: number[]; w: number[]; n: number[] };
-  uniques: { t: number[]; v: (number | null)[]; prev: (number | null)[]; final: boolean[] };
+  uniques: { t: number[]; v: (number | null)[]; final: boolean[] };
   geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
   geoEnabled: boolean;
   record: { players: number; at: number | null; since: number } | null;
@@ -680,7 +677,7 @@ function DailyUniques({ data }: { data: Overview }) {
       >
         <div>
           <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, margin: '0 0 4px' }}>
-            Giocatori unici giornalieri
+            Giocatori unici
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
             Ultimi 30 giorni · media mobile 7g · Europe/Rome
@@ -880,7 +877,7 @@ export function OverviewPage() {
       ready: Boolean(onlineNow),
     },
     {
-      label: 'Picco odierno',
+      label: 'Picco del periodo',
       value: data.kpi.peak === null ? '—' : numero.format(data.kpi.peak),
       unit: 'gioc.',
       // Il massimo non viaggia mai da solo: senza il suo istante e la
@@ -891,7 +888,7 @@ export function OverviewPage() {
       ready: data.kpi.peak !== null,
     },
     {
-      label: 'Giocatori unici oggi',
+      label: 'Giocatori unici',
       value: oggi === null ? '—' : numero.format(oggi),
       unit: 'gioc.',
       delta: '',
@@ -972,7 +969,6 @@ export function OverviewPage() {
             Giocatori connessi · 24h ({data.online.t.length > 0 ? hhmm(data.online.t[0] as number) : '—'}–
             {data.online.t.length > 0 ? hhmm(data.online.t[data.online.t.length - 1] as number) : '—'},
             Europe/Rome) · copertura {Math.round(data.kpi.coverage * 100)}%
-            {data.comparable ? null : ' · confronto col periodo precedente non affidabile'}
           </div>
         </div>
         <div

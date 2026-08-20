@@ -6,10 +6,13 @@
 //
 // I CONFINI DEL PERIODO si calcolano su GIORNI CIVILI di Roma, mai con
 // `- interval '30 days'` su un timestamptz: nei periodi che attraversano un
-// cambio ora le due cose differiscono di un'ora e il confronto scivola di un
-// bucket. E il giorno in corso si esclude da ENTRAMBI i lati — se no il
-// periodo corrente contiene un giorno parziale e il precedente no, quindi ogni
-// somma risulta piu' bassa nel corrente, ogni giorno, per costruzione.
+// cambio ora le due cose differiscono di un'ora e il grafico scivola di un
+// bucket.
+//
+// IL SELETTORE IN ALTO GOVERNA TUTTA LA PAGINA: andamento, heatmap, unici e
+// mappa leggono la stessa finestra. Un widget che ignora il selettore e'
+// peggio di un widget assente, perche' chi guarda non ha modo di sapere che
+// quel riquadro sta rispondendo a un'altra domanda.
 
 import { sql } from 'kysely';
 import type { Database } from '#src/db/pool.ts';
@@ -51,7 +54,7 @@ const PLAN: Record<Range, Plan> = {
   '1y': { source: '1d', bucketSec: 86_400, days: 365 },
 };
 
-export type Window = { prevFrom: Date; curFrom: Date; curTo: Date };
+export type Window = { curFrom: Date; curTo: Date };
 
 /** La mezzanotte di Roma del giorno che contiene `at`, come istante. */
 function romeMidnight(at: Date): Date {
@@ -97,20 +100,14 @@ export function windowOf(range: Range, now: Date): Window {
     const step = plan.bucketSec * 1_000;
     const curTo = new Date(Math.floor(now.getTime() / step) * step);
     const span = plan.hours * 3_600_000;
-    return {
-      curTo,
-      curFrom: new Date(curTo.getTime() - span),
-      prevFrom: new Date(curTo.getTime() - 2 * span),
-    };
+    return { curTo, curFrom: new Date(curTo.getTime() - span) };
   }
   const days = plan.days as number;
   const curTo = romeMidnight(now); // oggi si esclude: e' un giorno parziale
-  const curFrom = shiftDays(curTo, -days);
-  return { curTo, curFrom, prevFrom: shiftDays(curFrom, -days) };
+  return { curTo, curFrom: shiftDays(curTo, -days) };
 }
 
 type SeriesRow = {
-  cur: boolean;
   t: string;
   mode_key: string;
   player_seconds: string;
@@ -125,19 +122,18 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
   if (plan.source === '5m') {
     const res = await sql<SeriesRow>`
       WITH src AS (
-        SELECT bucket, mode_key, player_seconds, covered_s, samples, players_max,
-               (bucket >= ${w.curFrom}) AS cur
+        SELECT bucket, mode_key, player_seconds, covered_s, samples, players_max
           FROM stats.v_online_5m
-         WHERE bucket >= ${w.prevFrom} AND bucket < ${w.curTo}
+         WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo}
       ),
-      cov AS (SELECT cur, bucket, covered_s, samples FROM src WHERE mode_key = '__network__')
-      SELECT s.cur, extract(epoch FROM s.bucket)::bigint::text AS t, s.mode_key,
+      cov AS (SELECT bucket, covered_s, samples FROM src WHERE mode_key = '__network__')
+      SELECT extract(epoch FROM s.bucket)::bigint::text AS t, s.mode_key,
              sum(s.player_seconds)::bigint::text AS player_seconds,
              max(s.players_max) AS players_max, c.covered_s, c.samples
         FROM src s
-        JOIN cov c ON c.cur = s.cur AND c.bucket = s.bucket
-       GROUP BY 1, 2, 3, c.covered_s, c.samples
-       ORDER BY 1, 2
+        JOIN cov c ON c.bucket = s.bucket
+       GROUP BY 1, 2, c.covered_s, c.samples
+       ORDER BY 1
     `.execute(db);
     return res.rows;
   }
@@ -151,45 +147,43 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
         SELECT date_trunc('day', bucket, ${ROME})
                  + make_interval(hours =>
                      (extract(hour FROM bucket AT TIME ZONE ${ROME})::int / ${hours}) * ${hours}) AS t,
-               mode_key, player_seconds, covered_s, samples, players_max,
-               (bucket >= ${w.curFrom}) AS cur
+               mode_key, player_seconds, covered_s, samples, players_max
           FROM stats.v_online_1h
-         WHERE bucket >= ${w.prevFrom} AND bucket < ${w.curTo}
+         WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo}
       ),
       -- IL DENOMINATORE VIENE DALLA RIGA DI RETE. Sommarlo per modalita'
       -- darebbe il tempo in cui quella modalita' era aperta.
       cov AS (
-        SELECT cur, t, sum(covered_s)::int AS covered_s, sum(samples)::int AS samples
-          FROM src WHERE mode_key = '__network__' GROUP BY 1, 2
+        SELECT t, sum(covered_s)::int AS covered_s, sum(samples)::int AS samples
+          FROM src WHERE mode_key = '__network__' GROUP BY 1
       )
-      SELECT s.cur, extract(epoch FROM s.t)::bigint::text AS t, s.mode_key,
+      SELECT extract(epoch FROM s.t)::bigint::text AS t, s.mode_key,
              sum(s.player_seconds)::bigint::text AS player_seconds,
              max(s.players_max) AS players_max, c.covered_s, c.samples
         FROM src s
-        JOIN cov c ON c.cur = s.cur AND c.t = s.t
-       GROUP BY 1, 2, 3, c.covered_s, c.samples
-       ORDER BY 1, 2
+        JOIN cov c ON c.t = s.t
+       GROUP BY 1, 2, c.covered_s, c.samples
+       ORDER BY 1
     `.execute(db);
     return res.rows;
   }
 
   const res = await sql<SeriesRow>`
     WITH src AS (
-      SELECT day, mode_key, player_seconds, covered_s, samples, players_max,
-             (day >= ${w.curFrom}) AS cur
+      SELECT day, mode_key, player_seconds, covered_s, samples, players_max
         FROM stats.v_online_1d
-       WHERE day >= ${w.prevFrom} AND day < ${w.curTo}
+       WHERE day >= ${w.curFrom} AND day < ${w.curTo}
     ),
-    cov AS (SELECT cur, day, covered_s, samples FROM src WHERE mode_key = '__network__')
-    SELECT s.cur,
+    cov AS (SELECT day, covered_s, samples FROM src WHERE mode_key = '__network__')
+    SELECT
            extract(epoch FROM (s.day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
            s.mode_key,
            sum(s.player_seconds)::bigint::text AS player_seconds,
            max(s.players_max) AS players_max, c.covered_s, c.samples
       FROM src s
-      JOIN cov c ON c.cur = s.cur AND c.day = s.day
-     GROUP BY 1, 2, 3, c.covered_s, c.samples
-     ORDER BY 1, 2
+      JOIN cov c ON c.day = s.day
+     GROUP BY 1, 2, c.covered_s, c.samples
+     ORDER BY 1
   `.execute(db);
   return res.rows;
 }
@@ -256,13 +250,14 @@ async function heatmapModeRows(
 async function uniquesByModeRows(
   db: Database,
   to: Date,
+  days: number,
 ): Promise<Array<{ day: string; mode_key: string; uniques: number; final: boolean }>> {
   const res = await sql<{ t: string; mode_key: string; uniques: number; final: boolean }>`
     SELECT extract(epoch FROM (u.day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
            m.mode_key, u.uniques, u.final
       FROM stats.mode_day_unique u
       JOIN stats.mode m USING (mode_id)
-     WHERE u.day >= (stats.civil_day(${to}) - ${UNIQUES_DAYS * 2}::int)
+     WHERE u.day >= (stats.civil_day(${to}) - ${days}::int)
        AND u.day <= stats.civil_day(${to})
      ORDER BY u.day
   `.execute(db);
@@ -303,8 +298,22 @@ async function deltasIn(db: Database, w: Window): Promise<number[]> {
   return res.rows.map((r) => Number(r.delta_s));
 }
 
-/** Quanti giorni copre il grafico degli unici, indipendentemente dal range. */
-const UNIQUES_DAYS = 30;
+/**
+ * Quanti giorni civili copre il range, per i widget che ragionano a giorni.
+ *
+ * IL SELETTORE IN ALTO GOVERNA TUTTA LA PAGINA. Prima il grafico degli unici
+ * stava fisso a trenta giorni «qualunque sia il range scelto»: una scelta
+ * difendibile in astratto — le persone si muovono su scala di giorni — e
+ * sbagliata in pratica, perche' chi clicca «7g» si aspetta che la pagina
+ * risponda, non che tre widget su quattro lo ignorino.
+ *
+ * Il 24h vale un giorno civile: un grafico a barre giornaliere su ventiquattro
+ * ore ha una barra sola, ed e' la conseguenza onesta di quella scelta.
+ */
+function daysOf(range: Range): number {
+  const plan = PLAN[range];
+  return plan.days ?? 1;
+}
 
 /**
  * Gli unici giornalieri, esatti.
@@ -322,13 +331,14 @@ const UNIQUES_DAYS = 30;
 async function uniquesRows(
   db: Database,
   to: Date,
+  days: number,
 ): Promise<Array<{ day: string; uniques: number; final: boolean }>> {
   const res = await sql<{ t: string; uniques: number; final: boolean }>`
     SELECT extract(epoch FROM (day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
            uniques, final
       FROM stats.v_online_1d
      WHERE mode_key = '__network__'
-       AND day >= (stats.civil_day(${to}) - ${UNIQUES_DAYS * 2}::int)
+       AND day >= (stats.civil_day(${to}) - ${days}::int)
        AND day <= stats.civil_day(${to})
      ORDER BY day
   `.execute(db);
@@ -353,7 +363,7 @@ async function distinctPlayers(db: Database, from: Date, to: Date): Promise<numb
 }
 
 /**
- * La mappa: unici di OGGI per paese, di rete e per modalita'.
+ * La mappa: unici del periodo per paese, di rete e per modalita'.
  *
  * E' LA FONTE ANCHE DI , e non e' un dettaglio implementativo:
  * e' l'invariante I5. Se la mappa contasse una cosa e il KPI un'altra, si
@@ -373,25 +383,32 @@ async function distinctPlayers(db: Database, from: Date, to: Date): Promise<numb
  */
 async function geoRows(
   db: Database,
+  from: Date,
   now: Date,
 ): Promise<Array<{ mode_key: string; cc: string | null; uniques: number }>> {
   const res = await sql<{ mode_key: string; cc: string | null; uniques: string }>`
-    WITH today AS (
-      SELECT d.player_id, d.country AS cc
+    WITH ranged AS (
+      -- DISTINCT ON perche' su piu' giorni un giocatore ha piu' righe, e la
+      -- domanda e' «quante PERSONE», non «quante presenze giornaliere».
+      SELECT DISTINCT ON (d.player_id) d.player_id, d.country AS cc
         FROM stats.player_day d
-       WHERE d.day = stats.civil_day(${now})
+       WHERE d.day >= stats.civil_day(${from}) AND d.day <= stats.civil_day(${now})
+       -- Prima un paese NOTO, poi il giorno piu' recente: chi e' stato visto
+       -- oggi in un momento in cui la geolocalizzazione era spenta non deve
+       -- perdere il paese che aveva ieri.
+       ORDER BY d.player_id, (d.country IS NULL), d.day DESC
     ),
     per_mode AS (
       SELECT DISTINCT sm.mode_key, pds.player_id
         FROM stats.player_day_server pds
         JOIN stats.v_server_mode sm USING (server_id)
-       WHERE pds.day = stats.civil_day(${now})
+       WHERE pds.day >= stats.civil_day(${from}) AND pds.day <= stats.civil_day(${now})
     )
     SELECT '__network__' AS mode_key, t.cc, count(*)::bigint::text AS uniques
-      FROM today t GROUP BY 1, 2
+      FROM ranged t GROUP BY 1, 2
     UNION ALL
     SELECT m.mode_key, t.cc, count(*)::bigint::text AS uniques
-      FROM per_mode m JOIN today t USING (player_id) GROUP BY 1, 2
+      FROM per_mode m JOIN ranged t USING (player_id) GROUP BY 1, 2
   `.execute(db);
   return res.rows.map((r) => ({ mode_key: r.mode_key, cc: r.cc, uniques: Number(r.uniques) }));
 }
@@ -466,10 +483,9 @@ type Bucket = {
   peak: number | null;
 };
 
-function collect(rows: SeriesRow[], cur: boolean): Bucket[] {
+function collect(rows: SeriesRow[]): Bucket[] {
   const byT = new Map<number, Bucket>();
   for (const r of rows) {
-    if (r.cur !== cur) continue;
     const t = Number(r.t);
     let b = byT.get(t);
     if (!b) {
@@ -658,9 +674,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     daily,
     dailyByMode,
     distinctNow,
-    distinctBefore,
     distinctModeNow,
-    distinctModeBefore,
     geo,
     facts,
   ] = await Promise.all([
@@ -669,19 +683,16 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     heatmapModeRows(db, w),
     deltasIn(db, w),
     modeLabels(db),
-    uniquesRows(db, w.curTo),
-    uniquesByModeRows(db, w.curTo),
+    uniquesRows(db, now, daysOf(range)),
+    uniquesByModeRows(db, now, daysOf(range)),
     distinctPlayers(db, w.curFrom, w.curTo),
-    distinctPlayers(db, w.prevFrom, w.curFrom),
     distinctPlayersByMode(db, w.curFrom, w.curTo),
-    distinctPlayersByMode(db, w.prevFrom, w.curFrom),
-    geoRows(db, now),
+    geoRows(db, w.curFrom, now),
     networkFacts(db),
   ]);
   const queryMs = Date.now() - t0;
 
-  const cur = collect(rows, true);
-  const prev = collect(rows, false);
+  const cur = collect(rows);
 
   const modes = [...new Set(rows.map((r) => r.mode_key))]
     .filter((m) => m !== '__network__')
@@ -692,9 +703,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     });
 
   const axis = grid(w.curFrom, w.curTo, plan.bucketSec);
-  const prevAxis = grid(w.prevFrom, w.curFrom, plan.bucketSec);
   const byT = new Map(cur.map((b) => [b.t, b]));
-  const prevByT = new Map(prev.map((b) => [b.t, b]));
 
   const series: Record<string, (number | null)[]> = {};
   for (const m of modes) series[m] = [];
@@ -714,15 +723,6 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       const s = b?.byMode.get(m);
       series[m]?.push(b && covered > 0 ? round1((s ?? 0) / covered) : null);
     }
-  }
-
-  const prevTotal: (number | null)[] = [];
-  const prevCoverage: number[] = [];
-  for (const t of prevAxis) {
-    const b = prevByT.get(t);
-    const covered = b?.coveredS ?? 0;
-    prevTotal.push(b && covered > 0 ? round1(b.networkSeconds / covered) : null);
-    prevCoverage.push(round1(Math.min(1, covered / plan.bucketSec) * 100) / 100);
   }
 
   const v = new Array<number>(168).fill(0);
@@ -774,7 +774,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       cc: list.map((x) => x.cc),
       v: list.map((x) => x.v),
       // L'istante a cui la mappa si riferisce. Il giorno civile in corso NON
-      // e' finito: questo numero cresce durante la giornata, ed e' voluto.
+      // e' finito: questi numeri crescono durante la giornata, ed e' voluto.
       asOf: Math.floor(now.getTime() / 1_000),
       // Contata adesso su `player_day`, non ripresa da un aggregato notturno.
       exact: true,
@@ -800,16 +800,14 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
   }
 
   const kpi = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec);
-  const kpiPrev = kpiOf(prev, w.prevFrom, w.curFrom, plan.bucketSec);
   kpi.uniques = distinctNow;
-  kpiPrev.uniques = distinctBefore;
 
   // Il grafico degli unici mostra gli ultimi trenta giorni e li confronta con
   // i trenta precedenti, qualunque sia il range scelto: e' una domanda sulle
   // PERSONE, che si muove su scala di giorni, non sulla finestra del grafico
   // dell'online.
-  const recent = daily.slice(-UNIQUES_DAYS);
-  const earlier = daily.slice(0, Math.max(0, daily.length - UNIQUES_DAYS)).slice(-UNIQUES_DAYS);
+  // Tutti i giorni letti sono del periodo: la query li ha gia' tagliati.
+  const recent = daily;
 
   const payload: OverviewPayload = {
     v: CONTRACT_VERSION,
@@ -823,20 +821,11 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     modes,
     labels: Object.fromEntries(modes.map((m) => [m, labels.get(m)?.label ?? m])),
     online: { t: axis, total, peak: peakLine, series, coverage },
-    prev: { t: prevAxis, total: prevTotal, coverage: prevCoverage },
     kpi,
-    kpiPrev,
-    // Un confronto fra due periodi con coperture diverse e' il modo garantito
-    // di produrre un delta falso, ed e' lo scenario piu' probabile in cui il
-    // pannello mente a chi lo paga.
-    comparable: Math.abs(kpi.coverage - kpiPrev.coverage) <= 0.02,
     heatmap: { v, w: wArr, n: nArr },
     uniques: {
       t: recent.map((d) => Number(d.day)),
       v: recent.map((d) => d.uniques),
-      // Allineata per POSIZIONE, non per data: il punto i del periodo
-      // precedente sta sotto il punto i di questo.
-      prev: recent.map((_, i) => earlier[i]?.uniques ?? null),
       final: recent.map((d) => d.final),
     },
     geo: geoOf('__network__'),
@@ -872,23 +861,8 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
   const perMode = new Map<string, ModePayload>();
   for (const m of modes) {
     const line = series[m] ?? [];
-    const prevLine = prevAxis.map((t) => {
-      const b = prevByT.get(t);
-      const covered = b?.coveredS ?? 0;
-      return b && covered > 0 ? round1((b.byMode.get(m) ?? 0) / covered) : null;
-    });
-
     const kpiMode = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec, (b) => b.byMode.get(m) ?? 0, false);
-    const kpiModePrev = kpiOf(
-      prev,
-      w.prevFrom,
-      w.curFrom,
-      plan.bucketSec,
-      (b) => b.byMode.get(m) ?? 0,
-      false,
-    );
     kpiMode.uniques = distinctModeNow.get(m) ?? null;
-    kpiModePrev.uniques = distinctModeBefore.get(m) ?? null;
 
     const byDay = dailyModeIndex.get(m);
     const modeHeat = heatModeCells.get(m) ?? new Array<number>(168).fill(0);
@@ -903,22 +877,13 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       // sotto l'etichetta di una modalita' sarebbe il disallineamento che il
       // §6.8 esiste per intercettare.
       online: { t: axis, total: line, peak: axis.map(() => null), series: { [m]: line }, coverage },
-      prev: { t: prevAxis, total: prevLine, coverage: prevCoverage },
       kpi: kpiMode,
-      kpiPrev: kpiModePrev,
-      // La copertura e' quella del ciclo di raccolta, la stessa per tutti:
-      // percio' la confrontabilita' non cambia da modalita' a modalita'.
-      comparable: payload.comparable,
       // Denominatore e occorrenze restano quelli di RETE (vedi
       // `heatmapModeRows`): cambia solo il numeratore.
       heatmap: { v: modeHeat, w: wArr, n: nArr },
       uniques: {
         t: recent.map((d) => Number(d.day)),
         v: recent.map((d) => byDay?.get(Number(d.day))?.uniques ?? null),
-        prev: recent.map((_, i) => {
-          const day = earlier[i];
-          return day ? (byDay?.get(Number(day.day))?.uniques ?? null) : null;
-        }),
         final: recent.map((d) => byDay?.get(Number(d.day))?.final ?? false),
       },
       geo: geoOf(m),

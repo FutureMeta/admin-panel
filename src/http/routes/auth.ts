@@ -77,6 +77,25 @@ function accountKeyOf(body: unknown): string | undefined {
 }
 
 /**
+ * L'identita' da scrivere nel registro: id, email e nome com'erano adesso.
+ *
+ * Il pannello mostra il NOME, non l'id (§10, denormalizzazione al momento del
+ * fatto). Depositare il solo id lasciava le righe a nome di «anonimo» pur
+ * avendo l'utente in colonna.
+ */
+async function auditSubjectOf(
+  ctx: AppContext,
+  userId: string,
+): Promise<{ userId: string; email: string | null; displayName: string | null }> {
+  const row = await ctx.db
+    .selectFrom('auth.user')
+    .select(['email', 'name'])
+    .where('id', '=', userId)
+    .executeTakeFirst();
+  return { userId, email: row?.email ?? null, displayName: row?.name ?? null };
+}
+
+/**
  * L'utente e la versione di pepper del suo hash.
  *
  * Sul login l'identita' arriva dal corpo, sulle altre dalla sessione — che
@@ -255,8 +274,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // commento dell'hook vuole evitare.
       if (subPath === '/sign-in/email' && res.status < 400) {
         if (subject) {
-          setAuthSubject(request, subject.userId);
-          request.log.info({ userId: subject.userId, fase: 'login' }, 'attore depositato per il registro');
+          setAuthSubject(request, await auditSubjectOf(ctx, subject.userId));
         } else {
           // Il login e' riuscito ma non sappiamo di chi: l'utente non e' stato
           // trovato per email. Succede se l'indirizzo memorizzato differisce
@@ -319,8 +337,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
           }
 
           // Chi e' entrato: l'hook di audit non puo' risolverlo da solo.
-          setAuthSubject(request, userId);
-          request.log.info({ userId, fase: '2fa' }, 'attore depositato per il registro');
+          setAuthSubject(request, await auditSubjectOf(ctx, userId));
           await ctx.totpGuard.markUsed(userId, totpCode);
           await ctx.rateLimit.reward('twoFactorAccount', userId);
           // Il 2FA completato porta la sessione ad aal=2 e alza

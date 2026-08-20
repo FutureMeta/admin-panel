@@ -335,3 +335,54 @@ describe('SEC-11 — la guardia vieta il CODICE, non la finestra', () => {
     expect(v.allowed).toBe(true);
   });
 });
+
+describe("§10 — il registro dice CHI e entrato", () => {
+  // Si legge cio' che il pannello mostra, cioe' il nome denormalizzato, non
+  // l'id. La prima versione di questa correzione impostava il solo
+  // `actor_user_id` e un controllo scritto sulla stessa colonna passava senza
+  // accorgersi che in pagina restava «anonimo»: un test che verifica esattamente
+  // cio' che hai appena scritto non puo' fallire.
+  it("login e verifica 2FA riportano nome ed email di chi ha effettuato l accesso", async () => {
+    const user = await seedUser(t, { roleKey: 'moderatore', name: 'Kryos' });
+    await loginAs(t, user);
+
+    const rows = await t.ctx.db
+      .selectFrom('audit.audit_log')
+      .select(['action', 'actor_user_id', 'actor_display_name', 'actor_email'])
+      .where('action', 'in', ['auth.login.success', 'auth.2fa.success'])
+      .where('actor_user_id', '=', user.id)
+      .execute();
+
+    const perAzione = new Map(rows.map((r) => [r.action, r]));
+    for (const azione of ['auth.login.success', 'auth.2fa.success']) {
+      const riga = perAzione.get(azione);
+      expect(riga, `manca la riga ${azione}`).toBeDefined();
+      expect(riga?.actor_display_name, `${azione} senza nome: in pagina sarebbe «anonimo»`).toBe('Kryos');
+      expect(riga?.actor_email).toBe(user.email);
+    }
+  });
+
+  it("un tentativo FALLITO resta anonimo: non e l elenco degli indirizzi provati", async () => {
+    const user = await seedUser(t, { roleKey: 'moderatore' });
+
+    await t.app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-in/email',
+      headers: sameOriginHeaders(),
+      payload: { email: user.email, password: 'password-sbagliata-ma-lunga' },
+    });
+
+    const rows = await t.ctx.db
+      .selectFrom('audit.audit_log')
+      .select(['actor_user_id', 'actor_display_name', 'actor_email'])
+      .where('action', '=', 'auth.login.failure')
+      .execute();
+
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.actor_user_id).toBeNull();
+      expect(r.actor_display_name).toBeNull();
+      expect(r.actor_email).toBeNull();
+    }
+  });
+});

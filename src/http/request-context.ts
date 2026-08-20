@@ -52,17 +52,24 @@ export function rateLimitIpKey(ips: RequestIps): string {
  * Non e' un AuthzContext e non da' accesso a niente: serve solo a far sapere
  * all'hook di audit CHI e' entrato. L'hook gira dopo la risposta e non ha modo
  * di risolverlo da se' — sul login la sessione nasce dentro l'handler.
+ *
+ * Porta anche nome ed email, e non e' ridondanza. Il registro denormalizza
+ * l'identita' AL MOMENTO DEL FATTO (§10) e il pannello mostra quella, non
+ * l'id: con il solo id la riga risulta di «anonimo» pur avendo l'utente in
+ * colonna — che e' esattamente il difetto che questo campo esiste per evitare.
  */
 const AUTH_SUBJECT_KEY = Symbol('auth-subject');
 
-type WithAuthSubject = FastifyRequest & { [AUTH_SUBJECT_KEY]?: { userId: string } };
+export type AuthSubject = { userId: string; email: string | null; displayName: string | null };
 
-export function setAuthSubject(request: FastifyRequest, userId: string): void {
-  (request as WithAuthSubject)[AUTH_SUBJECT_KEY] = { userId };
+type WithAuthSubject = FastifyRequest & { [AUTH_SUBJECT_KEY]?: AuthSubject };
+
+export function setAuthSubject(request: FastifyRequest, subject: AuthSubject): void {
+  (request as WithAuthSubject)[AUTH_SUBJECT_KEY] = subject;
 }
 
-export function authSubjectOf(request: FastifyRequest): string | null {
-  return (request as WithAuthSubject)[AUTH_SUBJECT_KEY]?.userId ?? null;
+export function authSubjectOf(request: FastifyRequest): AuthSubject | null {
+  return (request as WithAuthSubject)[AUTH_SUBJECT_KEY] ?? null;
 }
 
 const AUTHZ_KEY = Symbol('authz');

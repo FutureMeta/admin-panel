@@ -266,7 +266,12 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
         // Sui FALLIMENTI resta null, e li' e' giusto: l'utente sarebbe pure
         // noto, ma registrarlo farebbe del registro l'elenco degli indirizzi
         // provati da chiunque passi di qui.
-        actor: { userId: subject, email: null, displayName: null, sessionId: null },
+        actor: {
+          userId: subject?.userId ?? null,
+          email: subject?.email ?? null,
+          displayName: subject?.displayName ?? null,
+          sessionId: null,
+        },
         request: auditContextOf(request, ips),
         moduleKey: null,
         meta: { status: reply.statusCode },

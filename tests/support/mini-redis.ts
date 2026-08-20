@@ -8,7 +8,8 @@
 // Questo NON e' un mock: ioredis ci si collega davvero, parla davvero RESP2,
 // e il codice sotto test non sa che esiste. Implementa il sottoinsieme di
 // comandi che il pannello usa: GET/SET(+EX,PX,NX,XX)/DEL/EXISTS/MGET/EXPIRE/
-// TTL/PTTL/INCR/INCRBY/TYPE/KEYS/SCAN/FLUSHDB.
+// TTL/PTTL/INCR/INCRBY/TYPE/KEYS/SCAN/DBSIZE/FLUSHDB, piu' gli hash usati
+// dalla fase 2: HSET/HGET/HGETALL/HDEL.
 //
 // NON implementa EVAL. rate-limiter-flexible su Redis gira uno script Lua, e
 // un interprete Lua qui sarebbe una seconda implementazione da mantenere.
@@ -21,7 +22,17 @@
 
 import { createServer, type Server, type Socket } from 'node:net';
 
-type Entry = { value: Buffer; expiresAt: number | null };
+/**
+ * Una chiave e' una stringa OPPURE un hash, mai entrambi.
+ *
+ * Gli hash servono alla fase 2: il Redis di gioco tiene l'insieme online come
+ * `metaverse:player:{username}` con dentro identifier, server e
+ * connection-time. Senza HGETALL qui, il poller si potrebbe provare solo
+ * contro un finto scritto a mano — cioe' contro le proprie assunzioni.
+ */
+type Entry = { value: Buffer; hash?: undefined; expiresAt: number | null };
+type HashEntry = { value?: undefined; hash: Map<string, Buffer>; expiresAt: number | null };
+type AnyEntry = Entry | HashEntry;
 
 const CRLF = '\r\n';
 
@@ -92,7 +103,7 @@ function parseCommands(buf: Buffer): { commands: string[][]; rest: Buffer } {
 }
 
 export class MiniRedis {
-  readonly #store = new Map<string, Entry>();
+  readonly #store = new Map<string, AnyEntry>();
   #server: Server | undefined;
   #port = 0;
   readonly #sockets = new Set<Socket>();
@@ -104,7 +115,7 @@ export class MiniRedis {
     return `redis://127.0.0.1:${this.#port}`;
   }
 
-  #live(key: string): Entry | undefined {
+  #live(key: string): AnyEntry | undefined {
     const e = this.#store.get(key);
     if (!e) return undefined;
     if (e.expiresAt !== null && e.expiresAt <= Date.now()) {
@@ -112,6 +123,11 @@ export class MiniRedis {
       return undefined;
     }
     return e;
+  }
+
+  /** L'hash vivo di `key`, o undefined. Non lo crea. */
+  #liveHash(key: string): Map<string, Buffer> | undefined {
+    return this.#live(key)?.hash;
   }
 
   #dispatch(args: string[]): Buffer {
@@ -201,7 +217,67 @@ export class MiniRedis {
 
       case 'TYPE': {
         const key = a[0];
-        return encodeSimple(key !== undefined && this.#live(key) ? 'string' : 'none');
+        const e = key === undefined ? undefined : this.#live(key);
+        return encodeSimple(e === undefined ? 'none' : e.hash ? 'hash' : 'string');
+      }
+
+      case 'DBSIZE': {
+        // Solo le chiavi VIVE: la sonda della fase 2 usa DBSIZE per seguire la
+        // curva del costo dello SCAN, e contare le scadute la falserebbe.
+        let n = 0;
+        for (const k of this.#store.keys()) if (this.#live(k)) n += 1;
+        return encodeInteger(n);
+      }
+
+      case 'HSET': {
+        const key = a[0];
+        if (key === undefined || a.length < 3 || (a.length - 1) % 2 !== 0) {
+          return encodeError('wrong number of arguments');
+        }
+        const existing = this.#live(key);
+        if (existing && !existing.hash) return encodeError('WRONGTYPE');
+        const hash = existing?.hash ?? new Map<string, Buffer>();
+        let created = 0;
+        for (let i = 1; i < a.length; i += 2) {
+          const field = a[i] as string;
+          if (!hash.has(field)) created += 1;
+          hash.set(field, Buffer.from(a[i + 1] as string));
+        }
+        this.#store.set(key, { hash, expiresAt: existing?.expiresAt ?? null });
+        return encodeInteger(created);
+      }
+
+      case 'HGET': {
+        const key = a[0];
+        const field = a[1];
+        if (key === undefined || field === undefined) return encodeError('wrong number of arguments');
+        return encodeBulk(this.#liveHash(key)?.get(field) ?? null);
+      }
+
+      case 'HGETALL': {
+        const key = a[0];
+        if (key === undefined) return encodeError('wrong number of arguments');
+        const hash = this.#liveHash(key);
+        if (!hash) return encodeArray([]);
+        const out: Buffer[] = [];
+        for (const [field, value] of hash) {
+          out.push(encodeBulk(Buffer.from(field)), encodeBulk(value));
+        }
+        return encodeArray(out);
+      }
+
+      case 'HDEL': {
+        const key = a[0];
+        if (key === undefined || a.length < 2) return encodeError('wrong number of arguments');
+        const hash = this.#liveHash(key);
+        if (!hash) return encodeInteger(0);
+        let n = 0;
+        for (const field of a.slice(1)) if (hash.delete(field)) n += 1;
+        // Un hash svuotato non esiste piu', come in Redis vero: e' la
+        // differenza fra «il giocatore e' uscito» e «il giocatore c'e' ma non
+        // ha campi», che per il poller sono due cose diverse.
+        if (hash.size === 0) this.#store.delete(key);
+        return encodeInteger(n);
       }
 
       case 'EXPIRE':
@@ -233,7 +309,8 @@ export class MiniRedis {
         if (key === undefined) return encodeError('wrong number of arguments');
         const delta = cmd === 'INCR' ? 1 : cmd === 'INCRBY' ? Number(a[1]) : -Number(a[1]);
         const e = this.#live(key);
-        const current = e ? Number.parseInt(e.value.toString('utf8'), 10) : 0;
+        if (e?.hash) return encodeError('WRONGTYPE');
+        const current = e?.value ? Number.parseInt(e.value.toString('utf8'), 10) : 0;
         if (e && Number.isNaN(current)) return encodeError('value is not an integer or out of range');
         const next = current + delta;
         this.#store.set(key, { value: Buffer.from(String(next)), expiresAt: e?.expiresAt ?? null });

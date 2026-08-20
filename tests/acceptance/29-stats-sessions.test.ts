@@ -77,10 +77,20 @@ beforeEach(async () => {
 const idOf = (key: string) => serverIds.get(key);
 
 function online(
-  list: Array<{ id: number; server: string; connectionMs: number }>,
+  list: Array<{ id: number; server: string; connectionMs: number; country?: string }>,
 ): Map<number, OnlinePlayer> {
   return new Map(
-    list.map((p) => [p.id, { playerId: p.id, serverKey: p.server, connectionMs: p.connectionMs }]),
+    list.map((p) => [
+      p.id,
+      {
+        playerId: p.id,
+        serverKey: p.server,
+        connectionMs: p.connectionMs,
+        // `null` = geolocalizzazione spenta, che e` lo stato di questi test
+        // tranne dove servono i paesi.
+        country: p.country ?? null,
+      },
+    ]),
   );
 }
 

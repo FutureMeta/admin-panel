@@ -20,6 +20,7 @@
 // gratis una lettura pesante.
 
 import { Redis } from 'ioredis';
+import { ipFromAddress } from '#src/geo/reader.ts';
 
 /** Un giocatore osservato in un ciclo, ridotto a cio' che il passo 2 usa. */
 export type OnlinePlayer = {
@@ -33,6 +34,18 @@ export type OnlinePlayer = {
   serverKey: string;
   /** `connection-time` grezzo, in millisecondi epoch. Mai clampato qui. */
   connectionMs: number | null;
+  /**
+   * Codice paese ISO a due lettere, oppure `null`.
+   *
+   * `null` significa «geolocalizzazione non attiva»; `'XX'` significa «attiva
+   * e non risolta». Sono due cose diverse e non vanno confuse: la prima e' una
+   * funzione spenta, la seconda un dato che manca.
+   *
+   * L'INDIRIZZO NON ARRIVA FIN QUI. Si risolve dentro il ciclo che legge
+   * l'hash e non esce da quello scope: quello che viaggia da qui in poi sono
+   * due lettere, che non sono un dato personale.
+   */
+  country: string | null;
 };
 
 export type OnlineRead = {
@@ -75,6 +88,15 @@ export type ReadOptions = {
   ttlSample?: number;
   /** Se raccogliere il controincrocio `duels:servers:*`, che costa uno SCAN in piu'. */
   withServersCrosscheck?: boolean;
+  /**
+   * La risoluzione geografica, INIETTATA. §8.5
+   *
+   * Assente significa geolocalizzazione spenta, e il paese resta `null` su
+   * ogni giocatore. Iniettarla invece di importare un modulo globale non e'
+   * gusto: e' cio' che permette di provare questo ciclo senza un database da
+   * otto megabyte, e di spegnere la funzione senza toccare il codice.
+   */
+  countryOf?: (ip: string | undefined) => string;
 };
 
 /** Blocchi della pipeline: limita la risposta e da' un punto dove annullare. */
@@ -179,12 +201,23 @@ export async function readOnline(redis: Redis, opts: ReadOptions): Promise<Onlin
       const connection = Number(hash['connection-time']);
       const connectionMs = Number.isFinite(connection) && connection > 0 ? connection : null;
 
+      // QUI NASCE E QUI MUORE. L'indirizzo si legge, si converte in due
+      // lettere e non viene assegnato a niente che sopravviva a questo giro:
+      // non a una variabile di funzione, non a un campo, non a un log. §8.5
+      //
+      // `address` come ripiego quando `ip` manca — e mai `split(':')[0]` su
+      // di esso: un IPv6 e' pieno di due punti e quel giocatore diventerebbe
+      // `XX` per sempre, in silenzio, perche' `XX` e' un risultato legittimo.
+      const country = opts.countryOf
+        ? opts.countryOf(hash['ip']?.trim() || ipFromAddress(hash['address']))
+        : null;
+
       // Un rename lascia viva la vecchia chiave per la durata del TTL: due
       // chiavi, stessa identita'. Vince la piu' recente, cosi' il server
       // riportato e' quello attuale e non quello di due minuti fa.
       const seen = players.get(playerId);
       if (seen && (seen.connectionMs ?? 0) >= (connectionMs ?? 0)) continue;
-      players.set(playerId, { playerId, serverKey, connectionMs });
+      players.set(playerId, { playerId, serverKey, connectionMs, country });
     }
   }
 

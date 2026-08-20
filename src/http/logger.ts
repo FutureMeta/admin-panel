@@ -36,6 +36,26 @@ export const REDACT_PATHS = [
   'DATABASE_URL',
   'REDIS_URL',
   'RESEND_API_KEY',
+
+  // §8.7 — l'IP dei giocatori non deve poter uscire dalla porta di servizio.
+  //
+  // IL RISCHIO NON E' IL `logger.info` CHE SI CONTROLLA. E' l'oggetto errore:
+  // un throw dentro il ciclo di campionamento con l'hash Redis nel contesto
+  // serializza `address` e `ip` dentro lo stack, e finiscono su disco senza
+  // che nessuno abbia scritto una riga di log con dentro un indirizzo.
+  //
+  // L'IP vive nello scope di una funzione del ciclo e ne esce come due
+  // lettere. Queste righe sono la rete sotto, non la regola.
+  'ip',
+  '*.ip',
+  '*.*.ip',
+  'err.*.ip',
+  'address',
+  '*.address',
+  '*.*.address',
+  'err.*.address',
+  'req.headers["x-forwarded-for"]',
+  'req.headers["x-real-ip"]',
 ];
 
 export function createLogger(level: string, pretty = false): Logger {

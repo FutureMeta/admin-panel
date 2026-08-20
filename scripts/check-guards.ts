@@ -1,4 +1,4 @@
-// Guardie di CI che FALLISCONO la build. Non sono lint "consigliato": sono due
+// Guardie di CI che FALLISCONO la build. Non sono lint "consigliato": sono
 // invarianti di sicurezza che nessuna review manuale regge nel tempo.
 //
 //  1. §7 — unico punto di enforcement. Un confronto su ruoli o permessi fuori
@@ -7,6 +7,10 @@
 //  2. SEC-35 — divieto assoluto di innerHTML / dangerouslySetInnerHTML. Vale
 //     soprattutto per la tabella audit, che renderizza user agent, ban_reason e
 //     payload jsonb, cioe' stringhe controllate da terzi.
+//  3. §8.7 — l'IP di un giocatore non esce dalla funzione che lo risolve. E'
+//     l'invariante piu' fragile delle tre, perche' violarla non rompe niente:
+//     tutto continua a funzionare, e quello che cambia e' solo cosa c'e'
+//     scritto su disco.
 //
 // Uso: `node scripts/check-guards.ts`. Exit 1 al primo file colpevole.
 
@@ -24,6 +28,11 @@ const CODE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/;
 
 /** Il modulo che HA il diritto di parlare di ruoli e livelli. */
 const AUTHZ_DIR = join('src', 'authz');
+const STATS_DIR = join('src', 'stats');
+const GEO_DIR = join('src', 'geo');
+/** L'unico file fuori da src/geo in cui un indirizzo puo' comparire: e' dove
+ *  viene letto dall'hash e convertito, e non ne esce. */
+const GEO_LOOKUP_FILE = join('src', 'stats', 'game-redis.ts');
 /** File a cui e' concesso nominare i ruoli perche' ne sono la definizione o il test. */
 const AUTHZ_ALLOWLIST = [
   join('src', 'db', 'types.ts'), // l'interfaccia DB nomina le colonne, non decide
@@ -88,6 +97,27 @@ const RULES: Rule[] = [
     why: 'SEC-20: nessun parametro di redirect accettato dal client in fase 1. Le destinazioni sono costanti server-side.',
     pattern: /\b(callbackURL|callback_url|redirectTo|redirect_uri|returnTo|return_to)\b/,
     exempt: () => false,
+  },
+
+  // §8.7 — l'IP di un giocatore non deve poter finire su disco.
+  //
+  // Non e' una regola di stile. La geolocalizzazione e' costruita perche'
+  // l'indirizzo viva dentro UNA funzione e ne esca come due lettere: se un
+  // giorno qualcuno lo porta fuori da li' — in un log, in una riga di
+  // tabella, in un oggetto di contesto — la promessa scritta nel registro dei
+  // trattamenti smette di essere vera, e non se ne accorge nessuno, perche'
+  // funziona tutto.
+  {
+    id: 'geo/no-raw-ip-outside-lookup',
+    why: "§8.5: l'indirizzo si risolve in `src/geo` e in `game-redis.ts`, e da li` esce come codice paese. Altrove in src/stats non deve nemmeno esistere come identificatore.",
+    pattern: /\b(ip|address)\b/,
+    exempt: (rel) => !rel.startsWith(STATS_DIR + sep) || rel === GEO_LOOKUP_FILE,
+  },
+  {
+    id: 'geo/no-ip-in-logs',
+    why: "§8.7: il rischio non e` il logger che si controlla, e` l'oggetto errore — un throw con l'hash Redis nel contesto serializza `address` e `ip` dentro lo stack.",
+    pattern: /logger\s*\.\s*\w+\s*\(\s*\{[^}]*\b(ip|address)\b|JSON\s*\.\s*stringify\s*\(\s*\w*(hash|Hash)\b/,
+    exempt: (rel) => !(rel.startsWith(STATS_DIR + sep) || rel.startsWith(GEO_DIR + sep)),
   },
 ];
 

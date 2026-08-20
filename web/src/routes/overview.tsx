@@ -12,11 +12,11 @@
 //   5. giocatori unici giornalieri
 //   6. provenienza geografica
 //
-// COSA NON HA ANCORA DATI, e perché non lo si finge. Unici, nuovi giocatori e
-// record storico arrivano dal passo 6 della fase 2; la geografia dal passo 7.
-// I loro riquadri ci sono e dicono che il dato non è ancora raccolto, invece
-// di mostrare uno zero: uno zero al posto di un dato mancante è la stessa
-// bugia che il resto di questo lavoro esiste per impedire.
+// COSA NON HA ANCORA DATI, e perché non lo si finge. «Nuovi giocatori» e
+// «Record storico» richiedono l anagrafica dei giocatori; la geografia arriva
+// col passo 7. Quei riquadri ci sono e dicono che il dato non è ancora
+// raccolto, invece di mostrare uno zero: uno zero al posto di un dato mancante
+// è la stessa bugia che il resto di questo lavoro esiste per impedire.
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -617,7 +617,159 @@ function Heatmap({ data }: { data: Overview }) {
 }
 
 // ---------------------------------------------------------------------------
-// 5 e 6 — quel che il passo 6 e il passo 7 devono ancora portare
+// 5 — giocatori unici giornalieri
+// ---------------------------------------------------------------------------
+
+const GIORNO_MESE = new Intl.DateTimeFormat('it-IT', {
+  timeZone: 'Europe/Rome',
+  day: '2-digit',
+  month: '2-digit',
+});
+
+/** Media mobile a 7 giorni: la tendenza sotto il rumore del singolo giorno. */
+function movingAverage(values: (number | null)[], window = 7): (number | null)[] {
+  return values.map((_, i) => {
+    const slice = values.slice(Math.max(0, i - window + 1), i + 1).filter((v): v is number => v !== null);
+    return slice.length === 0 ? null : slice.reduce((a, b) => a + b, 0) / slice.length;
+  });
+}
+
+function DailyUniques({ data }: { data: Overview }) {
+  const { t, v, final } = data.uniques;
+  const max = Math.max(1, ...v.filter((x): x is number => x !== null));
+  const avg = movingAverage(v);
+
+  const W2 = 1000;
+  const H2 = 240;
+  const L2 = 44;
+  const B2 = 210;
+  const T2 = 20;
+  const x = (i: number) => L2 + ((W2 - L2 - 10) * (i + 0.5)) / Math.max(1, v.length);
+  const y = (n: number) => B2 - ((B2 - T2) * n) / max;
+  const barW = Math.max(3, ((W2 - L2 - 10) / Math.max(1, v.length)) * 0.7);
+
+  return (
+    <section
+      style={{
+        border: '1px solid var(--bd-subtle)',
+        borderRadius: 'var(--r-lg)',
+        background: 'var(--s-surface)',
+        padding: '18px 20px',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          justifyContent: 'space-between',
+          marginBottom: 14,
+        }}
+      >
+        <div>
+          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, margin: '0 0 4px' }}>
+            Giocatori unici giornalieri
+          </h3>
+          <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
+            Ultimi 30 giorni · media mobile 7g · Europe/Rome
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--tx-secondary)' }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--ac)' }} />
+            Unici del giorno
+          </span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 14, height: 2, borderRadius: 2, background: 'var(--tx-secondary)' }} />
+            Media 7g
+          </span>
+        </div>
+      </div>
+
+      {v.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', padding: '24px 0' }}>
+          Nessun giorno chiuso ancora: il primo punto compare domani.
+        </div>
+      ) : (
+        <svg
+          viewBox={`0 0 ${W2} ${H2}`}
+          preserveAspectRatio="none"
+          style={{ width: '100%', height: 240, display: 'block' }}
+          role="img"
+          aria-label="Giocatori unici per giorno"
+        >
+          {[0, 0.5, 1].map((f) => (
+            <g key={f}>
+              <line x1={L2} x2={W2} y1={y(max * f)} y2={y(max * f)} stroke="var(--grid)" />
+              <text
+                x={36}
+                y={y(max * f) + 4}
+                textAnchor="end"
+                fill="var(--tx-muted)"
+                fontSize="11"
+                fontFamily="JetBrains Mono"
+              >
+                {numero.format(Math.round(max * f))}
+              </text>
+            </g>
+          ))}
+
+          {v.map((n, i) =>
+            n === null ? null : (
+              <rect
+                key={t[i]}
+                x={x(i) - barW / 2}
+                y={y(n)}
+                width={barW}
+                height={Math.max(0, B2 - y(n))}
+                rx="2"
+                fill="var(--ac)"
+                /* Il giorno ancora aperto è più chiaro: il suo numero deve
+                   ancora salire, e mostrarlo pieno accanto ai definitivi
+                   suggerisce un calo che non c'è. */
+                opacity={final[i] ? 1 : 0.45}
+              />
+            ),
+          )}
+
+          <path
+            d={avg
+              .map((n, i) =>
+                n === null ? '' : `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(n).toFixed(1)}`,
+              )
+              .filter(Boolean)
+              .join(' ')}
+            fill="none"
+            stroke="var(--tx-secondary)"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+          />
+
+          <text x={L2} y={232} fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">
+            {t.length > 0 ? GIORNO_MESE.format(new Date((t[0] as number) * 1000)) : ''}
+          </text>
+          <text
+            x={W2 - 20}
+            y={232}
+            textAnchor="end"
+            fill="var(--tx-muted)"
+            fontSize="11"
+            fontFamily="JetBrains Mono"
+          >
+            {t.length > 0 ? GIORNO_MESE.format(new Date((t[t.length - 1] as number) * 1000)) : ''}
+          </text>
+        </svg>
+      )}
+
+      {/* Cio' che manca si dichiara, invece di dividere il totale a caso. */}
+      <div style={{ fontSize: 11.5, color: 'var(--tx-muted)', marginTop: 10 }}>
+        La divisione fra nuovi e di ritorno richiede l’anagrafica dei giocatori, che non è ancora raccolta.
+      </div>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 6 — quel che il passo 7 deve ancora portare
 // ---------------------------------------------------------------------------
 
 function NotYet({ title, sub, what }: { title: string; sub: string; what: string }) {
@@ -702,6 +854,8 @@ export function OverviewPage() {
   // che ho a disposizione — media, copertura — sarebbe stato comodo e
   // sbagliato: la pagina va confrontata col design, e due carte diverse
   // rendono il confronto impossibile a chiunque non le abbia scritte.
+  const oggi = data.uniques.v.length > 0 ? (data.uniques.v[data.uniques.v.length - 1] ?? null) : null;
+
   const cards: Card[] = [
     {
       label: 'Giocatori online ora',
@@ -725,12 +879,14 @@ export function OverviewPage() {
     },
     {
       label: 'Giocatori unici oggi',
-      value: '—',
+      value: oggi === null ? '—' : numero.format(oggi),
       unit: 'gioc.',
       delta: '',
-      note: 'sessioni non ancora raccolte',
+      // Il giorno in corso non e' definitivo: dirlo evita che qualcuno lo
+      // annoti come il totale della giornata a meta' pomeriggio.
+      note: oggi === null ? 'nessun giorno con dati' : 'giorno in corso',
       tone: 'muted',
-      ready: false,
+      ready: oggi !== null,
     },
     {
       label: 'Nuovi giocatori oggi',
@@ -845,11 +1001,7 @@ export function OverviewPage() {
         <Heatmap data={data} />
       </div>
 
-      <NotYet
-        title="Giocatori unici giornalieri"
-        sub="Ultimi 30 giorni · nuovi vs di ritorno · media mobile 7g"
-        what="sessioni e unici — passo 6"
-      />
+      <DailyUniques data={data} />
 
       <NotYet
         title="Provenienza geografica"

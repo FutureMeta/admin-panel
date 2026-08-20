@@ -33,6 +33,15 @@ import type { Database } from '#src/db/pool.ts';
 
 export type RollupLevel = '5m' | '1h' | '1d';
 
+/**
+ * I livelli che hanno una riga in `stats.rollup_state`.
+ *
+ * `daily_close` non e' un livello di aggregazione: non ha bucket e non ha
+ * arretrato misurabile in bucket. Condivide il segnalibro e il lock, e basta —
+ * per questo sta nel tipo dello STATO e non in quello dei livelli.
+ */
+type StateLevel = RollupLevel | 'daily_close';
+
 export type RollupResult = {
   level: RollupLevel;
   from: Date;
@@ -66,7 +75,7 @@ const LOOKBACK_BUCKETS = 2;
 
 type StateRow = { watermark: Date; max_buckets: number };
 
-async function lockState(db: Database, level: RollupLevel): Promise<StateRow> {
+async function lockState(db: Database, level: StateLevel): Promise<StateRow> {
   // `FOR UPDATE` sulla riga di livello E' il lock del job. Con una sola
   // istanza applicativa un advisory lock difenderebbe da una concorrenza che
   // per costruzione non esiste — e un lock che nessuno esercita e' codice che
@@ -308,4 +317,95 @@ export async function rewind(db: Database, level: RollupLevel, to: Date): Promis
        SET watermark = ${to}, behind_buckets = 0, updated_at = now()
      WHERE level = ${level} AND watermark > ${to}
   `.execute(db);
+}
+
+/**
+ * La chiusura giornaliera: unici, sessioni e secondi.
+ *
+ * SCRIVE CIO' CHE NON E' ADDITIVO, e per questo non puo' venire dal livello
+ * sotto. Gli unici non si sommano: «unici di ieri piu' unici di oggi» non e'
+ * «unici dei due giorni», perche' chi ha giocato entrambi conta una volta. Il
+ * conteggio si fa con un `count(distinct)` sulle presenze, e si fa qui.
+ *
+ * La riga di rete ha un conteggio PROPRIO, non la somma delle modalita': chi
+ * ha giocato a due modalita' comparirebbe due volte. E' l'invariante I6, e il
+ * database non puo' imporla — la impone questo codice.
+ *
+ * Un giorno chiuso si marca `final` e da quel momento non si riscrive: un
+ * numero che il committente ha gia' letto e annotato non puo' cambiare in
+ * silenzio.
+ */
+export async function dailyClose(db: Database, now = new Date()): Promise<{ days: number }> {
+  return db.transaction().execute(async (tx) => {
+    const state = await lockState(tx, 'daily_close');
+
+    const days = await sql<{ day: string; is_today: boolean }>`
+      SELECT g::date::text AS day, (g::date = stats.civil_day(${now})) AS is_today
+        FROM generate_series(
+               LEAST(stats.civil_day(${state.watermark}), stats.civil_day(${now}))::timestamp,
+               stats.civil_day(${now})::timestamp,
+               interval '1 day') g
+       ORDER BY 1
+       -- Tetto di sicurezza: dopo un fermo lungo si recupera un pezzo per
+       -- volta, come per gli altri livelli.
+       LIMIT 31
+    `.execute(tx);
+
+    for (const { day, is_today } of days.rows) {
+      // Solo i giorni CHIUSI diventano definitivi. Il giorno in corso si
+      // riscrive a ogni giro, ed e' giusto: sta ancora succedendo.
+      const final = !is_today;
+
+      await sql`
+        UPDATE stats.rollup_1d d SET
+          uniques         = COALESCE(u.n, 0),
+          sessions        = COALESCE(p.sessions, 0),
+          session_seconds = COALESCE(p.secs, 0),
+          final           = ${final},
+          rebuilt_at      = CASE WHEN ${final} THEN now() ELSE d.rebuilt_at END
+        FROM (SELECT ${day}::date AS day) k
+        LEFT JOIN LATERAL (
+          SELECT count(*)::int AS n FROM stats.player_day WHERE day = k.day) u ON true
+        LEFT JOIN LATERAL (
+          SELECT sum(sessions)::int AS sessions, sum(seconds_online)::bigint AS secs
+            FROM stats.player_day WHERE day = k.day) p ON true
+        WHERE d.day = k.day AND d.server_id = 0 AND d.final = false
+      `.execute(tx);
+
+      await sql`
+        UPDATE stats.rollup_1d d SET uniques = s.n, final = ${final}
+          FROM (SELECT server_id, count(DISTINCT player_id)::int AS n
+                  FROM stats.player_day_server WHERE day = ${day}::date
+                 GROUP BY server_id) s
+         WHERE d.day = ${day}::date AND d.server_id = s.server_id AND d.final = false
+      `.execute(tx);
+
+      // Gli unici PER MODALITA' sono derivati e ricostruibili: la fonte e'
+      // player_day_server, chiavata sul server, che non invecchia quando
+      // l'operatore riclassifica.
+      await sql`
+        INSERT INTO stats.mode_day_unique AS t (day, mode_id, uniques, final)
+        SELECT ${day}::date, m.mode_id, count(DISTINCT ps.player_id)::int, ${final}
+          FROM stats.player_day_server ps
+          JOIN stats.v_server_mode m ON m.server_id = ps.server_id
+         WHERE ps.day = ${day}::date AND m.mode_id IS NOT NULL
+         GROUP BY m.mode_id
+        ON CONFLICT (day, mode_id) DO UPDATE SET
+          uniques = EXCLUDED.uniques, final = EXCLUDED.final, computed_at = now()
+        WHERE t.final = false
+      `.execute(tx);
+    }
+
+    const last = days.rows[days.rows.length - 1];
+    if (last) {
+      await sql`
+        UPDATE stats.rollup_state
+           SET watermark = ${last.day}::date::timestamptz, updated_at = now(),
+               rows_written = ${days.rows.length}
+         WHERE level = 'daily_close'
+      `.execute(tx);
+    }
+
+    return { days: days.rows.length };
+  });
 }

@@ -187,13 +187,25 @@ async function insertCycle(db: Database, c: CycleRow, samples: ServerCount[]): P
 export type IngestSettings = {
   nominalDeltaS: number;
   maxDeltaS: number;
+  graceTicks: number;
+  reaperAfterS: number;
 };
 
 export async function readSettings(db: Database): Promise<IngestSettings> {
-  const res = await sql<{ nominal_delta_s: number; max_delta_s: number }>`
-    SELECT nominal_delta_s, max_delta_s FROM stats.ingest_state WHERE id = 1
+  const res = await sql<{
+    nominal_delta_s: number;
+    max_delta_s: number;
+    grace_ticks: number;
+    reaper_after_s: number;
+  }>`
+    SELECT nominal_delta_s, max_delta_s, grace_ticks, reaper_after_s FROM stats.ingest_state WHERE id = 1
   `.execute(db);
   const row = res.rows[0];
   if (!row) throw new Error('stats.ingest_state vuota: la migration 011 non e` stata applicata');
-  return { nominalDeltaS: Number(row.nominal_delta_s), maxDeltaS: Number(row.max_delta_s) };
+  return {
+    nominalDeltaS: Number(row.nominal_delta_s),
+    maxDeltaS: Number(row.max_delta_s),
+    graceTicks: Number(row.grace_ticks),
+    reaperAfterS: Number(row.reaper_after_s),
+  };
 }

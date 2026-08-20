@@ -222,6 +222,55 @@ async function deltasIn(db: Database, w: Window): Promise<number[]> {
   return res.rows.map((r) => Number(r.delta_s));
 }
 
+/** Quanti giorni copre il grafico degli unici, indipendentemente dal range. */
+const UNIQUES_DAYS = 30;
+
+/**
+ * Gli unici giornalieri, esatti.
+ *
+ * Vengono dalla riga di RETE, che ha un conteggio proprio: sommare gli unici
+ * delle modalita' conterebbe due volte chi ha giocato a due modalita', e con
+ * 2,2 modalita' medie a testa cinquemila persone diventerebbero undicimila —
+ * un numero che cresce con la rotazione fra modalita' invece che con le
+ * persone.
+ *
+ * `final` viaggia con ogni punto: un giorno gia' chiuso non cambiera' piu', il
+ * giorno vivo si', e la UI deve poterli distinguere invece di far sembrare
+ * definitivo un numero che sta ancora salendo.
+ */
+async function uniquesRows(
+  db: Database,
+  to: Date,
+): Promise<Array<{ day: string; uniques: number; final: boolean }>> {
+  const res = await sql<{ t: string; uniques: number; final: boolean }>`
+    SELECT extract(epoch FROM (day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
+           uniques, final
+      FROM stats.v_online_1d
+     WHERE mode_key = '__network__'
+       AND day >= (stats.civil_day(${to}) - ${UNIQUES_DAYS * 2}::int)
+       AND day <= stats.civil_day(${to})
+     ORDER BY day
+  `.execute(db);
+  return res.rows.map((r) => ({ day: r.t, uniques: Number(r.uniques), final: r.final }));
+}
+
+/**
+ * I giocatori DISTINTI del periodo. Non la somma degli unici giornalieri.
+ *
+ * Chi ha giocato in tre giorni diversi conta una volta: la metrica e'
+ * «giocatori», non «giocatori-giorno», e le due differiscono di un fattore che
+ * cresce con la lunghezza del periodo.
+ */
+async function distinctPlayers(db: Database, from: Date, to: Date): Promise<number | null> {
+  const res = await sql<{ n: string }>`
+    SELECT count(DISTINCT player_id)::bigint::text AS n
+      FROM stats.player_day
+     WHERE day >= stats.civil_day(${from}) AND day < stats.civil_day(${to})
+  `.execute(db);
+  const n = res.rows[0]?.n;
+  return n === undefined ? null : Number(n);
+}
+
 async function modeLabels(db: Database): Promise<Map<string, { label: string; order: number }>> {
   const res = await sql<{ mode_key: string; display_name: string; sort_order: number }>`
     SELECT DISTINCT mode_key, display_name, sort_order FROM stats.v_server_mode
@@ -381,11 +430,14 @@ export async function buildOverview(db: Database, range: Range, now = new Date()
   const w = windowOf(range, now);
 
   const t0 = Date.now();
-  const [rows, heat, deltas, labels] = await Promise.all([
+  const [rows, heat, deltas, labels, daily, distinctNow, distinctBefore] = await Promise.all([
     seriesRows(db, range, w),
     heatmapRows(db, w),
     deltasIn(db, w),
     modeLabels(db),
+    uniquesRows(db, w.curTo),
+    distinctPlayers(db, w.curFrom, w.curTo),
+    distinctPlayers(db, w.prevFrom, w.curFrom),
   ]);
   const queryMs = Date.now() - t0;
 
@@ -445,6 +497,15 @@ export async function buildOverview(db: Database, range: Range, now = new Date()
 
   const kpi = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec);
   const kpiPrev = kpiOf(prev, w.prevFrom, w.curFrom, plan.bucketSec);
+  kpi.uniques = distinctNow;
+  kpiPrev.uniques = distinctBefore;
+
+  // Il grafico degli unici mostra gli ultimi trenta giorni e li confronta con
+  // i trenta precedenti, qualunque sia il range scelto: e' una domanda sulle
+  // PERSONE, che si muove su scala di giorni, non sulla finestra del grafico
+  // dell'online.
+  const recent = daily.slice(-UNIQUES_DAYS);
+  const earlier = daily.slice(0, Math.max(0, daily.length - UNIQUES_DAYS)).slice(-UNIQUES_DAYS);
 
   const payload: OverviewPayload = {
     v: CONTRACT_VERSION,
@@ -466,7 +527,14 @@ export async function buildOverview(db: Database, range: Range, now = new Date()
     // pannello mente a chi lo paga.
     comparable: Math.abs(kpi.coverage - kpiPrev.coverage) <= 0.02,
     heatmap: { v, w: wArr, n: nArr },
-    uniques: { t: [], v: [], prev: [], final: [] }, // passo 6
+    uniques: {
+      t: recent.map((d) => Number(d.day)),
+      v: recent.map((d) => d.uniques),
+      // Allineata per POSIZIONE, non per data: il punto i del periodo
+      // precedente sta sotto il punto i di questo.
+      prev: recent.map((_, i) => earlier[i]?.uniques ?? null),
+      final: recent.map((d) => d.final),
+    },
     geo: null, // passo 7
   };
 

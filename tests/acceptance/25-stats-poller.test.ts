@@ -86,6 +86,12 @@ beforeEach(async () => {
   await sql.query(`
     DELETE FROM stats.sample_server;
     DELETE FROM stats.poll_cycle;
+    -- Le sessioni referenziano i server: vanno via prima, o la chiave esterna
+    -- blocca la pulizia.
+    DELETE FROM stats.session_open;
+    DELETE FROM stats.session;
+    DELETE FROM stats.player_day_server;
+    DELETE FROM stats.player_day;
     DELETE FROM stats.server WHERE server_id > 1;
     UPDATE stats.ingest_state
        SET last_tick_at = NULL, last_ok_tick_at = NULL, last_tick_players = NULL,

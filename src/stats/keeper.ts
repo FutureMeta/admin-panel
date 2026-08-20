@@ -24,7 +24,7 @@ import type { JobRegistry, RunningJob } from '#src/jobs/scheduler.ts';
 import { startJob } from '#src/jobs/scheduler.ts';
 import { createGameRedis } from './game-redis.ts';
 import { StatsPoller } from './poller.ts';
-import { type RollupLevel, type RollupResult, runRollup } from './rollup.ts';
+import { dailyClose, type RollupLevel, type RollupResult, runRollup } from './rollup.ts';
 
 /**
  * Cadenze e attese, dal documento normativo.
@@ -148,6 +148,38 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
           run: () => poller.runOnce(),
           successMessage: 'ciclo di campionamento',
           failureMessage: 'ciclo non registrato: quello slot restera` un buco, non uno zero',
+        },
+        opts.logger,
+        opts.registry,
+      ),
+    );
+
+    jobs.push(
+      startJob(
+        {
+          name: 'stats-session-reaper',
+          intervalMs: 60_000,
+          retryMs: 15_000,
+          run: () => poller.reapSessions(),
+          successMessage: 'sessioni scadute chiuse',
+          failureMessage: 'reaper fermo: le sessioni interrotte resteranno aperte e le durate salteranno',
+        },
+        opts.logger,
+        opts.registry,
+      ),
+    );
+
+    jobs.push(
+      startJob(
+        {
+          name: 'stats-daily-close',
+          // Ogni quarto d'ora: il giorno vivo si riscrive, quelli chiusi si
+          // marcano definitivi una volta sola e non si toccano piu'.
+          intervalMs: 900_000,
+          retryMs: 300_000,
+          run: () => dailyClose(rollupDb),
+          successMessage: 'chiusura giornaliera',
+          failureMessage: 'chiusura giornaliera ferma: unici e sessioni resteranno a zero',
         },
         opts.logger,
         opts.registry,

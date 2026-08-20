@@ -35,6 +35,7 @@ import {
   TRANSIT_SERVER_ID,
   writeCycle,
 } from './ingest.ts';
+import { SessionTracker } from './sessions.ts';
 
 /** Oltre questo il ciclo ha sforato il proprio slot e va chiuso. */
 const CYCLE_BUDGET_MS = 8_000;
@@ -70,7 +71,8 @@ export class StatsPoller {
   readonly #runId = randomUUID();
   readonly #opts: PollerOptions;
   readonly #dictionary = new ServerDictionary();
-  #settings: IngestSettings = { nominalDeltaS: 30, maxDeltaS: 60 };
+  readonly #sessions = new SessionTracker();
+  #settings: IngestSettings = { nominalDeltaS: 30, maxDeltaS: 60, graceTicks: 3, reaperAfterS: 900 };
 
   /** L'ultimo tick RIUSCITO: e' da qui che si misura la copertura. */
   #lastOkTickAt: number | null = null;
@@ -91,6 +93,23 @@ export class StatsPoller {
   get runId(): string {
     return this.#runId;
   }
+  /** Le sessioni aperte: il reaper e le metriche passano da qui. */
+  get sessions(): SessionTracker {
+    return this.#sessions;
+  }
+
+  /**
+   * Chiude le sessioni che nessun tick mostra piu'.
+   *
+   * La grazia copre i buchi brevi; questo copre il caso in cui il giocatore e'
+   * sparito e nessuno lo ha piu' visto — tipicamente perche' il pannello era
+   * fermo. Gira come job a se' perche' deve girare anche quando il
+   * campionamento non riesce: e' proprio allora che serve.
+   */
+  async reapSessions(now = new Date()): Promise<Record<string, unknown>> {
+    const closed = await this.#sessions.reap(this.#opts.db, now);
+    return { chiuse: closed, inCorso: this.#sessions.openCount };
+  }
   get intervalMs(): number {
     return this.#settings.nominalDeltaS * 1_000;
   }
@@ -99,6 +118,10 @@ export class StatsPoller {
   async start(): Promise<void> {
     this.#settings = await readSettings(this.#opts.db);
     await this.#dictionary.load(this.#opts.db);
+    await this.#sessions.load(this.#opts.db, {
+      graceTicks: this.#settings.graceTicks,
+      reaperAfterS: this.#settings.reaperAfterS,
+    });
   }
 
   /**
@@ -197,6 +220,13 @@ export class StatsPoller {
       );
     }
 
+    // Le sessioni si aggiornano DOPO che il ciclo e' stato registrato: se la
+    // scrittura del grezzo fallisce, non si apre nessuna sessione per un tick
+    // che non esiste.
+    const sessions = await this.#sessions.observe(this.#opts.db, tickAt, read.players, (key) =>
+      this.#dictionary.idOf(key),
+    );
+
     this.#lastOkTickAt = tickMs;
     this.#previousIds = new Set(read.players.keys());
     this.#transition(true, null);
@@ -217,6 +247,9 @@ export class StatsPoller {
       players: read.players.size,
       servers: serversSeen,
       deltaS: cycle.deltaS,
+      aperte: sessions.opened,
+      chiuse: sessions.closed,
+      inCorso: this.#sessions.openCount,
       ms: cycle.durationMs,
       ...(this.#cycles % SUMMARY_EVERY === 0 ? { cicliDaAvvio: this.#cycles } : {}),
     };

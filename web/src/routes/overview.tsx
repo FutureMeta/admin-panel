@@ -637,9 +637,7 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
                           ? "ora inesistente per il cambio d'ora"
                           : c.avg === null
                             ? 'non rilevato'
-                            : `${numero.format(Math.round(c.avg))} giocatori · media di ${c.occurrences} ${
-                                c.occurrences === 1 ? 'ora' : 'ore'
-                              }`,
+                            : `${numero.format(Math.round(c.avg))} giocatori`,
                       )
                     }
                     style={{ height: 20, borderRadius: 3, background: colour(c) }}
@@ -765,9 +763,7 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
                   hover.at(
                     e,
                     GIORNO_MESE.format(new Date((t[i] as number) * 1000)),
-                    n === null
-                      ? 'non rilevato'
-                      : `${numero.format(n)} giocatori${final[i] ? '' : ' · giorno in corso'}`,
+                    n === null ? 'non rilevato' : `${numero.format(n)} giocatori`,
                   )
                 }
               />

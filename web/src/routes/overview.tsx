@@ -644,7 +644,7 @@ function movingAverage(values: (number | null)[], window = 7): (number | null)[]
   });
 }
 
-function DailyUniques({ data }: { data: Overview }) {
+function DailyUniques({ data, label }: { data: Overview; label: string }) {
   const { t, v, final } = data.uniques;
   const scale = niceScale(Math.max(1, ...v.filter((x): x is number => x !== null)), 2);
   const max = scale.top;
@@ -681,7 +681,7 @@ function DailyUniques({ data }: { data: Overview }) {
             Giocatori unici
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            Ultimi 30 giorni · media mobile 7g · Europe/Rome
+            {label} · media mobile 7g · Europe/Rome
           </div>
         </div>
         <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--tx-secondary)' }}>
@@ -1022,7 +1022,7 @@ export function OverviewPage() {
         <Heatmap data={data} label={labelOf(range)} />
       </div>
 
-      <DailyUniques data={data} />
+      <DailyUniques data={data} label={labelOf(range)} />
 
       {/*
         La mappa compare SOLO quando c'e' qualcosa da mostrare.

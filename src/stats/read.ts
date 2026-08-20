@@ -806,8 +806,28 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
   // i trenta precedenti, qualunque sia il range scelto: e' una domanda sulle
   // PERSONE, che si muove su scala di giorni, non sulla finestra del grafico
   // dell'online.
-  // Tutti i giorni letti sono del periodo: la query li ha gia' tagliati.
-  const recent = daily;
+  // L'ASSE DEI GIORNI E' UNA GRIGLIA, come quello dei grafici a linea.
+  //
+  // Disegnando solo i giorni tornati dalla query, un giorno senza riga fa
+  // FINIRE la serie invece di lasciare un buco — ed e' il caso normale del
+  // giorno in corso: la riga giornaliera nasce quando il primo bucket orario
+  // viene aggregato, quindi a mezzanotte e mezza non c'e' ancora. Il grafico
+  // sembrava fermo a ieri, e non c'era modo di distinguerlo da un guasto del
+  // campionamento.
+  //
+  // Il buco e' un valore: qui vale `null`, e la barra semplicemente non si
+  // disegna.
+  const dayAxis: number[] = [];
+  {
+    let d = shiftDays(romeMidnight(now), -daysOf(range));
+    const last = romeMidnight(now);
+    while (d.getTime() <= last.getTime()) {
+      dayAxis.push(Math.floor(d.getTime() / 1_000));
+      d = shiftDays(d, 1);
+    }
+  }
+  const dailyByDay = new Map(daily.map((d) => [Number(d.day), d]));
+  const recent = dayAxis.map((t) => dailyByDay.get(t) ?? null);
 
   const payload: OverviewPayload = {
     v: CONTRACT_VERSION,
@@ -824,9 +844,9 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     kpi,
     heatmap: { v, w: wArr, n: nArr },
     uniques: {
-      t: recent.map((d) => Number(d.day)),
-      v: recent.map((d) => d.uniques),
-      final: recent.map((d) => d.final),
+      t: dayAxis,
+      v: recent.map((d) => d?.uniques ?? null),
+      final: recent.map((d) => d?.final ?? false),
     },
     geo: geoOf('__network__'),
     geoEnabled: facts.geoEnabled,
@@ -882,9 +902,9 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       // `heatmapModeRows`): cambia solo il numeratore.
       heatmap: { v: modeHeat, w: wArr, n: nArr },
       uniques: {
-        t: recent.map((d) => Number(d.day)),
-        v: recent.map((d) => byDay?.get(Number(d.day))?.uniques ?? null),
-        final: recent.map((d) => byDay?.get(Number(d.day))?.final ?? false),
+        t: dayAxis,
+        v: dayAxis.map((t) => byDay?.get(t)?.uniques ?? null),
+        final: dayAxis.map((t) => byDay?.get(t)?.final ?? false),
       },
       geo: geoOf(m),
       geoEnabled: facts.geoEnabled,

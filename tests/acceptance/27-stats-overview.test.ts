@@ -273,3 +273,66 @@ describe('il record di sempre', () => {
     expect(payload.record).toBeNull();
   });
 });
+
+describe('gli unici seguono il selettore, e il giorno mancante e` un buco', () => {
+  beforeEach(async () => {
+    await dictionary();
+    await seedHours(40);
+  });
+
+  it('la finestra e` quella del range, non trenta giorni fissi', async () => {
+    const week = await buildOverview(db, '7d');
+    const month = await buildOverview(db, '30d');
+
+    // Chi clicca «7g» si aspetta che la pagina risponda: prima questo
+    // grafico restava a trenta giorni qualunque cosa si scegliesse.
+    expect(week.payload.uniques.t.length).toBeLessThan(month.payload.uniques.t.length);
+    expect(week.payload.uniques.t).toHaveLength(8);
+    expect(month.payload.uniques.t).toHaveLength(31);
+  });
+
+  it("l'asse arriva a OGGI anche se la riga di oggi non esiste ancora", async () => {
+    // La riga giornaliera nasce quando il primo bucket orario viene
+    // aggregato: a mezzanotte e mezza non c`e` ancora. Disegnando solo i
+    // giorni tornati dalla query, il grafico finiva a ieri — e non c`era
+    // modo di distinguerlo da un guasto del campionamento.
+    await sql.query('DELETE FROM stats.rollup_1d WHERE day = stats.civil_day(now())');
+
+    const { payload } = await buildOverview(db, '7d');
+    const t = payload.uniques.t;
+    const last = t[t.length - 1] as number;
+
+    // L`ultimo punto E` oggi...
+    const today = new Date();
+    const romeToday = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Rome',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(today);
+    const lastLabel = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Europe/Rome',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(last * 1000));
+    expect(lastLabel).toBe(romeToday);
+
+    // ...e il suo valore e` `null`, non zero: il buco e` un valore, e uno
+    // zero direbbe «oggi non e` venuto nessuno».
+    expect(payload.uniques.v[payload.uniques.v.length - 1]).toBeNull();
+  });
+
+  it("l'asse dei giorni non salta ne` ripete", async () => {
+    const { payload } = await buildOverview(db, '30d');
+    const t = payload.uniques.t;
+    for (let i = 1; i < t.length; i += 1) {
+      const delta = (t[i] as number) - (t[i - 1] as number);
+      // 23, 24 o 25 ore: i giorni di cambio ora sono giorni civili come gli
+      // altri, e l`asse li deve contenere senza doppioni.
+      expect(delta, `punto ${i}`).toBeGreaterThanOrEqual(82_800);
+      expect(delta, `punto ${i}`).toBeLessThanOrEqual(90_000);
+    }
+    expect(new Set(t).size).toBe(t.length);
+  });
+});

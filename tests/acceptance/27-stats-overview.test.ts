@@ -318,9 +318,10 @@ describe('gli unici seguono il selettore, e il giorno mancante e` un buco', () =
     }).format(new Date(last * 1000));
     expect(lastLabel).toBe(romeToday);
 
-    // ...e il suo valore e` `null`, non zero: il buco e` un valore, e uno
-    // zero direbbe «oggi non e` venuto nessuno».
-    expect(payload.uniques.v[payload.uniques.v.length - 1]).toBeNull();
+    // ...e il suo valore viene dalla FONTE, non dal rollup. Zero qui significa
+    // «ho guardato `player_day` e oggi non c'e` ancora nessuno», che e` un
+    // fatto: un `null` direbbe «non lo so», e invece lo sappiamo.
+    expect(payload.uniques.v[payload.uniques.v.length - 1]).toBe(0);
   });
 
   it("l'asse dei giorni non salta ne` ripete", async () => {
@@ -376,5 +377,51 @@ describe('la distribuzione per modalita` NON segue il selettore', () => {
     // dello storico orario: se leggesse il periodo, questi numeri sarebbero
     // altri.
     expect(payload.current?.byMode['arena']).toBeCloseTo(125, 0);
+  });
+});
+
+describe('gli unici di OGGI non aspettano il rollup', () => {
+  beforeEach(async () => {
+    await dictionary();
+    await seedHours(10);
+  });
+
+  it('oggi si legge da player_day anche senza riga giornaliera', async () => {
+    // La riga di rollup_1d nasce solo dopo che la PRIMA ORA del giorno e'
+    // chiusa e aggregata: fra mezzanotte e circa l'1:20 non esiste. Prima
+    // di questa correzione il grafico restava senza barra per oggi, e la
+    // carta KPI mostrava un trattino, ogni notte.
+    await sql.query('DELETE FROM stats.rollup_1d WHERE day = stats.civil_day(now())');
+    await sql.query(
+      `INSERT INTO stats.player_day (day, player_id, first_seen_at, last_seen_at, sessions)
+       SELECT stats.civil_day(now()), g, now(), now(), 1
+         FROM generate_series(1, 37) g
+       ON CONFLICT DO NOTHING`,
+    );
+
+    const { payload } = await buildOverview(db, '7d');
+    const last = payload.uniques.v[payload.uniques.v.length - 1];
+    expect(last).toBe(37);
+
+    // E non e' definitivo: il giorno sta ancora succedendo.
+    expect(payload.uniques.final[payload.uniques.final.length - 1]).toBe(false);
+  });
+
+  it('la fonte vince sul rollup, che e` indietro di un quarto d`ora', async () => {
+    // La chiusura giornaliera ricopia questo stesso conteggio ogni quindici
+    // minuti: nel frattempo la fonte e' avanti, e mostrare il numero vecchio
+    // sarebbe una scelta senza vantaggi.
+    await sql.query(
+      `INSERT INTO stats.player_day (day, player_id, first_seen_at, last_seen_at, sessions)
+       SELECT stats.civil_day(now()), g, now(), now(), 1
+         FROM generate_series(1, 50) g
+       ON CONFLICT DO NOTHING`,
+    );
+    await sql.query(
+      'UPDATE stats.rollup_1d SET uniques = 9 WHERE day = stats.civil_day(now()) AND server_id = 0',
+    );
+
+    const { payload } = await buildOverview(db, '7d');
+    expect(payload.uniques.v[payload.uniques.v.length - 1]).toBe(50);
   });
 });

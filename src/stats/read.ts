@@ -504,6 +504,32 @@ async function currentMix(db: Database): Promise<{ at: number; byMode: Record<st
   return { at: Number(first.at), byMode };
 }
 
+/**
+ * Gli unici del giorno IN CORSO, presi da `player_day` invece che dai rollup.
+ *
+ * PERCHE' NON DAL ROLLUP. `rollup_1d` nasce da `rollup_1h`, che scrive un
+ * bucket solo quando l'ora e' CHIUSA: la riga giornaliera di oggi non esiste
+ * prima che la prima ora del giorno sia finita e aggregata — fra mezzanotte e
+ * circa l'1:20 non c'e' affatto. Il grafico degli unici restava senza barra
+ * per oggi, e la carta KPI mostrava un trattino, ogni notte.
+ *
+ * `player_day` invece ha una riga per (giorno, giocatore) dall'apertura della
+ * prima sessione, quindi il numero c'e' entro trenta secondi dalla
+ * mezzanotte. E' anche piu' AGGIORNATO del rollup durante il giorno: la
+ * chiusura giornaliera ricopia questo stesso conteggio ogni quarto d'ora.
+ *
+ * Un giorno solo, quindi il costo e' una partizione e un conteggio.
+ */
+async function liveDayUniques(db: Database, now: Date): Promise<number | null> {
+  const res = await sql<{ n: string }>`
+    SELECT count(*)::bigint::text AS n
+      FROM stats.player_day
+     WHERE day = stats.civil_day(${now})
+  `.execute(db);
+  const n = res.rows[0]?.n;
+  return n === undefined ? null : Number(n);
+}
+
 async function modeLabels(db: Database): Promise<Map<string, { label: string; order: number }>> {
   const res = await sql<{ mode_key: string; display_name: string; sort_order: number }>`
     SELECT DISTINCT mode_key, display_name, sort_order FROM stats.v_server_mode
@@ -714,6 +740,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     geo,
     facts,
     current,
+    liveUniques,
   ] = await Promise.all([
     seriesRows(db, range, w),
     heatmapRows(db, w),
@@ -727,6 +754,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     geoRows(db, w.curFrom, now),
     networkFacts(db),
     currentMix(db),
+    liveDayUniques(db, now),
   ]);
   const queryMs = Date.now() - t0;
 
@@ -865,6 +893,15 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     }
   }
   const dailyByDay = new Map(daily.map((d) => [Number(d.day), d]));
+
+  // Il giorno in corso viene dalla FONTE, non dal rollup: quest'ultimo lo
+  // conosce solo dopo che la prima ora e' chiusa, e fino ad allora oggi
+  // sarebbe un buco. Sovrascrive anche quando il rollup ce l'ha, perche' la
+  // fonte e' comunque piu' avanti di un quarto d'ora.
+  const todayKey = Math.floor(romeMidnight(now).getTime() / 1_000);
+  if (liveUniques !== null) {
+    dailyByDay.set(todayKey, { day: String(todayKey), uniques: liveUniques, final: false });
+  }
   const recent = dayAxis.map((t) => dailyByDay.get(t) ?? null);
 
   const payload: OverviewPayload = {

@@ -101,6 +101,15 @@ const EnvSchema = z.object({
    */
   DATABASE_ROLLUP_URL: z.string().min(1).optional(),
   /**
+   * Il ruolo di SOLA LETTURA delle statistiche: `metamc_stats`.
+   *
+   * Ha `default_transaction_read_only` impostato sul ruolo e vede le VISTE,
+   * non le tabelle di fatto: chi leggesse i rollup nudi disegnerebbe zeri al
+   * posto dei buchi e medie con il denominatore preso dalle righe sbagliate.
+   * Senza questa variabile le rotte rispondono 503, non 404.
+   */
+  DATABASE_STATS_URL: z.string().min(1).optional(),
+  /**
    * Il Redis di gioco. In questa installazione e' la stessa istanza del
    * pannello, quindi in assenza si usa REDIS_URL — ma con un client
    * dedicato, con i suoi timeout e senza autopipelining.

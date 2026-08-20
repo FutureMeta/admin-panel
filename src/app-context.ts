@@ -53,6 +53,11 @@ export type AppContext = {
    * nessuna connessione in piu' viene aperta.
    */
   statsIngest: StatsIngest | null;
+  /**
+   * Il pool di sola lettura delle statistiche. `null` finche' non e'
+   * configurato: le rotte rispondono 503 e il resto del pannello non cambia.
+   */
+  statsDb: Database | null;
   totpGuard: TotpReplayGuard;
   mailer: Mailer;
   /** Fase 2: la cache vera si scrive dietro questa interfaccia (§16.4). */
@@ -207,6 +212,17 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     }
   }
 
+  const statsPool = env.DATABASE_STATS_URL
+    ? createPool({
+        connectionString: env.DATABASE_STATS_URL,
+        max: 4,
+        applicationName: 'metamc-stats-read',
+        statementTimeout: '10s',
+        searchPath: 'stats, public',
+      })
+    : null;
+  const statsDb = statsPool ? createKysely(statsPool) : null;
+
   const shuttingDown = { value: false };
 
   return {
@@ -226,6 +242,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     skins,
     maintenance,
     statsIngest,
+    statsDb,
     totpGuard,
     mailer: opts.mailer,
     cache: new PassthroughCache(),
@@ -239,6 +256,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       // spegnimento.
       maintenance.stop();
       await statsIngest?.stop().catch(() => undefined);
+      await statsDb?.destroy().catch(() => undefined);
       await db.destroy().catch(() => undefined);
       await redis.quit().catch(() => undefined);
     },

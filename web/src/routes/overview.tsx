@@ -637,18 +637,46 @@ const GIORNO_MESE = new Intl.DateTimeFormat('it-IT', {
 });
 
 /** Media mobile a 7 giorni: la tendenza sotto il rumore del singolo giorno. */
-function movingAverage(values: (number | null)[], window = 7): (number | null)[] {
+/**
+ * La media mobile, e SOLO dove la finestra e' piena.
+ *
+ * La versione precedente mediava su «fino a» sette giorni: il primo punto era
+ * la media di uno, il quarto di quattro. La linea si chiamava «media mobile
+ * 7g» e per i primi sei punti era un'altra cosa — piu' irregolare proprio
+ * all'inizio, dove chi guarda cerca l'andamento.
+ *
+ * Adesso i punti senza finestra completa valgono `null`: la linea comincia al
+ * settimo giorno. Un tratto in meno e' preferibile a un tratto che mente.
+ */
+function movingAverage(values: (number | null)[], window: number): (number | null)[] {
   return values.map((_, i) => {
-    const slice = values.slice(Math.max(0, i - window + 1), i + 1).filter((v): v is number => v !== null);
-    return slice.length === 0 ? null : slice.reduce((a, b) => a + b, 0) / slice.length;
+    if (i + 1 < window) return null;
+    const slice = values.slice(i - window + 1, i + 1);
+    // Un solo giorno mancante e la media di quella finestra non e' calcolabile:
+    // farla sui giorni rimasti darebbe un numero piu' basso che sembra un calo.
+    if (slice.some((v) => v === null)) return null;
+    return (slice as number[]).reduce((a, b) => a + b, 0) / window;
   });
 }
 
-function DailyUniques({ data, label }: { data: Overview; label: string }) {
+/**
+ * Quanti giorni di media mobile, per periodo.
+ *
+ * Zero su 24h e 7g: una media a sette giorni su una finestra di sette giorni
+ * produce UN punto, e su ventiquattro ore nessuno. Mostrare una linea fatta di
+ * un punto solo, con la sua voce di legenda, promette un andamento che quel
+ * grafico non puo' contenere.
+ */
+function averageWindow(range: string): number {
+  return range === '24h' || range === '7d' ? 0 : 7;
+}
+
+function DailyUniques({ data, label, range }: { data: Overview; label: string; range: string }) {
   const { t, v, final } = data.uniques;
   const scale = niceScale(Math.max(1, ...v.filter((x): x is number => x !== null)), 2);
   const max = scale.top;
-  const avg = movingAverage(v);
+  const window = averageWindow(range);
+  const avg = window > 0 ? movingAverage(v, window) : v.map(() => null);
 
   const W2 = 1000;
   const H2 = 240;
@@ -681,7 +709,8 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
             Giocatori unici
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            {label} · media mobile 7g · Europe/Rome
+            {label}
+            {window > 0 ? ` · media mobile ${window}g` : null} · Europe/Rome
           </div>
         </div>
         <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--tx-secondary)' }}>
@@ -689,10 +718,12 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
             <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--ac)' }} />
             Unici del giorno
           </span>
-          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 14, height: 2, borderRadius: 2, background: 'var(--tx-secondary)' }} />
-            Media 7g
-          </span>
+          {window > 0 ? (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 14, height: 2, borderRadius: 2, background: 'var(--tx-secondary)' }} />
+              Media {window}g
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -1022,7 +1053,7 @@ export function OverviewPage() {
         <Heatmap data={data} label={labelOf(range)} />
       </div>
 
-      <DailyUniques data={data} label={labelOf(range)} />
+      <DailyUniques data={data} label={labelOf(range)} range={range} />
 
       {/*
         La mappa compare SOLO quando c'e' qualcosa da mostrare.

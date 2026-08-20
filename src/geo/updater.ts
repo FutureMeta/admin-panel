@@ -52,6 +52,20 @@ export function candidateUrls(now: Date): string[] {
   return [urlFor(y, m), urlFor(prevY, prevM)];
 }
 
+/**
+ * Il database porta la data di compilazione del MESE a cui appartiene: se e'
+ * quello corrente, non esiste niente di piu' nuovo da prendere.
+ *
+ * DB-IP pubblica una versione al mese e la sua `build_epoch` cade nei primi
+ * giorni del mese di riferimento, quindi confrontare anno e mese basta — e non
+ * richiede di ricordarsi quale URL si era scaricata l'ultima volta.
+ */
+function isCurrentMonth(buildEpoch: Date, now: Date): boolean {
+  return (
+    buildEpoch.getUTCFullYear() === now.getUTCFullYear() && buildEpoch.getUTCMonth() === now.getUTCMonth()
+  );
+}
+
 export type UpdateResult = {
   /** Falso quando il database in uso era gia' quello giusto. */
   downloaded: boolean;
@@ -89,6 +103,18 @@ export async function updateGeoDb(opts: UpdateOptions): Promise<UpdateResult> {
   // qui costa una riga e toglie di mezzo l'unico modo in cui questo job
   // fallisce per sempre senza che ci sia niente da riparare.
   await mkdir(dir, { recursive: true });
+
+  // GIA' AGGIORNATO: non si scarica niente.
+  //
+  // `startJob` esegue il primo giro all'avvio, quindi senza questo controllo
+  // ogni riavvio del pannello scaricherebbe, scompatterebbe, validerebbe e
+  // ricaricherebbe otto megabyte per rimettere al suo posto lo stesso file. Il
+  // campo `downloaded` esisteva per dire proprio questo e non poteva mai
+  // valere falso.
+  const loaded = opts.reader.status(now);
+  if (loaded.ready && loaded.buildEpoch && isCurrentMonth(loaded.buildEpoch, now)) {
+    return { downloaded: false, url: null, bytes: 0, ageDays: loaded.ageDays, ms: Date.now() - t0 };
+  }
 
   let lastError = 'nessun tentativo';
   for (const url of candidateUrls(now)) {

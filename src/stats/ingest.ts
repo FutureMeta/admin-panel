@@ -189,6 +189,19 @@ export type IngestSettings = {
   maxDeltaS: number;
   graceTicks: number;
   reaperAfterS: number;
+  /**
+   * Il verdetto della sonda del passo 0: il campo `ip` e' del giocatore o
+   * del proxy?
+   *
+   * NON E' UNA RIDONDANZA DI `GEO_MMDB_PATH`. Quella variabile dice DOVE
+   * sta il database; questa dice se qualcuno ha VERIFICATO che gli
+   * indirizzi siano dei giocatori. Se il campo fosse quello del proxy
+   * Velocity, ogni giocatore risolverebbe sull'indirizzo del datacenter:
+   * la mappa mostrerebbe il 95% da un paese solo, I5 verde, XX a zero.
+   * Plausibile e falso, cioe' il difetto che il passo 0 esiste per
+   * impedire.
+   */
+  geoEnabled: boolean;
 };
 
 export async function readSettings(db: Database): Promise<IngestSettings> {
@@ -197,8 +210,10 @@ export async function readSettings(db: Database): Promise<IngestSettings> {
     max_delta_s: number;
     grace_ticks: number;
     reaper_after_s: number;
+    geo_enabled: boolean | null;
   }>`
-    SELECT nominal_delta_s, max_delta_s, grace_ticks, reaper_after_s FROM stats.ingest_state WHERE id = 1
+    SELECT nominal_delta_s, max_delta_s, grace_ticks, reaper_after_s, geo_enabled
+      FROM stats.ingest_state WHERE id = 1
   `.execute(db);
   const row = res.rows[0];
   if (!row) throw new Error('stats.ingest_state vuota: la migration 011 non e` stata applicata');
@@ -207,5 +222,9 @@ export async function readSettings(db: Database): Promise<IngestSettings> {
     maxDeltaS: Number(row.max_delta_s),
     graceTicks: Number(row.grace_ticks),
     reaperAfterS: Number(row.reaper_after_s),
+    // `NULL` e `false` valgono uguale: SPENTA. Solo un `true` esplicito
+    // accende, ed e' il punto — la sonda del passo 0 va eseguita e il suo
+    // verdetto registrato, non presunto.
+    geoEnabled: row.geo_enabled === true,
   };
 }

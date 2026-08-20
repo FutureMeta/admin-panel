@@ -206,12 +206,26 @@ export async function registerHealthRoutes(app: FastifyInstance, ctx: AppContext
     // paese sbagliato, e lo fa in silenzio: la mappa continua a disegnarsi.
     // ALLARME A 45 GIORNI.
     const geo = ctx.statsIngest?.geo?.status();
-    if (geo?.ageDays !== undefined && geo.ageDays !== null) {
+    if (geo) {
+      // `ready` SEPARATA dall'eta', e non e' ridondanza.
+      //
+      // L'eta' vale `null` esattamente quando nessun database e' caricato,
+      // cioe' nel caso peggiore: volume nuovo, giro giornaliero che fallisce
+      // da settimane. Emettendo la sola eta', quella serie sparirebbe e la
+      // regola «allarme oltre 45 giorni» non scatterebbe mai — l'allarme si
+      // spegnerebbe proprio mentre il guasto peggiora.
       lines.push(
-        '# HELP metamc_geo_db_age_days giorni dalla compilazione del database geografico. Allarme a 45',
-        '# TYPE metamc_geo_db_age_days gauge',
-        `metamc_geo_db_age_days ${geo.ageDays}`,
+        '# HELP metamc_geo_db_ready 1 se un database geografico e` caricato, 0 altrimenti',
+        '# TYPE metamc_geo_db_ready gauge',
+        `metamc_geo_db_ready ${geo.ready ? 1 : 0}`,
       );
+      if (geo.ageDays !== null) {
+        lines.push(
+          '# HELP metamc_geo_db_age_days giorni dalla compilazione del database geografico. Allarme a 45',
+          '# TYPE metamc_geo_db_age_days gauge',
+          `metamc_geo_db_age_days ${geo.ageDays}`,
+        );
+      }
     }
 
     const builds = ctx.statsCache.buildTimes();

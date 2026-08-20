@@ -92,6 +92,48 @@ describe('il giro di aggiornamento', () => {
     expect(reader.countryOf('2.196.7.107')).toBe('IT');
   });
 
+  it('se il database in uso e` gia` di questo mese NON scarica niente', async () => {
+    const reader = new GeoReader();
+    let calls = 0;
+    const fetchImpl: typeof fetch = async () => {
+      calls += 1;
+      return reply(GOOD);
+    };
+
+    // Primo giro: scarica (buildEpoch della fixture = 1 agosto 2026).
+    await updateGeoDb({ path: dbPath, reader, logger, now: new Date('2026-08-20T10:00:00Z'), fetchImpl });
+    expect(calls).toBe(1);
+
+    // Secondo giro nello stesso mese: non c`e` niente di piu` nuovo da
+    // prendere. Senza questo controllo ogni riavvio del pannello scaricherebbe
+    // otto megabyte per rimettere al suo posto lo stesso file.
+    const again = await updateGeoDb({
+      path: dbPath,
+      reader,
+      logger,
+      now: new Date('2026-08-28T10:00:00Z'),
+      fetchImpl,
+    });
+    expect(calls).toBe(1);
+    expect(again.downloaded).toBe(false);
+    expect(again.url).toBeNull();
+    // E il lettore continua a rispondere: non aver scaricato non e` un guasto.
+    expect(reader.countryOf('8.8.8.8')).toBe('US');
+  });
+
+  it('il mese nuovo si scarica lo stesso', async () => {
+    const reader = new GeoReader();
+    let calls = 0;
+    const fetchImpl: typeof fetch = async () => {
+      calls += 1;
+      return reply(GOOD);
+    };
+
+    await updateGeoDb({ path: dbPath, reader, logger, now: new Date('2026-08-20T10:00:00Z'), fetchImpl });
+    await updateGeoDb({ path: dbPath, reader, logger, now: new Date('2026-09-02T10:00:00Z'), fetchImpl });
+    expect(calls).toBe(2);
+  });
+
   it('il 404 sul mese corrente NON e` un fallimento: si prova il precedente', async () => {
     const reader = new GeoReader();
     const asked: string[] = [];

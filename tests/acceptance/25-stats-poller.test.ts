@@ -99,19 +99,26 @@ beforeEach(async () => {
      WHERE id = 1;`);
 });
 
-type Seed = { id: number; server?: string; connectionMs?: number; key?: string };
+type Seed = { id: number; server?: string; connectionMs?: number; key?: string; ip?: string };
 
 async function online(players: Seed[]): Promise<void> {
   for (const p of players) {
     const hash: Record<string, string> = { identifier: String(p.id) };
     if (p.server !== undefined) hash['server'] = p.server;
     if (p.connectionMs !== undefined) hash['connection-time'] = String(p.connectionMs);
+    if (p.ip !== undefined) hash['ip'] = p.ip;
     await seed.hset(`metaverse:player:${p.key ?? `Player${p.id}`}`, hash);
   }
 }
 
-async function poller(): Promise<StatsPoller> {
-  const p = new StatsPoller({ db, redis: game, logger: silent, pattern: PATTERN });
+async function poller(countryOf?: (value: string | undefined) => string | null): Promise<StatsPoller> {
+  const p = new StatsPoller({
+    db,
+    redis: game,
+    logger: silent,
+    pattern: PATTERN,
+    ...(countryOf ? { countryOf } : {}),
+  });
   await p.start();
   return p;
 }
@@ -381,5 +388,51 @@ describe('i vincoli del database reggono cio` che il codice promette', () => {
     );
     expect(res.rows[0]).toMatchObject({ last_tick_at: at, last_ok_tick_at: at });
     expect(Number((res.rows[0] as { last_tick_players: number }).last_tick_players)).toBe(1);
+  });
+});
+
+describe('il cancello del passo 0: la sonda deve aver approvato', () => {
+  /** Finge un database geografico caricato e funzionante. */
+  const alwaysItaly = () => 'IT';
+
+  it('con geo_enabled NULL il paese resta nullo, anche col lettore pronto', async () => {
+    await sql.query('UPDATE stats.ingest_state SET geo_enabled = NULL WHERE id = 1');
+    await online([{ id: 1, server: 'duels_1', connectionMs: Date.now(), ip: '2.196.7.107' }]);
+
+    await (await poller(alwaysItaly)).runOnce();
+
+    const r = await sql.query<{ country: string | null }>(
+      'SELECT country FROM stats.player_day WHERE player_id = 1',
+    );
+    // NULL, non IT: senza il verdetto della sonda non si sa se quel campo
+    // sia l'indirizzo del giocatore o quello del proxy, e una mappa
+    // costruita sul proxy sarebbe plausibile e falsa.
+    expect(r.rows[0]?.country ?? null).toBeNull();
+  });
+
+  it('con geo_enabled TRUE il paese si registra', async () => {
+    await sql.query('UPDATE stats.ingest_state SET geo_enabled = TRUE WHERE id = 1');
+    await online([{ id: 2, server: 'duels_1', connectionMs: Date.now(), ip: '2.196.7.107' }]);
+
+    await (await poller(alwaysItaly)).runOnce();
+
+    const r = await sql.query<{ country: string | null }>(
+      'SELECT country FROM stats.player_day WHERE player_id = 2',
+    );
+    expect(r.rows[0]?.country).toBe('IT');
+  });
+
+  it('con geo_enabled TRUE ma senza risoluzione configurata resta nullo', async () => {
+    await sql.query('UPDATE stats.ingest_state SET geo_enabled = TRUE WHERE id = 1');
+    await online([{ id: 3, server: 'duels_1', connectionMs: Date.now(), ip: '2.196.7.107' }]);
+
+    // Nessun file .mmdb: le due condizioni sono indipendenti e servono
+    // entrambe.
+    await (await poller()).runOnce();
+
+    const r = await sql.query<{ country: string | null }>(
+      'SELECT country FROM stats.player_day WHERE player_id = 3',
+    );
+    expect(r.rows[0]?.country ?? null).toBeNull();
   });
 });

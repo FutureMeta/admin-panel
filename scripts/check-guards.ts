@@ -33,6 +33,17 @@ const GEO_DIR = join('src', 'geo');
 /** L'unico file fuori da src/geo in cui un indirizzo puo' comparire: e' dove
  *  viene letto dall'hash e convertito, e non ne esce. */
 const GEO_LOOKUP_FILE = join('src', 'stats', 'game-redis.ts');
+const SCRIPTS_DIR = 'scripts';
+/**
+ * Dove valgono le regole geografiche.
+ *
+ * La cartella degli script E' INCLUSA, e non e' zelo: la sonda del passo 0
+ * legge lo stesso campo, e chi la esegue ne redirige l'uscita su un file. Una
+ * riga di stampa aggiunta li' domani passerebbe la CI e finirebbe su disco —
+ * cioe' esattamente la cosa che queste guardie dichiarano di impedire.
+ */
+const inGeoScope = (rel: string) =>
+  rel.startsWith(STATS_DIR + sep) || rel.startsWith(GEO_DIR + sep) || rel.startsWith(SCRIPTS_DIR + sep);
 /** File a cui e' concesso nominare i ruoli perche' ne sono la definizione o il test. */
 const AUTHZ_ALLOWLIST = [
   join('src', 'db', 'types.ts'), // l'interfaccia DB nomina le colonne, non decide
@@ -46,6 +57,14 @@ type Rule = {
   pattern: RegExp;
   /** true se il file e' esente */
   exempt: (rel: string) => boolean;
+  /**
+   * Cerca sul TESTO INTERO invece che riga per riga.
+   *
+   * Serve alle regole che devono tenere insieme due token che il formattatore
+   * puo' separare con un a capo — per esempio `logger.info(` e l'oggetto di
+   * contesto che lo segue.
+   */
+  multiline?: boolean;
 };
 
 const isInAuthz = (rel: string) => rel.startsWith(AUTHZ_DIR + sep) || rel === AUTHZ_DIR;
@@ -117,7 +136,27 @@ const RULES: Rule[] = [
     id: 'geo/no-ip-in-logs',
     why: "§8.7: il rischio non e` il logger che si controlla, e` l'oggetto errore — un throw con l'hash Redis nel contesto serializza `address` e `ip` dentro lo stack.",
     pattern: /logger\s*\.\s*\w+\s*\(\s*\{[^}]*\b(ip|address)\b|JSON\s*\.\s*stringify\s*\(\s*\w*(hash|Hash)\b/,
-    exempt: (rel) => !(rel.startsWith(STATS_DIR + sep) || rel.startsWith(GEO_DIR + sep)),
+    exempt: (rel) => !inGeoScope(rel),
+    // PER FILE INTERO, non riga per riga.
+    //
+    // Il formattatore va a capo a 110 colonne, quindi una chiamata di log un
+    // po` lunga finisce spezzata: `logger.info(` su una riga e l'oggetto sulla
+    // successiva. Una regola per riga non la vede piu' — e quella e'
+    // esattamente la forma che il codice assume dopo il primo `lint:fix`.
+    // La guardia era stata provata a riga singola, che e' l'unica forma che
+    // in pratica non capita.
+    multiline: true,
+  },
+  {
+    id: 'geo/no-ip-interpolated',
+    why: "§8.7: la redazione di pino lavora sui PERCORSI di un oggetto, non dentro le stringhe. Un indirizzo interpolato in un messaggio d'errore arriva su disco intatto.",
+    // `${...ip...}` dentro un template literal: copre `new Error(...)`, i
+    // messaggi di log e qualunque stringa costruita a mano.
+    pattern: /\$\{[^}]*\b(ip|address)\b[^}]*\}|\$\{[^}]*\[['"](ip|address)['"]\][^}]*\}/,
+    // Vale ANCHE dentro game-redis.ts: li' l'identificatore e' legittimo, ma
+    // infilarlo in una stringa non lo e' mai.
+    exempt: (rel) => !inGeoScope(rel),
+    multiline: true,
   },
 ];
 
@@ -157,8 +196,29 @@ function main(): void {
     const rel = relative(ROOT, file);
     if (rel === SELF) continue;
     const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+    /** Il file senza le righe di commento, ma con gli a capo al loro posto. */
+    const body = lines.map(stripCommentsAndStrings).join('\n');
+
     for (const rule of RULES) {
       if (rule.exempt(rel)) continue;
+
+      if (rule.multiline) {
+        // Sul testo intero: il formattatore puo' separare con un a capo i due
+        // token che la regola deve vedere insieme.
+        const found = new RegExp(rule.pattern.source, `${rule.pattern.flags.replace('g', '')}g`);
+        for (const m of body.matchAll(found)) {
+          const line = body.slice(0, m.index).split('\n').length;
+          violations.push({
+            file: rel,
+            line,
+            text: (lines[line - 1] ?? m[0]).trim().slice(0, 120),
+            rule: rule.id,
+            why: rule.why,
+          });
+        }
+        continue;
+      }
+
       lines.forEach((raw, i) => {
         const line = stripCommentsAndStrings(raw);
         if (!line) return;

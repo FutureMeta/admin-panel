@@ -181,6 +181,25 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
     'campionamento avviato',
   );
 
+  // PERCHE' LA MAPPA E' VUOTA, detto all'avvio invece che lasciato indovinare.
+  //
+  // Le condizioni sono TRE e si spengono a vicenda in silenzio: la variabile
+  // d'ambiente, il file effettivamente caricato, il verdetto della sonda. Un
+  // riquadro vuoto non distingue fra le tre, e chi guarda non ha modo di
+  // sapere quale manca.
+  const geoOn = geo !== null && geo.ready && poller.settings.geoEnabled;
+  opts.logger.info(
+    {
+      job: 'geo',
+      configurata: geo !== null,
+      fileCaricato: geo?.ready ?? false,
+      sondaApprovata: poller.settings.geoEnabled,
+    },
+    geoOn
+      ? 'geolocalizzazione attiva: il paese si registra all-apertura di sessione'
+      : 'geolocalizzazione SPENTA: il paese restera` nullo e la mappa non comparira`',
+  );
+
   const jobs: RunningJob[] = [];
   if (opts.schedule !== false) {
     jobs.push(

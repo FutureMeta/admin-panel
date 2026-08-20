@@ -79,7 +79,15 @@ export class StatsPoller {
   readonly #opts: PollerOptions;
   readonly #dictionary = new ServerDictionary();
   readonly #sessions = new SessionTracker();
-  #settings: IngestSettings = { nominalDeltaS: 30, maxDeltaS: 60, graceTicks: 3, reaperAfterS: 900 };
+  // `geoEnabled: false` come default: la geolocalizzazione si accende solo
+  // quando il database lo dice, mai per assenza di informazione.
+  #settings: IngestSettings = {
+    nominalDeltaS: 30,
+    maxDeltaS: 60,
+    graceTicks: 3,
+    reaperAfterS: 900,
+    geoEnabled: false,
+  };
 
   /** L'ultimo tick RIUSCITO: e' da qui che si misura la copertura. */
   #lastOkTickAt: number | null = null;
@@ -103,6 +111,11 @@ export class StatsPoller {
   /** Le sessioni aperte: il reaper e le metriche passano da qui. */
   get sessions(): SessionTracker {
     return this.#sessions;
+  }
+
+  /** Le impostazioni lette all'avvio: chi cabla ha bisogno di dirle nel log. */
+  get settings(): IngestSettings {
+    return this.#settings;
   }
 
   /**
@@ -158,7 +171,13 @@ export class StatsPoller {
         signal: controller.signal,
         ttlSample: TTL_SAMPLE,
         withServersCrosscheck: this.#cycles % SLOW_EVERY === 1,
-        ...(this.#opts.countryOf ? { countryOf: this.#opts.countryOf } : {}),
+        // DUE CONDIZIONI, non una. `countryOf` esiste se e' configurato un
+        // file .mmdb; `geoEnabled` dice che qualcuno ha VERIFICATO, con la
+        // sonda del passo 0, che il campo dell'indirizzo sia del giocatore e
+        // non del proxy. Senza la seconda, un proxy Velocity farebbe risolvere
+        // ogni giocatore sul datacenter: 95% da un paese solo, I5 verde, XX a
+        // zero. Plausibile e falso.
+        ...(this.#opts.countryOf && this.#settings.geoEnabled ? { countryOf: this.#opts.countryOf } : {}),
       });
     } catch (err) {
       errorKind = controller.signal.aborted

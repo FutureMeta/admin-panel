@@ -235,7 +235,12 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
         ? AUDIT_ACTIONS.loginSucceeded
         : AUDIT_ACTIONS.loginFailed
       : ok
-        ? AUDIT_ACTIONS.stepUpSucceeded
+        ? // Era `stepUpSucceeded`: ogni login con 2FA finiva nel registro come
+          // `auth.step_up.success`, un'operazione che il pannello non ha piu' e
+          // che comunque non era questa. Le righe gia' scritte restano com'erano
+          // — la catena hash le rende immutabili per costruzione — e il filtro
+          // continua a offrire il valore storico.
+          AUDIT_ACTIONS.twoFactorChallengeSucceeded
         : AUDIT_ACTIONS.twoFactorChallengeFailed;
 
     const ips = requestIps(request);

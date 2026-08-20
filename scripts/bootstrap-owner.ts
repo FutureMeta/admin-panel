@@ -14,6 +14,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { sql } from 'kysely';
+import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
 import { createKysely, createPool } from '#src/db/pool.ts';
 import { insertInvite } from '#src/invites/service.ts';
@@ -107,7 +108,7 @@ async function main(): Promise<void> {
     });
 
     await writeAudit(db, {
-      action: 'system.bootstrap_owner',
+      action: AUDIT_ACTIONS.bootstrapOwner,
       outcome: 'success',
       actor: { userId: null, email: null, displayName: 'bootstrap', sessionId: null },
       request: { requestId: null, ip: null, socketIp: null, userAgent: 'scripts/bootstrap-owner.ts' },

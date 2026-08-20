@@ -23,6 +23,23 @@ import { FilterSelect, PageHeader, Panel, PanelBar, PanelFooter, SearchBox } fro
 import { Avatar, Badge, Banner, Button, EmptyState, SkeletonRows } from '../components/ui.tsx';
 import { type AuditEntry, type AuditPage, api } from '../lib/api.ts';
 
+/**
+ * Etichette per le azioni che nel registro hanno un nome fuorviante.
+ *
+ * Il valore memorizzato non si tocca: le righe gia' scritte sono immutabili
+ * per costruzione, e riscriverle romperebbe la catena hash. Cambia solo come
+ * il filtro le chiama, perche' «auth.step_up.success» su ogni login con 2FA
+ * fa cercare un'operazione che il pannello non ha mai avuto.
+ */
+const ACTION_LABELS: Record<string, string> = {
+  'auth.step_up.success': 'auth.step_up.success — storico: login con 2FA',
+  'auth.step_up.failure': 'auth.step_up.failure — storico: step-up rimosso',
+};
+
+function actionLabel(action: string): string {
+  return ACTION_LABELS[action] ?? action;
+}
+
 /** Azioni che meritano un'occhiata anche quando sono andate a buon fine. */
 const SENSITIVE = new Set([
   'user.role.grant',
@@ -114,7 +131,7 @@ export function AuditPage_() {
             emptyLabel="Tutte le azioni"
             value={filters.action}
             onChange={(v) => changeFilters((f) => ({ ...f, action: v }))}
-            options={(vocab.data?.actions ?? []).map((a) => ({ value: a, label: a }))}
+            options={(vocab.data?.actions ?? []).map((a) => ({ value: a, label: actionLabel(a) }))}
           />
           <FilterSelect
             label="Filtra per esito"

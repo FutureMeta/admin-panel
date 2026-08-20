@@ -89,10 +89,15 @@ export class ResendMailer implements Mailer {
             subject: request.subject,
             html: request.html,
             text: request.text,
-            // SEC-45 — click tracking DISATTIVATO sui template con token:
-            // con il tracking attivo l'URL viene riscritto e il token
-            // passerebbe per un redirector di terze parti.
-            tags: [{ name: 'click_tracking', value: 'disabled' }],
+            // SEC-45 — il click tracking deve restare SPENTO: con il
+            // tracking attivo Resend riscrive gli URL, e il token di invito o
+            // di reset passerebbe per un redirector di terze parti.
+            //
+            // Non si disattiva da qui. I `tags` di Resend sono metadata e non
+            // cambiano il comportamento: la riga che stava qui — un tag
+            // `click_tracking: disabled` — non spegneva niente e faceva
+            // credere il contrario a chi la leggeva. L'impostazione vera e' di
+            // DOMINIO, nel pannello Resend, ed e' gia' spenta di default.
           },
           { idempotencyKey: request.idempotencyKey },
         );

@@ -49,12 +49,25 @@ export const AUDIT_ACTIONS = {
   // --- sessioni -------------------------------------------------------------
   loginSucceeded: 'auth.login.success',
   loginFailed: 'auth.login.failure',
+  /** Challenge 2FA superata al login. La coppia di `twoFactorChallengeFailed`. */
+  twoFactorChallengeSucceeded: 'auth.2fa.success',
   twoFactorChallengeFailed: 'auth.2fa.failure',
   twoFactorReplayBlocked: 'auth.2fa.replay_blocked',
   lockout: 'auth.lockout',
   logout: 'auth.logout',
   sessionRevoked: 'session.revoke',
   sessionsRevokedAll: 'session.revoke_all',
+  /**
+   * STORICHE. Lo step-up e' stato rimosso (deviazione D-09) e nessuna riga
+   * nuova nasce con questi valori.
+   *
+   * Restano nel catalogo per una ragione sola: il registro e' append-only e a
+   * catena hash, quindi le righe gia' scritte non si riscrivono — e fra
+   * queste ci sono tutti i login con 2FA fino a oggi, registrati per errore
+   * come `auth.step_up.success` invece che come una challenge superata.
+   * Toglierle dal catalogo renderebbe quelle righe non filtrabili dal
+   * pannello: la storia resterebbe, e sparirebbe il modo di leggerla.
+   */
   stepUpSucceeded: 'auth.step_up.success',
   stepUpFailed: 'auth.step_up.failure',
 
@@ -76,11 +89,29 @@ export const AUDIT_ACTIONS = {
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
 
 /**
- * Eventi di SICUREZZA: l'INSERT va nella STESSA transazione della modifica di
- * stato (SEC-48). Mai `hooks.after`, mai `runInBackground`.
+ * Eventi di SICUREZZA: l'INSERT dovrebbe stare nella STESSA transazione della
+ * modifica di stato (SEC-48). Mai `hooks.after`, mai `runInBackground`.
  *
  * Gli altri sono osservativi (login riuscito, login fallito, challenge 2FA
  * fallita, lockout) e possono passare da un hook dopo la risposta.
+ *
+ * ATTENZIONE A COSA QUESTO ELENCO E' E A COSA NON E'. E' una CHECKLIST, non un
+ * controllo: nessun codice lo legge. La garanzia vera la da'
+ * `securityTransaction()` in `src/audit/log.ts`, che apre la transazione,
+ * esegue il lavoro e scrive l'audit prima del COMMIT — chi passa di li' non
+ * puo' sbagliare l'ordine. Chi chiama `writeAudit()` a mano, invece, non ha
+ * niente che lo fermi.
+ *
+ * E oggi due percorsi lo fanno: `sessionsRevokedAll` viene scritto con
+ * `writeAudit(ctx.db, ...)` — quindi fuori transazione — in
+ * `src/http/routes/auth.ts` e in `src/http/routes/users.ts`. Se la revoca
+ * riesce e l'INSERT no, le sessioni cadono senza che ne resti traccia.
+ *
+ * Renderlo un controllo e' possibile: `writeAudit` conosce l'esecutore e puo'
+ * vedere se e' una transazione. Ma prima va deciso l'elenco, perche' la stessa
+ * azione compare anche con `outcome: 'denied'` — un rifiuto non cambia stato e
+ * fuori transazione ci sta benissimo — e perche' i due percorsi qui sopra
+ * vanno corretti o esentati di proposito. Non e' una riga: e' una decisione.
  */
 export const SECURITY_ACTIONS: ReadonlySet<AuditAction> = new Set<AuditAction>([
   AUDIT_ACTIONS.inviteCreate,

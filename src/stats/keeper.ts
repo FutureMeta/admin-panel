@@ -20,6 +20,8 @@
 
 import type { Logger } from 'pino';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { GeoReader } from '#src/geo/reader.ts';
+import { MAX_AGE_DAYS, updateGeoDb } from '#src/geo/updater.ts';
 import type { JobRegistry, RunningJob } from '#src/jobs/scheduler.ts';
 import { startJob } from '#src/jobs/scheduler.ts';
 import { createGameRedis } from './game-redis.ts';
@@ -85,6 +87,11 @@ export type StatsIngestOptions = {
   /** Il Redis di gioco. Puo' essere lo stesso del pannello: il client no. */
   redisUrl: string;
   pattern: string;
+  /**
+   * Il file .mmdb della geolocalizzazione. Assente = funzione spenta, e il
+   * paese resta null invece di diventare XX.
+   */
+  geoPath?: string;
   logger: Logger;
   registry: JobRegistry;
   /**
@@ -96,6 +103,8 @@ export type StatsIngestOptions = {
 
 export type StatsIngest = {
   poller: StatsPoller;
+  /** Il lettore geografico, se configurato. Le metriche ne leggono l'eta'. */
+  geo: GeoReader | null;
   /** Il pool del rollup, esposto per i comandi di manutenzione e per i test. */
   rollupDb: Database;
   stop: () => Promise<void>;
@@ -126,7 +135,37 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
 
   const db = createKysely(pool);
   const redis = createGameRedis(opts.redisUrl, 'ingest');
-  const poller = new StatsPoller({ db, redis, logger: opts.logger, pattern: opts.pattern });
+
+  // La geolocalizzazione si accende PRIMA del primo ciclo, o quel ciclo
+  // scriverebbe `country = NULL` — che significa «funzione spenta» — su
+  // giocatori per cui invece era accesa. Un file mancante al primo avvio e'
+  // normale: lo scarica il giro giornaliero, e fino ad allora il paese resta
+  // NULL, che e' esattamente cio' che era.
+  const geo = opts.geoPath ? new GeoReader() : null;
+  if (geo && opts.geoPath) {
+    try {
+      const status = await geo.load(opts.geoPath);
+      opts.logger.info(
+        { job: 'geo', tipo: status.databaseType, giorni: status.ageDays },
+        status.ageDays !== null && status.ageDays > MAX_AGE_DAYS
+          ? 'database geografico caricato ma VECCHIO: i blocchi riassegnati finiranno sul paese sbagliato'
+          : 'database geografico caricato',
+      );
+    } catch (err) {
+      opts.logger.warn(
+        { job: 'geo', err },
+        'database geografico non caricato: il paese restera` nullo finche` il giro giornaliero non lo scarica',
+      );
+    }
+  }
+
+  const poller = new StatsPoller({
+    db,
+    redis,
+    logger: opts.logger,
+    pattern: opts.pattern,
+    ...(geo ? { countryOf: (value: string | undefined) => geo.countryOf(value) } : {}),
+  });
 
   await poller.start();
   opts.logger.info(
@@ -186,6 +225,30 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
       ),
     );
 
+    if (geo && opts.geoPath) {
+      const geoPath = opts.geoPath;
+      jobs.push(
+        startJob(
+          {
+            name: 'geo-db-update',
+            intervalMs: 24 * 60 * 60 * 1_000,
+            // Un'ora, non il giorno dopo: il file nuovo esce una volta al mese
+            // e ritentare fra ventiquattro ore significa restare un giorno
+            // indietro per una rete che ha singhiozzato un secondo.
+            retryMs: 60 * 60 * 1_000,
+            run: async () => ({
+              ...(await updateGeoDb({ path: geoPath, reader: geo, logger: opts.logger })),
+            }),
+            successMessage: 'database geografico aggiornato',
+            failureMessage:
+              'database geografico non aggiornato: continua a girare quello vecchio, e invecchiando attribuira` blocchi al paese sbagliato',
+          },
+          opts.logger,
+          opts.registry,
+        ),
+      );
+    }
+
     for (const r of ROLLUP_JOBS) {
       jobs.push(
         startJob(
@@ -206,6 +269,7 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
 
   return {
     poller,
+    geo,
     rollupDb,
     stop: async () => {
       // Prima i timer, poi le connessioni: un giro che partisse mentre il pool

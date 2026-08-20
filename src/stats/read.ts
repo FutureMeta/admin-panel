@@ -351,6 +351,58 @@ async function distinctPlayers(db: Database, from: Date, to: Date): Promise<numb
   return n === undefined ? null : Number(n);
 }
 
+/**
+ * La mappa: unici del periodo per paese, di rete e per modalita'.
+ *
+ * DALLA STESSA POPOLAZIONE DEL KPI, e non e' un dettaglio implementativo: e'
+ * l'invariante I5. Se la mappa contasse una cosa e il KPI un'altra, si
+ * finirebbe con «37.800 italiani» accanto a «5.000 giocatori» sullo stesso
+ * schermo, con scritto «giocatori» in entrambe le legende. Qui la CTE `ranged`
+ * produce UNA riga per giocatore, e sia la somma delle barre sia il conteggio
+ * degli unici escono da quella: possono solo essere uguali.
+ *
+ * UN GIOCATORE, UN PAESE. Chi ha giocato in giorni diversi da paesi diversi
+ * conta una volta sola: la metrica e' «giocatori unici», non «giocatori-giorno»
+ * — e una mappa costruita sui campioni misurerebbe QUANTO la gente sta online,
+ * non DA DOVE viene, premiando meccanicamente il fuso orario di casa.
+ *
+ * `'XX'` e' una barra, MAI uno scarto. Un secchiello `XX` che cresce e' il
+ * primo sintomo che il campo `ip` ha cambiato semantica; scartandolo, la mappa
+ * continuerebbe a sembrare corretta mentre misura un terzo dei giocatori.
+ */
+async function geoRows(
+  db: Database,
+  from: Date,
+  to: Date,
+): Promise<Array<{ mode_key: string; cc: string | null; uniques: number }>> {
+  const res = await sql<{ mode_key: string; cc: string | null; uniques: string }>`
+    WITH ranged AS (
+      SELECT DISTINCT ON (d.player_id)
+             d.player_id,
+             d.country AS cc
+        FROM stats.player_day d
+       WHERE d.day >= stats.civil_day(${from}) AND d.day < stats.civil_day(${to})
+       -- Prima un paese NOTO, poi il giorno piu' recente. L'ordine conta: con
+       -- il solo day DESC, un giocatore visto ieri in un giorno in cui la
+       -- geolocalizzazione era spenta diventerebbe «non determinato» pur
+       -- avendo un paese noto la settimana prima.
+       ORDER BY d.player_id, (d.country IS NULL), d.day DESC
+    ),
+    per_mode AS (
+      SELECT DISTINCT sm.mode_key, pds.player_id
+        FROM stats.player_day_server pds
+        JOIN stats.v_server_mode sm USING (server_id)
+       WHERE pds.day >= stats.civil_day(${from}) AND pds.day < stats.civil_day(${to})
+    )
+    SELECT '__network__' AS mode_key, r.cc, count(*)::bigint::text AS uniques
+      FROM ranged r GROUP BY 1, 2
+    UNION ALL
+    SELECT m.mode_key, r.cc, count(*)::bigint::text AS uniques
+      FROM per_mode m JOIN ranged r USING (player_id) GROUP BY 1, 2
+  `.execute(db);
+  return res.rows.map((r) => ({ mode_key: r.mode_key, cc: r.cc, uniques: Number(r.uniques) }));
+}
+
 async function modeLabels(db: Database): Promise<Map<string, { label: string; order: number }>> {
   const res = await sql<{ mode_key: string; display_name: string; sort_order: number }>`
     SELECT DISTINCT mode_key, display_name, sort_order FROM stats.v_server_mode
@@ -561,6 +613,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     distinctBefore,
     distinctModeNow,
     distinctModeBefore,
+    geo,
   ] = await Promise.all([
     seriesRows(db, range, w),
     heatmapRows(db, w),
@@ -573,6 +626,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     distinctPlayers(db, w.prevFrom, w.curFrom),
     distinctPlayersByMode(db, w.curFrom, w.curTo),
     distinctPlayersByMode(db, w.prevFrom, w.curFrom),
+    geoRows(db, w.curFrom, w.curTo),
   ]);
   const queryMs = Date.now() - t0;
 
@@ -630,6 +684,40 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     nArr[h.cell] = h.n;
   }
 
+  // La mappa, tagliata per modalita' dalla stessa lettura.
+  //
+  // `geo: null` quando la geolocalizzazione non e' attiva — cioe' quando
+  // NESSUNA riga del periodo porta un paese. L'interfaccia nasconde il widget
+  // invece di disegnare una mappa vuota, che sarebbe indistinguibile da «non
+  // viene nessuno da nessuna parte».
+  //
+  // Se invece e' attiva e non risolve, le barre esistono e sono tutte `XX`:
+  // quello e' un DATO, ed e' il primo sintomo che il campo `ip` ha cambiato
+  // significato. Nasconderlo sarebbe nascondere proprio il guasto.
+  const geoActive = geo.some((g) => g.cc !== null);
+  const geoByMode = new Map<string, Array<{ cc: string; v: number }>>();
+  if (geoActive) {
+    for (const g of geo) {
+      const list = geoByMode.get(g.mode_key) ?? [];
+      list.push({ cc: g.cc ?? 'XX', v: g.uniques });
+      geoByMode.set(g.mode_key, list);
+    }
+    for (const list of geoByMode.values()) list.sort((a, b) => b.v - a.v || a.cc.localeCompare(b.cc));
+  }
+  const geoOf = (modeKey: string): OverviewPayload['geo'] => {
+    const list = geoByMode.get(modeKey);
+    if (!list || list.length === 0) return null;
+    return {
+      cc: list.map((x) => x.cc),
+      v: list.map((x) => x.v),
+      asOf: Math.floor(now.getTime() / 1_000),
+      // Contata adesso e sulla stessa popolazione del KPI, non ripresa da un
+      // aggregato notturno: e' cio' che rende I5 vera per costruzione invece
+      // che per fortuna.
+      exact: true,
+    };
+  };
+
   const kpi = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec);
   const kpiPrev = kpiOf(prev, w.prevFrom, w.curFrom, plan.bucketSec);
   kpi.uniques = distinctNow;
@@ -670,7 +758,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       prev: recent.map((_, i) => earlier[i]?.uniques ?? null),
       final: recent.map((d) => d.final),
     },
-    geo: null, // passo 7
+    geo: geoOf('__network__'),
   };
 
   // ---------------------------------------------------------------------
@@ -750,7 +838,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
         }),
         final: recent.map((d) => byDay?.get(Number(d.day))?.final ?? false),
       },
-      geo: null, // passo 7
+      geo: geoOf(m),
     });
   }
 

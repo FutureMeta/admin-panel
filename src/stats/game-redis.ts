@@ -20,7 +20,7 @@
 // gratis una lettura pesante.
 
 import { Redis } from 'ioredis';
-import { ipFromAddress } from '#src/geo/reader.ts';
+import { type CountryLookup, ipFromAddress } from '#src/geo/reader.ts';
 
 /** Un giocatore osservato in un ciclo, ridotto a cio' che il passo 2 usa. */
 export type OnlinePlayer = {
@@ -96,7 +96,7 @@ export type ReadOptions = {
    * gusto: e' cio' che permette di provare questo ciclo senza un database da
    * otto megabyte, e di spegnere la funzione senza toccare il codice.
    */
-  countryOf?: (ip: string | undefined) => string;
+  countryOf?: CountryLookup;
 };
 
 /** Blocchi della pipeline: limita la risposta e da' un punto dove annullare. */

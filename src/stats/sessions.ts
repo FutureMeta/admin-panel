@@ -35,6 +35,14 @@ type OpenSession = {
   serverIdLast: number;
   legs: number;
   seenTicks: number;
+  /**
+   * Codice paese della PRIMA osservazione, o null a geolocalizzazione spenta.
+   *
+   * Viaggia con la sessione perche' la regola del §8.5 e' deterministica —
+   * vince la prima osservazione del giorno — e senza un valore da confrontare
+   * non ci sarebbe niente da far vincere.
+   */
+  country: string | null;
   /** Tick consecutivi in cui non l'abbiamo visto. La grazia copre i trasferimenti. */
   missing: number;
   /** `last_seen_at` in memoria e` avanti rispetto al database. */
@@ -84,9 +92,10 @@ export class SessionTracker {
       server_id_last: number;
       legs: number;
       seen_ticks: number;
+      country: string | null;
     }>`
       SELECT player_id, started_at, last_seen_at, accounted_through,
-             server_id_first, server_id_last, legs, seen_ticks
+             server_id_first, server_id_last, legs, seen_ticks, country
         FROM stats.session_open
     `.execute(db);
 
@@ -101,6 +110,7 @@ export class SessionTracker {
         serverIdLast: Number(r.server_id_last),
         legs: Number(r.legs),
         seenTicks: Number(r.seen_ticks),
+        country: r.country,
         missing: 0,
         dirty: false,
       });
@@ -165,6 +175,7 @@ export class SessionTracker {
         serverIdLast: serverId,
         legs: 1,
         seenTicks: 1,
+        country: p.country,
         missing: 0,
         dirty: false,
       };
@@ -255,7 +266,7 @@ export class SessionTracker {
       await sql`
         INSERT INTO stats.session_open
           (player_id, started_at, last_seen_at, accounted_through,
-           server_id_first, server_id_last, legs, seen_ticks)
+           server_id_first, server_id_last, legs, seen_ticks, country)
         SELECT * FROM unnest(
           ${sessions.map((s) => s.playerId)}::int[],
           ${sessions.map((s) => s.startedAt)}::timestamptz[],
@@ -264,7 +275,8 @@ export class SessionTracker {
           ${sessions.map((s) => s.serverIdFirst)}::smallint[],
           ${sessions.map((s) => s.serverIdLast)}::smallint[],
           ${sessions.map((s) => s.legs)}::smallint[],
-          ${sessions.map((s) => s.seenTicks)}::int[])
+          ${sessions.map((s) => s.seenTicks)}::int[],
+          ${sessions.map((s) => s.country)}::stats.country_code[])
         -- Una riga gia' presente per lo stesso giocatore non porta un nuovo
         -- inizio: si aggiorna solo cio' che avanza.
         ON CONFLICT (player_id) DO UPDATE SET
@@ -278,13 +290,24 @@ export class SessionTracker {
       // timer di mezzanotte, nessuna dipendenza dal fuso del processo.
       await sql`
         INSERT INTO stats.player_day AS t
-          (day, player_id, first_seen_at, last_seen_at, sessions)
-        SELECT stats.civil_day(${tickAt}), p, ${tickAt}, ${tickAt}, 1
-          FROM unnest(${sessions.map((s) => s.playerId)}::int[]) AS p
+          (day, player_id, first_seen_at, last_seen_at, sessions, country)
+        SELECT stats.civil_day(${tickAt}), x.p, ${tickAt}, ${tickAt}, 1, x.c
+          FROM unnest(
+            ${sessions.map((s) => s.playerId)}::int[],
+            ${sessions.map((s) => s.country)}::stats.country_code[]
+          ) AS x(p, c)
         ON CONFLICT (day, player_id) DO UPDATE SET
           first_seen_at = LEAST(t.first_seen_at, EXCLUDED.first_seen_at),
           last_seen_at  = GREATEST(t.last_seen_at, EXCLUDED.last_seen_at),
-          sessions      = t.sessions + 1
+          sessions      = t.sessions + 1,
+          -- VINCE LA PRIMA OSSERVAZIONE DEL GIORNO, e la regola va scritta
+          -- perche' senza il conteggio balla: un giocatore su rete mobile che
+          -- salta su un PoP diverso riscriverebbe il proprio paese a ogni
+          -- riconnessione, e la mappa cambierebbe da sola durante la
+          -- giornata. Il COALESCE tiene anche il caso opposto: se la prima
+          -- osservazione era a geolocalizzazione spenta (NULL), la seconda la
+          -- riempie invece di lasciare un buco per sempre.
+          country       = COALESCE(t.country, EXCLUDED.country)
       `.execute(tx);
 
       await this.#persistServerPresence(
@@ -350,7 +373,7 @@ export class SessionTracker {
       await sql`
         INSERT INTO stats.session AS s
           (started_at, player_id, ended_at, seen_ticks,
-           server_id_first, server_id_last, legs, end_reason)
+           server_id_first, server_id_last, legs, end_reason, country)
         SELECT * FROM unnest(
           ${sessions.map((x) => x.startedAt)}::timestamptz[],
           ${sessions.map((x) => x.playerId)}::int[],
@@ -359,7 +382,8 @@ export class SessionTracker {
           ${sessions.map((x) => x.serverIdFirst)}::smallint[],
           ${sessions.map((x) => x.serverIdLast)}::smallint[],
           ${sessions.map((x) => x.legs)}::smallint[],
-          ${sessions.map((x) => x.reason)}::stats.session_end[])
+          ${sessions.map((x) => x.reason)}::stats.session_end[],
+          ${sessions.map((x) => x.country)}::stats.country_code[])
         ON CONFLICT (started_at, player_id) DO UPDATE SET
           ended_at   = EXCLUDED.ended_at,
           seen_ticks = EXCLUDED.seen_ticks,

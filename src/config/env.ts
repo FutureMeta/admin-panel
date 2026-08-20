@@ -130,6 +130,18 @@ const EnvSchema = z.object({
    * richiede di toccare il codice.
    */
   CACHE_REDIS_URL: z.string().min(1).optional(),
+  /**
+   * Il database geografico DB-IP, in un VOLUME e mai in un layer
+   * dell'immagine: altrimenti l'aggiornamento senza riavvio non ha dove
+   * scrivere.
+   *
+   * Assente = geolocalizzazione spenta. Non e' un degrado: il paese resta
+   * NULL su ogni riga (che significa «funzione non attiva») invece di
+   * diventare XX (che significa «attiva e non risolta»), e il payload porta
+   * geo: null, cosi' l'interfaccia nasconde il widget invece di disegnare
+   * una mappa vuota.
+   */
+  GEO_MMDB_PATH: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

@@ -216,6 +216,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
         databaseUrl: env.DATABASE_INGEST_URL,
         ...(env.DATABASE_ROLLUP_URL ? { rollupDatabaseUrl: env.DATABASE_ROLLUP_URL } : {}),
         redisUrl: env.GAME_REDIS_URL ?? env.REDIS_URL,
+        ...(env.GEO_MMDB_PATH ? { geoPath: env.GEO_MMDB_PATH } : {}),
         pattern: env.GAME_REDIS_PATTERN,
         logger,
         registry: maintenance.registry,

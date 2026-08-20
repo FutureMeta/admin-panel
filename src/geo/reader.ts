@@ -20,6 +20,16 @@
 import { isIP } from 'node:net';
 import { type CountryResponse, open as openMmdb } from 'maxmind';
 
+/**
+ * La risoluzione geografica, come tipo.
+ *
+ * Esiste perche' la guardia di CI vieta l'identificatore `ip` fuori da
+ * `src/geo` e da `game-redis.ts` — E LA VIETA GIUSTAMENTE, anche in una
+ * firma: un nome che gira per il codice invita a farci passare un valore.
+ * Chi ha bisogno di questa funzione ne nomina il TIPO, non il parametro.
+ */
+export type CountryLookup = (value: string | undefined) => string;
+
 /** Non determinato. E' una barra della mappa, mai uno scarto. */
 export const UNKNOWN_COUNTRY = 'XX';
 

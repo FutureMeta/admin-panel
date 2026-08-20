@@ -202,6 +202,18 @@ export async function registerHealthRoutes(app: FastifyInstance, ctx: AppContext
       );
     }
 
+    // §8.3 — un database geografico che invecchia riassegna interi blocchi al
+    // paese sbagliato, e lo fa in silenzio: la mappa continua a disegnarsi.
+    // ALLARME A 45 GIORNI.
+    const geo = ctx.statsIngest?.geo?.status();
+    if (geo?.ageDays !== undefined && geo.ageDays !== null) {
+      lines.push(
+        '# HELP metamc_geo_db_age_days giorni dalla compilazione del database geografico. Allarme a 45',
+        '# TYPE metamc_geo_db_age_days gauge',
+        `metamc_geo_db_age_days ${geo.ageDays}`,
+      );
+    }
+
     const builds = ctx.statsCache.buildTimes();
     if (builds.length > 0) {
       lines.push(

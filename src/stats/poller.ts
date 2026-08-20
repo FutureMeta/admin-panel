@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import type { Database } from '#src/db/pool.ts';
+import type { CountryLookup } from '#src/geo/reader.ts';
 import { type OnlinePlayer, readOnline } from './game-redis.ts';
 import {
   type CycleRow,
@@ -58,6 +59,12 @@ export type PollerOptions = {
   logger: Logger;
   /** Il pattern delle chiavi dell'insieme online. */
   pattern: string;
+  /**
+   * La risoluzione geografica. Assente = geolocalizzazione spenta, e il
+   * paese resta null su ogni riga invece di diventare XX: sono due cose
+   * diverse, e il payload deve poterle distinguere.
+   */
+  countryOf?: CountryLookup;
 };
 
 function median(values: number[]): number | null {
@@ -151,6 +158,7 @@ export class StatsPoller {
         signal: controller.signal,
         ttlSample: TTL_SAMPLE,
         withServersCrosscheck: this.#cycles % SLOW_EVERY === 1,
+        ...(this.#opts.countryOf ? { countryOf: this.#opts.countryOf } : {}),
       });
     } catch (err) {
       errorKind = controller.signal.aborted

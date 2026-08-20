@@ -254,3 +254,36 @@ describe('il cancello del passo 4', () => {
     expect(totalMs).toBeLessThan(500);
   });
 });
+
+describe('il record di sempre', () => {
+  beforeEach(async () => {
+    await dictionary();
+    await seedHours(10);
+  });
+
+  it('e` il massimo di TUTTO lo storico, non della finestra', async () => {
+    // Un picco fuori dalla finestra del range: il record deve vederlo lo
+    // stesso, perche' «record» non significa «record del periodo scelto».
+    await sql.query(
+      `UPDATE stats.rollup_1d SET players_max = 4242
+         WHERE server_id = 0 AND day = stats.civil_day(now()) - 9`,
+    );
+
+    const { payload } = await buildOverview(db, '24h');
+    expect(payload.record?.players).toBe(4242);
+  });
+
+  it('porta la data da cui si guarda', async () => {
+    // Un «record di sempre» calcolato su tre giorni di raccolta e` un record
+    // di tre giorni: senza questa data, chi legge non ha modo di saperlo.
+    const { payload } = await buildOverview(db, '7d');
+    expect(payload.record?.since).toBeGreaterThan(0);
+  });
+
+  it('e` nullo quando non c`e` nemmeno un giorno con dati', async () => {
+    await sql.query('DELETE FROM stats.rollup_1d');
+    const { payload } = await buildOverview(db, '7d');
+    // Nullo, non zero: zero direbbe «il record e` zero giocatori».
+    expect(payload.record).toBeNull();
+  });
+});

@@ -250,3 +250,25 @@ describe('a geolocalizzazione spenta il widget sparisce', () => {
     expect(overview.geo?.v).toEqual([2]);
   });
 });
+
+describe('spenta e «accesa ma senza dati in questo periodo» sono diverse', () => {
+  it('geoEnabled segue il verdetto della sonda, non i dati', async () => {
+    await sql.query('UPDATE stats.ingest_state SET geo_enabled = TRUE WHERE id = 1');
+    // Nessun paese in questa finestra: la mappa non si disegna...
+    await seen(1, 2, null, [ARENA]);
+
+    const { overview } = await buildAll(db, '7d');
+    expect(overview.geo).toBeNull();
+    // ...ma la funzione E` accesa, e il segnaposto non deve mandare a
+    // cercare una configurazione che c`e` gia`.
+    expect(overview.geoEnabled).toBe(true);
+  });
+
+  it('con la sonda non approvata resta falso', async () => {
+    await sql.query('UPDATE stats.ingest_state SET geo_enabled = NULL WHERE id = 1');
+    await seen(1, 2, null, [ARENA]);
+
+    const { overview } = await buildAll(db, '7d');
+    expect(overview.geoEnabled).toBe(false);
+  });
+});

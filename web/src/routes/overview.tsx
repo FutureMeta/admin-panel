@@ -59,6 +59,8 @@ type Overview = {
   heatmap: { v: number[]; w: number[]; n: number[] };
   uniques: { t: number[]; v: (number | null)[]; prev: (number | null)[]; final: boolean[] };
   geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
+  geoEnabled: boolean;
+  record: { players: number; at: number | null; since: number } | null;
 };
 
 /** I colori delle serie li decide l'operatore; questi sono i ripieghi. */
@@ -71,6 +73,14 @@ const ROME = new Intl.DateTimeFormat('it-IT', {
 });
 
 const numero = new Intl.NumberFormat('it-IT');
+
+/** Per la data di inizio della raccolta: giorno e mese bastano. */
+const giorno = new Intl.DateTimeFormat('it-IT', {
+  timeZone: 'Europe/Rome',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
 
 /**
  * Una scala LEGGIBILE per l'asse verticale.
@@ -775,7 +785,7 @@ function DailyUniques({ data }: { data: Overview }) {
 // 6 — quel che il passo 7 deve ancora portare
 // ---------------------------------------------------------------------------
 
-function NotYet({ title, sub, what }: { title: string; sub: string; what: string }) {
+function NotYet({ title, sub, what }: { title: string; sub: string; what: React.ReactNode }) {
   return (
     <section
       style={{
@@ -902,12 +912,18 @@ export function OverviewPage() {
     },
     {
       label: 'Record storico',
-      value: '—',
+      value: data.record ? numero.format(data.record.players) : '—',
       unit: 'gioc.',
       delta: '',
-      note: 'serve storico piu` lungo del periodo',
+      // DA QUANDO, sempre. Un «record di sempre» calcolato su tre giorni di
+      // raccolta e` un record di tre giorni, e chi lo legge non ha modo di
+      // saperlo dal numero. Il giorno in cui lo storico sara` lungo, questa
+      // nota smettera` di essere una precisazione e diventera` un vanto.
+      note: data.record
+        ? `dal ${giorno.format(new Date(data.record.since * 1000))}`
+        : 'nessun giorno con dati',
       tone: 'muted',
-      ready: false,
+      ready: data.record !== null,
     },
   ];
 
@@ -1019,7 +1035,11 @@ export function OverviewPage() {
         <NotYet
           title="Provenienza geografica"
           sub="Giocatori unici del periodo · scala per quantili, non lineare"
-          what="geolocalizzazione non attiva — manca GEO_MMDB_PATH"
+          what={
+            data.geoEnabled
+              ? "geolocalizzazione attiva: la mappa copre i giorni CHIUSI, e i giorni chiusi di questo periodo sono precedenti all'accensione"
+              : 'geolocalizzazione non attiva'
+          }
         />
       )}
     </main>

@@ -117,8 +117,36 @@ export type OverviewPayload = {
   /** Unici giornalieri esatti. `t` e' la mezzanotte LOCALE di ogni giorno. */
   uniques: { t: number[]; v: (number | null)[]; prev: (number | null)[]; final: boolean[] };
 
-  /** `null` quando la geolocalizzazione non e' attiva: la UI nasconde il widget. */
+  /** `null` quando non c'e' nessun paese nel periodo. Vedi `geoEnabled`. */
   geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
+
+  /**
+   * Se la geolocalizzazione e' ACCESA, indipendentemente dal fatto che questo
+   * periodo abbia dati.
+   *
+   * SERVE A NON MENTIRE NEL SEGNAPOSTO. `geo: null` da solo confonde due
+   * situazioni diverse: «la funzione non e' attiva» e «e' attiva da poco, e i
+   * giorni chiusi che questo periodo guarda sono precedenti all'accensione».
+   * Senza questo campo l'interfaccia dice la prima anche quando vale la
+   * seconda, cioe' manda a cercare una configurazione che c'e' gia'.
+   */
+  geoEnabled: boolean;
+
+  /**
+   * Il massimo di giocatori contemporanei MAI osservato, con il suo istante.
+   *
+   * NON DIPENDE DAL RANGE: e' l'unico numero del payload che guarda tutto lo
+   * storico invece della finestra scelta, ed e' voluto — «record» significa
+   * quello. Viene dalla riga di rete memorizzata, quindi e' esatto: il picco
+   * di rete non e' la somma dei picchi (regola 4).
+   *
+   * `since` dice DA QUANDO si guarda, e non e' un ornamento: prima di quella
+   * data non esiste storico, e un «record di sempre» calcolato su tre giorni
+   * di raccolta e' un record di tre giorni. Chi legge deve poterlo sapere.
+   *
+   * `null` finche' non c'e' nemmeno un giorno con dati.
+   */
+  record: { players: number; at: number | null; since: number } | null;
 };
 
 /**

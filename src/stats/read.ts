@@ -404,6 +404,61 @@ async function geoRows(
   return res.rows.map((r) => ({ mode_key: r.mode_key, cc: r.cc, uniques: Number(r.uniques) }));
 }
 
+type NetworkFacts = {
+  record: { players: number; at: number | null; since: number } | null;
+  geoEnabled: boolean;
+};
+
+/**
+ * Il record di sempre e lo stato della geolocalizzazione, in una lettura.
+ *
+ * Il record guarda TUTTO lo storico, non la finestra: e' l'unico numero del
+ * payload che ignora il range, perche' «record» non ha altro significato. E
+ * viaggia con la data di inizio della raccolta, perche' un record di sempre
+ * calcolato su tre giorni di storico e' un record di tre giorni — e chi legge
+ * non ha modo di indovinarlo dal numero.
+ *
+ * `geo_enabled` sta nella stessa riga di `ingest_state`, quindi costa zero e
+ * evita al segnaposto della mappa di dire «manca la configurazione» a chi la
+ * configurazione ce l'ha.
+ */
+async function networkFacts(db: Database): Promise<NetworkFacts> {
+  const res = await sql<{
+    players: string | null;
+    at: Date | null;
+    since: Date;
+    geo_enabled: boolean | null;
+  }>`
+    SELECT r.players_max::text AS players,
+           r.players_max_at    AS at,
+           i.history_start_at  AS since,
+           i.geo_enabled
+      FROM stats.ingest_state i
+      LEFT JOIN LATERAL (
+        SELECT players_max, players_max_at
+          FROM stats.v_online_1d
+         WHERE mode_key = '__network__' AND players_max IS NOT NULL
+         ORDER BY players_max DESC, day ASC
+         LIMIT 1
+      ) r ON TRUE
+     WHERE i.id = 1
+  `.execute(db);
+
+  const row = res.rows[0];
+  if (!row) return { record: null, geoEnabled: false };
+  return {
+    geoEnabled: row.geo_enabled === true,
+    record:
+      row.players === null
+        ? null
+        : {
+            players: Number(row.players),
+            at: row.at ? Math.floor(row.at.getTime() / 1_000) : null,
+            since: Math.floor(row.since.getTime() / 1_000),
+          },
+  };
+}
+
 async function modeLabels(db: Database): Promise<Map<string, { label: string; order: number }>> {
   const res = await sql<{ mode_key: string; display_name: string; sort_order: number }>`
     SELECT DISTINCT mode_key, display_name, sort_order FROM stats.v_server_mode
@@ -613,6 +668,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     distinctBefore,
     distinctModeBefore,
     geo,
+    facts,
   ] = await Promise.all([
     seriesRows(db, range, w),
     heatmapRows(db, w),
@@ -624,6 +680,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     distinctPlayers(db, w.prevFrom, w.curFrom),
     distinctPlayersByMode(db, w.prevFrom, w.curFrom),
     geoRows(db, w.curFrom, w.curTo),
+    networkFacts(db),
   ]);
   const queryMs = Date.now() - t0;
 
@@ -768,6 +825,8 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       final: recent.map((d) => d.final),
     },
     geo: geoOf('__network__'),
+    geoEnabled: facts.geoEnabled,
+    record: facts.record,
   };
 
   // ---------------------------------------------------------------------
@@ -848,6 +907,10 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
         final: recent.map((d) => byDay?.get(Number(d.day))?.final ?? false),
       },
       geo: geoOf(m),
+      geoEnabled: facts.geoEnabled,
+      // Il record e' della RETE, non della modalita': per una modalita' il
+      // massimo non si decompone (vedi ModePayload), quindi qui e' nullo.
+      record: null,
     });
   }
 

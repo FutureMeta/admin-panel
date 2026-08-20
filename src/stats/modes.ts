@@ -66,8 +66,18 @@ const SURFACE_DARK = '#0e1f28';
  * grafico. Il valore rimosso dai token di progetto, `#1F6E95`, stava a 2,99:1.
  */
 const MIN_CONTRAST = 3;
-/** Sotto questa distanza due serie si confondono a colpo d'occhio. */
-const MIN_DISTANCE = 45;
+/**
+ * Sotto questa distanza due serie si confondono a colpo d'occhio.
+ *
+ * CALIBRATA SULLA PALETTE che il pannello offre: i suoi venti colori distano
+ * fra loro almeno 35, quindi una soglia piu' alta farebbe segnalare due
+ * suggerimenti dello strumento stesso. Un avviso che scatta su una scelta
+ * offerta dal pannello e' rumore, e il rumore fa disattivare gli avvisi.
+ *
+ * A 30 resta larghissimo il margine su cio' che conta: due colori davvero
+ * confondibili, come #e8822b e #e9852f, distano 9.
+ */
+const MIN_DISTANCE = 30;
 
 function rgb(hex: string): [number, number, number] {
   return [

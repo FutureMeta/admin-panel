@@ -431,3 +431,59 @@ describe('il pannello puo` gestire il dizionario e nient`altro', () => {
     ).rejects.toThrow();
   });
 });
+
+describe('il fuso di registrationDate e` un fuso, non un offset (012)', () => {
+  // La sonda del passo 0, in produzione ad agosto, ha misurato +120 minuti su
+  // 102 campioni recenti. Memorizzare quel 120 e applicarlo per sempre — come
+  // prevedeva la 011 con `registration_offset_min` — sbaglierebbe di un'ora
+  // OGNI registrazione fatta d'inverno, e sposterebbe di un giorno chiunque si
+  // registri fra mezzanotte e l'una. Errore stabile, plausibile, permanente:
+  // esattamente la classe contro cui e' costruito il resto dello schema.
+  const asUtc = (raw: string) =>
+    one<string>(
+      mig,
+      `SELECT (stats.registered_at_of($1, s.registration_tz) AT TIME ZONE 'UTC')::text
+         FROM stats.ingest_state s WHERE s.id = 1`,
+      [raw],
+    );
+
+  it('il fuso misurato e` memorizzato come nome, non come minuti', async () => {
+    expect(await one(mig, 'SELECT registration_tz FROM stats.ingest_state WHERE id = 1')).toBe('Europe/Rome');
+  });
+
+  it('la stessa ora di parete cade su due istanti diversi a luglio e a gennaio', async () => {
+    // E' LA prova. Con un offset costante questi due sarebbero sfalsati di sei
+    // mesi esatti e zero minuti; sono invece sfalsati anche di un'ora.
+    expect(await asUtc('2024-07-20 09:46:17.0')).toBe('2024-07-20 07:46:17'); // CEST, +2
+    expect(await asUtc('2024-01-20 09:46:17.0')).toBe('2024-01-20 08:46:17'); // CET,  +1
+  });
+
+  it('senza dato o senza fuso restituisce NULL invece di indovinare', async () => {
+    const call = (raw: string | null, tz: string | null) =>
+      one(mig, 'SELECT stats.registered_at_of($1, $2)', [raw, tz]);
+    expect(await call(null, 'Europe/Rome')).toBeNull();
+    expect(await call('2024-07-20 09:46:17.0', null)).toBeNull();
+    expect(await call('', 'Europe/Rome')).toBeNull();
+  });
+
+  it('la colonna superata non esiste piu`', async () => {
+    // Due sorgenti per lo stesso fatto sono il modo in cui una delle due
+    // diventa quella sbagliata senza che nessuno se ne accorga.
+    expect(
+      Number(
+        await one(
+          mig,
+          `SELECT count(*) FROM information_schema.columns
+            WHERE table_schema = 'stats' AND table_name = 'ingest_state'
+              AND column_name = 'registration_offset_min'`,
+        ),
+      ),
+    ).toBe(0);
+  });
+
+  it('un nome di fuso malformato viene rifiutato', async () => {
+    await expect(
+      mig.query(`UPDATE stats.ingest_state SET registration_tz = 'non un fuso' WHERE id = 1`),
+    ).rejects.toThrow();
+  });
+});

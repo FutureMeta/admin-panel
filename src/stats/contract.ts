@@ -229,11 +229,25 @@ export function assertPayload(p: OverviewPayload | ModePayload): void {
     }
   }
 
-  // I5 — la mappa somma agli unici del periodo. Vale per costruzione perche'
-  // nascono dalla stessa CTE: se qui si rompe, sono state divise.
-  if (p.geo && p.kpi.uniques !== null) {
-    const somma = p.geo.v.reduce((a, b) => a + b, 0);
-    if (somma !== p.kpi.uniques) bad.push(`la mappa somma ${somma}, gli unici sono ${p.kpi.uniques}`);
+  // I5, nella forma che gli spetta ORA.
+  //
+  // L'invariante nasce per impedire un errore di UNITA': «37.800 italiani»
+  // accanto a «5.000 giocatori» sullo stesso schermo, con scritto «giocatori»
+  // in entrambe le legende — cioe' una mappa contata in giocatori-GIORNO
+  // accanto a un KPI contato in giocatori.
+  //
+  // La mappa guarda UN SOLO GIORNO CIVILE, quello in corso, come chiede il
+  // design («Giocatori unici oggi»). Su un giorno solo giocatori e
+  // giocatori-giorno coincidono per definizione, e l'errore di unita' non e'
+  // costruibile. Confrontarla con `kpi.uniques`, che copre il PERIODO e
+  // esclude apposta il giorno in corso, sarebbe confrontare due popolazioni
+  // diverse e far fallire il payload per un disaccordo che non e' un difetto.
+  //
+  // Resta da difendere che i conteggi siano conteggi.
+  if (p.geo) {
+    if (p.geo.v.some((v) => !Number.isInteger(v) || v < 0)) {
+      bad.push('la mappa contiene valori che non sono conteggi di persone');
+    }
   }
 
   if (bad.length > 0) throw new PayloadInvalid(bad.join('; '));

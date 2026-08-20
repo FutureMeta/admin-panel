@@ -123,97 +123,99 @@ async function seen(
   }
 }
 
-describe('I5 — la mappa e il KPI contano la stessa gente', () => {
-  it('la somma delle barre fa esattamente kpi.uniques', async () => {
-    await seen(1, 3, 'IT', [ARENA]);
-    await seen(2, 3, 'IT', [ARENA]);
-    await seen(3, 2, 'DE', [EVENTO]);
-    await seen(4, 1, 'FR', [ARENA, EVENTO]);
+describe('la mappa guarda il giorno in corso', () => {
+  it('mostra chi si e` visto OGGI, non nella finestra del range', async () => {
+    await seen(1, 0, 'IT', [ARENA]);
+    await seen(2, 0, 'DE', [ARENA]);
+    // Ieri e l`altro ieri NON entrano nella mappa: la domanda e` «da dove
+    // viene la gente adesso», non «da dove veniva la settimana scorsa».
+    await seen(3, 1, 'FR', [ARENA]);
+    await seen(4, 5, 'ES', [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     expect(() => assertPayload(overview)).not.toThrow();
-
-    const somma = overview.geo?.v.reduce((a, b) => a + b, 0);
-    expect(overview.kpi.uniques).toBe(4);
-    expect(somma).toBe(4);
+    expect(overview.geo?.cc.sort()).toEqual(['DE', 'IT']);
+    expect(overview.geo?.v.reduce((a, b) => a + b, 0)).toBe(2);
   });
 
-  it('un giocatore visto in tre giorni conta UNA volta', async () => {
-    // La metrica e` «giocatori», non «giocatori-giorno»: con poll da trenta
-    // secondi un giocatore connesso un'ora produce 120 campioni, e una mappa
-    // costruita sui campioni misurerebbe quanto la gente sta online, non da
-    // dove viene.
-    await seen(1, 1, 'IT', [ARENA]);
-    await seen(1, 2, 'IT', [ARENA]);
-    await seen(1, 3, 'IT', [ARENA]);
+  it('non cambia al cambiare del range: e` una domanda sul presente', async () => {
+    await seen(1, 0, 'IT', [ARENA]);
+    await seen(2, 3, 'DE', [ARENA]);
 
-    const { overview } = await buildAll(db, '7d');
-    expect(overview.kpi.uniques).toBe(1);
-    expect(overview.geo?.v).toEqual([1]);
-    expect(overview.geo?.cc).toEqual(['IT']);
+    for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {
+      const { overview } = await buildAll(db, range);
+      expect(overview.geo?.cc, `range ${range}`).toEqual(['IT']);
+    }
   });
 
-  it('un giocatore visto da due paesi diversi conta una volta, nel piu` recente', async () => {
-    await seen(1, 5, 'DE', [ARENA]);
-    await seen(1, 1, 'IT', [ARENA]);
+  it('un giocatore conta UNA volta, per quanto giochi', async () => {
+    // `player_day` ha una riga per (giorno, giocatore): su un giorno solo,
+    // giocatori e giocatori-giorno coincidono per definizione. E` la ragione
+    // per cui l`errore di unita` che I5 nasce per impedire — una mappa in
+    // giocatori-giorno accanto a un KPI in giocatori — qui non e`
+    // costruibile.
+    await seen(1, 0, 'IT', [ARENA, EVENTO]);
 
     const { overview } = await buildAll(db, '7d');
-    expect(overview.kpi.uniques).toBe(1);
-    expect(overview.geo?.cc).toEqual(['IT']);
     expect(overview.geo?.v).toEqual([1]);
   });
+});
 
-  it('un paese noto batte un giorno piu` recente SENZA paese', async () => {
-    // Il giorno piu` recente e` quello a geolocalizzazione spenta. Ordinando
-    // solo per data, questo giocatore diventerebbe «non determinato» pur
-    // avendo un paese noto quattro giorni prima.
-    await seen(1, 4, 'IT', [ARENA]);
-    await seen(1, 1, null, [ARENA]);
-
-    const { overview } = await buildAll(db, '7d');
-    expect(overview.geo?.cc).toEqual(['IT']);
-  });
-
-  it('I5 vale anche per il payload di UNA modalita`', async () => {
-    await seen(1, 2, 'IT', [ARENA]);
-    await seen(2, 2, 'IT', [ARENA]);
-    await seen(3, 2, 'DE', [EVENTO]);
-    // Chi ha giocato a due modalita` conta in ENTRAMBE, e una volta sola nel
-    // totale di rete: per questo la rete non e` la somma delle modalita`.
-    await seen(4, 1, 'FR', [ARENA, EVENTO]);
+describe('la mappa per modalita`', () => {
+  it('e` un SOTTOINSIEME di quella di rete', async () => {
+    await seen(1, 0, 'IT', [ARENA]);
+    await seen(2, 0, 'IT', [ARENA]);
+    await seen(3, 0, 'DE', [EVENTO]);
+    // Chi gioca a due modalita` conta in ENTRAMBE, e una volta sola nella
+    // rete: per questo la rete non e` la somma delle modalita`.
+    await seen(4, 0, 'FR', [ARENA, EVENTO]);
 
     const { overview, perMode } = await buildAll(db, '7d');
     const arena = perMode.get('arena');
     const eventi = perMode.get('eventi');
 
-    expect(() => arena && assertPayload(arena)).not.toThrow();
-    expect(arena?.kpi.uniques).toBe(3);
+    expect(overview.geo?.v.reduce((a, b) => a + b, 0)).toBe(4);
     expect(arena?.geo?.v.reduce((a, b) => a + b, 0)).toBe(3);
-    expect(eventi?.kpi.uniques).toBe(2);
     expect(eventi?.geo?.v.reduce((a, b) => a + b, 0)).toBe(2);
-
     // 3 + 2 = 5, ma le persone sono 4.
-    expect(overview.kpi.uniques).toBe(4);
+  });
+
+  it('un giocatore su DUE server della stessa modalita` conta una volta', async () => {
+    // Se il join duplicasse la riga, quella modalita` avrebbe piu` persone
+    // della rete intera — e un numero piu` grande del totale non ha sintomi
+    // finche` qualcuno non li mette accanto. `buildAll` lo verifica e
+    // solleva.
+    await sql.query('INSERT INTO stats.server (server_key) VALUES ($1)', ['duels_2']);
+    await sql.query(
+      `INSERT INTO stats.mode_alias (match_kind, match_value, mode_id)
+       SELECT 'server', $1, mode_id FROM stats.mode WHERE mode_key = 'arena'`,
+      ['duels_2'],
+    );
+    await seen(1, 0, 'IT', [ARENA, 'duels_2']);
+
+    const { overview, perMode } = await buildAll(db, '7d');
+    expect(perMode.get('arena')?.geo?.v).toEqual([1]);
+    expect(overview.geo?.v).toEqual([1]);
   });
 });
 
 describe('XX e` un valore, non uno scarto', () => {
   it('chi non si risolve finisce in una barra visibile', async () => {
-    await seen(1, 2, 'IT', [ARENA]);
-    await seen(2, 2, 'XX', [ARENA]);
+    await seen(1, 0, 'IT', [ARENA]);
+    await seen(2, 0, 'XX', [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     // Scartando gli XX la mappa continuerebbe a sembrare corretta mentre
-    // misura meno gente del KPI accanto — e I5 lo intercetterebbe.
+    // misura meno gente di quanta ce ne sia.
     expect(overview.geo?.cc).toContain('XX');
-    expect(overview.geo?.v.reduce((a, b) => a + b, 0)).toBe(overview.kpi.uniques);
+    expect(overview.geo?.v.reduce((a, b) => a + b, 0)).toBe(2);
   });
 
   it('le barre sono ordinate dalla piu` grande', async () => {
-    await seen(1, 2, 'DE', [ARENA]);
-    await seen(2, 2, 'IT', [ARENA]);
-    await seen(3, 2, 'IT', [ARENA]);
-    await seen(4, 2, 'IT', [ARENA]);
+    await seen(1, 0, 'DE', [ARENA]);
+    await seen(2, 0, 'IT', [ARENA]);
+    await seen(3, 0, 'IT', [ARENA]);
+    await seen(4, 0, 'IT', [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     expect(overview.geo?.cc[0]).toBe('IT');
@@ -221,41 +223,49 @@ describe('XX e` un valore, non uno scarto', () => {
   });
 });
 
-describe('a geolocalizzazione spenta il widget sparisce', () => {
-  it('nessun paese in tutto il periodo significa geo: null', async () => {
-    await seen(1, 2, null, [ARENA]);
-    await seen(2, 2, null, [ARENA]);
+describe('spenta, non rilevata e non risolta sono TRE cose', () => {
+  it('nessun paese oggi significa geo: null', async () => {
+    await seen(1, 0, null, [ARENA]);
+    await seen(2, 0, null, [ARENA]);
 
     const { overview, perMode } = await buildAll(db, '7d');
-    // `null` e non una mappa di XX al 100%: l'interfaccia nasconde il widget
-    // invece di disegnare «non viene nessuno da nessuna parte», che sarebbe
-    // una risposta a una domanda che non abbiamo posto.
+    // `null` e non una mappa tutta «non rilevato»: l`interfaccia nasconde il
+    // widget invece di disegnare una risposta a una domanda non posta.
     expect(overview.geo).toBeNull();
     expect(perMode.get('arena')?.geo).toBeNull();
-    // Il KPI degli unici c'e` lo stesso: non sapere DA DOVE non impedisce di
-    // sapere QUANTI.
-    expect(overview.kpi.uniques).toBe(2);
   });
 
-  it('attiva ma che non risolve NIENTE mostra le barre XX, non le nasconde', async () => {
-    await seen(1, 2, 'XX', [ARENA]);
-    await seen(2, 2, 'XX', [ARENA]);
+  it('chi e` stato visto prima dell`accensione e` «non rilevato», non «non risolto»', async () => {
+    await seen(1, 0, 'IT', [ARENA]);
+    await seen(2, 0, null, [ARENA]);
+
+    const { overview } = await buildAll(db, '7d');
+    // `--` e non `XX`: il giorno in cui si accende la geolocalizzazione, chi
+    // era gia` passato non e` «non determinato» — non lo si e` proprio
+    // guardato. Confonderli accenderebbe l`allarme che XX esiste per dare.
+    expect(overview.geo?.cc).toContain('--');
+    expect(overview.geo?.cc).not.toContain('XX');
+  });
+
+  it('attiva ma che non risolve NIENTE mostra le barre XX', async () => {
+    await seen(1, 0, 'XX', [ARENA]);
+    await seen(2, 0, 'XX', [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     // E` la differenza fra «funzione spenta» e «funzione accesa che non
     // funziona». La seconda e` un guasto, e nasconderla sarebbe nascondere
-    // proprio il sintomo che dice che il campo ip ha cambiato significato.
+    // il sintomo che dice che il campo dell`indirizzo ha cambiato
+    // significato.
     expect(overview.geo).not.toBeNull();
     expect(overview.geo?.cc).toEqual(['XX']);
     expect(overview.geo?.v).toEqual([2]);
   });
 });
 
-describe('spenta e «accesa ma senza dati in questo periodo» sono diverse', () => {
+describe('spenta e «accesa ma senza dati» sono diverse nel payload', () => {
   it('geoEnabled segue il verdetto della sonda, non i dati', async () => {
     await sql.query('UPDATE stats.ingest_state SET geo_enabled = TRUE WHERE id = 1');
-    // Nessun paese in questa finestra: la mappa non si disegna...
-    await seen(1, 2, null, [ARENA]);
+    await seen(1, 0, null, [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     expect(overview.geo).toBeNull();
@@ -266,7 +276,7 @@ describe('spenta e «accesa ma senza dati in questo periodo» sono diverse', () 
 
   it('con la sonda non approvata resta falso', async () => {
     await sql.query('UPDATE stats.ingest_state SET geo_enabled = NULL WHERE id = 1');
-    await seen(1, 2, null, [ARENA]);
+    await seen(1, 0, null, [ARENA]);
 
     const { overview } = await buildAll(db, '7d');
     expect(overview.geoEnabled).toBe(false);

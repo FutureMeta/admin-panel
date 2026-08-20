@@ -125,7 +125,7 @@ export function WorldMap({ geo }: { geo: GeoData }) {
             Provenienza geografica
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            Giocatori unici del periodo · scala per quantili, non lineare
+            Giocatori unici oggi · scala per quantili, non lineare
           </div>
         </div>
       </div>

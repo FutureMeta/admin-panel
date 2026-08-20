@@ -353,7 +353,7 @@ async function distinctPlayers(db: Database, from: Date, to: Date): Promise<numb
 }
 
 /**
- * La mappa: unici del periodo per paese, di rete e per modalita'.
+ * La mappa: unici di OGGI per paese, di rete e per modalita'.
  *
  * E' LA FONTE ANCHE DI , e non e' un dettaglio implementativo:
  * e' l'invariante I5. Se la mappa contasse una cosa e il KPI un'altra, si
@@ -373,33 +373,25 @@ async function distinctPlayers(db: Database, from: Date, to: Date): Promise<numb
  */
 async function geoRows(
   db: Database,
-  from: Date,
-  to: Date,
+  now: Date,
 ): Promise<Array<{ mode_key: string; cc: string | null; uniques: number }>> {
   const res = await sql<{ mode_key: string; cc: string | null; uniques: string }>`
-    WITH ranged AS (
-      SELECT DISTINCT ON (d.player_id)
-             d.player_id,
-             d.country AS cc
+    WITH today AS (
+      SELECT d.player_id, d.country AS cc
         FROM stats.player_day d
-       WHERE d.day >= stats.civil_day(${from}) AND d.day < stats.civil_day(${to})
-       -- Prima un paese NOTO, poi il giorno piu' recente. L'ordine conta: con
-       -- il solo day DESC, un giocatore visto ieri in un giorno in cui la
-       -- geolocalizzazione era spenta diventerebbe «non determinato» pur
-       -- avendo un paese noto la settimana prima.
-       ORDER BY d.player_id, (d.country IS NULL), d.day DESC
+       WHERE d.day = stats.civil_day(${now})
     ),
     per_mode AS (
       SELECT DISTINCT sm.mode_key, pds.player_id
         FROM stats.player_day_server pds
         JOIN stats.v_server_mode sm USING (server_id)
-       WHERE pds.day >= stats.civil_day(${from}) AND pds.day < stats.civil_day(${to})
+       WHERE pds.day = stats.civil_day(${now})
     )
-    SELECT '__network__' AS mode_key, r.cc, count(*)::bigint::text AS uniques
-      FROM ranged r GROUP BY 1, 2
+    SELECT '__network__' AS mode_key, t.cc, count(*)::bigint::text AS uniques
+      FROM today t GROUP BY 1, 2
     UNION ALL
-    SELECT m.mode_key, r.cc, count(*)::bigint::text AS uniques
-      FROM per_mode m JOIN ranged r USING (player_id) GROUP BY 1, 2
+    SELECT m.mode_key, t.cc, count(*)::bigint::text AS uniques
+      FROM per_mode m JOIN today t USING (player_id) GROUP BY 1, 2
   `.execute(db);
   return res.rows.map((r) => ({ mode_key: r.mode_key, cc: r.cc, uniques: Number(r.uniques) }));
 }
@@ -665,7 +657,9 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     labels,
     daily,
     dailyByMode,
+    distinctNow,
     distinctBefore,
+    distinctModeNow,
     distinctModeBefore,
     geo,
     facts,
@@ -677,9 +671,11 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     modeLabels(db),
     uniquesRows(db, w.curTo),
     uniquesByModeRows(db, w.curTo),
+    distinctPlayers(db, w.curFrom, w.curTo),
     distinctPlayers(db, w.prevFrom, w.curFrom),
+    distinctPlayersByMode(db, w.curFrom, w.curTo),
     distinctPlayersByMode(db, w.prevFrom, w.curFrom),
-    geoRows(db, w.curFrom, w.curTo),
+    geoRows(db, now),
     networkFacts(db),
   ]);
   const queryMs = Date.now() - t0;
@@ -748,18 +744,19 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
   // Se invece e' attiva e non risolve, le barre esistono e sono tutte `XX`:
   // quello e' un DATO, ed e' il primo sintomo che il campo `ip` ha cambiato
   // significato. Nasconderlo sarebbe nascondere proprio il guasto.
-  // GLI UNICI DEL PERIODO CORRENTE ESCONO DA QUI, non da una seconda query.
+  // LA MAPPA E IL KPI DEGLI UNICI ORA MISURANO PERIODI DIVERSI, e va detto
+  // perche' e' una scelta e non una svista.
   //
-  // E' cio' che rende I5 vera per COSTRUZIONE invece che per fortuna. Con due
-  // query separate i due numeri girerebbero su connessioni diverse e quindi su
-  // snapshot MVCC diversi: basta che una riga di `player_day` venga committata
-  // fra l'una e l'altra — e a mezzanotte succede, quando il versamento dei
-  // secondi crea le righe del giorno nuovo — perche' la somma delle barre non
-  // torni con il KPI e `assertPayload` rifiuti l'INTERO payload. Raro,
-  // notturno, e indistinguibile da un difetto vero.
-  const uniquesOf = (modeKey: string): number =>
-    geo.filter((g) => g.mode_key === modeKey).reduce((a, g) => a + g.uniques, 0);
-
+  // La mappa guarda il giorno in corso (il design: «Giocatori unici oggi»);
+  // `kpi.uniques` guarda il periodo del range ed esclude apposta il giorno
+  // parziale, o il confronto con il periodo precedente sarebbe truccato. Sono
+  // due domande diverse — «da dove viene la gente adesso» e «quante persone in
+  // questo mese» — e le loro etichette lo dicono.
+  //
+  // Il difetto che questa separazione TOGLIE: finche' i due numeri dovevano
+  // coincidere, bastava una riga di `player_day` committata fra le due query —
+  // e a mezzanotte succede — perche' `assertPayload` rifiutasse l'intero
+  // payload per un disaccordo che non era un difetto.
   const geoActive = geo.some((g) => g.cc !== null);
   const geoByMode = new Map<string, Array<{ cc: string; v: number }>>();
   if (geoActive) {
@@ -776,17 +773,35 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     return {
       cc: list.map((x) => x.cc),
       v: list.map((x) => x.v),
+      // L'istante a cui la mappa si riferisce. Il giorno civile in corso NON
+      // e' finito: questo numero cresce durante la giornata, ed e' voluto.
       asOf: Math.floor(now.getTime() / 1_000),
-      // Contata adesso e sulla stessa popolazione del KPI, non ripresa da un
-      // aggregato notturno: e' cio' che rende I5 vera per costruzione invece
-      // che per fortuna.
+      // Contata adesso su `player_day`, non ripresa da un aggregato notturno.
       exact: true,
     };
   };
 
+  // I giocatori di una modalita' sono un SOTTOINSIEME di quelli della rete.
+  //
+  // E' l'unica relazione che le due mappe devono rispettare, e si rompe in un
+  // modo preciso: se il join per modalita' duplicasse una riga — un giocatore
+  // su due server della stessa modalita' — quella modalita' conterebbe piu'
+  // persone della rete intera. Un numero piu' grande del totale non ha
+  // sintomi finche' qualcuno non li mette accanto.
+  const networkTotal = (geoByMode.get('__network__') ?? []).reduce((a, x) => a + x.v, 0);
+  for (const [key, list] of geoByMode) {
+    if (key === '__network__') continue;
+    const total = list.reduce((a, x) => a + x.v, 0);
+    if (total > networkTotal) {
+      throw new Error(
+        `payload delle statistiche non valido: la modalita\` ${key} ha ${total} giocatori sulla mappa, la rete ne ha ${networkTotal}`,
+      );
+    }
+  }
+
   const kpi = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec);
   const kpiPrev = kpiOf(prev, w.prevFrom, w.curFrom, plan.bucketSec);
-  kpi.uniques = uniquesOf('__network__');
+  kpi.uniques = distinctNow;
   kpiPrev.uniques = distinctBefore;
 
   // Il grafico degli unici mostra gli ultimi trenta giorni e li confronta con
@@ -872,7 +887,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       (b) => b.byMode.get(m) ?? 0,
       false,
     );
-    kpiMode.uniques = uniquesOf(m);
+    kpiMode.uniques = distinctModeNow.get(m) ?? null;
     kpiModePrev.uniques = distinctModeBefore.get(m) ?? null;
 
     const byDay = dailyModeIndex.get(m);

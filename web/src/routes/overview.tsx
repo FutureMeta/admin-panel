@@ -1034,10 +1034,10 @@ export function OverviewPage() {
       ) : (
         <NotYet
           title="Provenienza geografica"
-          sub="Giocatori unici del periodo · scala per quantili, non lineare"
+          sub="Giocatori unici oggi · scala per quantili, non lineare"
           what={
             data.geoEnabled
-              ? "geolocalizzazione attiva: la mappa copre i giorni CHIUSI, e i giorni chiusi di questo periodo sono precedenti all'accensione"
+              ? 'nessun giocatore ancora registrato con un paese, oggi'
               : 'geolocalizzazione non attiva'
           }
         />

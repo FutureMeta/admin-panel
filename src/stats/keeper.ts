@@ -19,15 +19,69 @@
 //     ma toglie l'unica parte che possiamo togliere da qui.
 
 import type { Logger } from 'pino';
-import { createKysely, createPool } from '#src/db/pool.ts';
+import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import type { JobRegistry, RunningJob } from '#src/jobs/scheduler.ts';
 import { startJob } from '#src/jobs/scheduler.ts';
 import { createGameRedis } from './game-redis.ts';
 import { StatsPoller } from './poller.ts';
+import { type RollupLevel, type RollupResult, runRollup } from './rollup.ts';
+
+/**
+ * Cadenze e attese, dal documento normativo.
+ *
+ * Il rollup non condivide il pool del campionamento: `max: 2` con un giro
+ * lungo in corso significa che il ciclo aspetta la sua connessione, ed e'
+ * esattamente il tipo di contesa che i pool separati esistono per togliere.
+ */
+const ROLLUP_JOBS: Array<{ level: RollupLevel; intervalMs: number; retryMs: number }> = [
+  { level: '5m', intervalMs: 60_000, retryMs: 15_000 },
+  { level: '1h', intervalMs: 300_000, retryMs: 60_000 },
+  { level: '1d', intervalMs: 900_000, retryMs: 120_000 },
+];
+
+/** Quanto puo' durare un giro che sta recuperando arretrato. */
+const CATCHUP_BUDGET_MS = 20_000;
+/** Tetto di sicurezza sui passaggi, per non restare in un ciclo stretto. */
+const CATCHUP_MAX_PASSES = 30;
+
+/**
+ * Un giro, che continua finche' e' indietro.
+ *
+ * Il catch-up e' limitato per statement — un arretrato di trenta giorni non
+ * deve mai diventare una sola query — ma se si aspettasse l'intervallo fra un
+ * pezzo e l'altro, recuperare un giorno di fermo richiederebbe ore. Quindi
+ * dentro un giro si ripassa finche' non e' in pari o finche' il budget non
+ * finisce, e il giro dopo riprende da dove eravamo.
+ */
+async function rollupPass(db: Database, level: RollupLevel): Promise<Record<string, unknown>> {
+  const started = Date.now();
+  let passes = 0;
+  let rows = 0;
+  let last: RollupResult | undefined;
+  do {
+    last = await runRollup(db, level);
+    rows += last.rowsWritten;
+    passes += 1;
+  } while (!last.caughtUp && passes < CATCHUP_MAX_PASSES && Date.now() - started < CATCHUP_BUDGET_MS);
+  return {
+    livello: level,
+    righe: rows,
+    passaggi: passes,
+    indietro: last?.behindBuckets ?? 0,
+    ms: Date.now() - started,
+  };
+}
 
 export type StatsIngestOptions = {
   /** URL del ruolo che scrive: `metamc_ingest`. Mai quello del pannello. */
   databaseUrl: string;
+  /**
+   * URL per i giri di rollup. In assenza usa quello del campionamento: i due
+   * ruoli sono entrambi membri di `metamc_stats_rw`, quindi cambia solo quale
+   * timeout eredita chi si collega a mano per indagare. Il POOL resta separato
+   * comunque, ed e' quello che conta.
+   */
+  rollupDatabaseUrl?: string;
   /** Il Redis di gioco. Puo' essere lo stesso del pannello: il client no. */
   redisUrl: string;
   pattern: string;
@@ -42,6 +96,8 @@ export type StatsIngestOptions = {
 
 export type StatsIngest = {
   poller: StatsPoller;
+  /** Il pool del rollup, esposto per i comandi di manutenzione e per i test. */
+  rollupDb: Database;
   stop: () => Promise<void>;
 };
 
@@ -55,6 +111,19 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
     statementTimeout: '5s',
     searchPath: 'stats, public',
   });
+  const rollupPool = createPool({
+    connectionString: opts.rollupDatabaseUrl ?? opts.databaseUrl,
+    max: 2,
+    applicationName: 'metamc-stats-rollup',
+    // Il rollup puo' durare: aggrega, e non c'e' nessuna richiesta in attesa.
+    // Il campionamento no, ed e' per questo che i due pool sono distinti: con
+    // uno solo da due connessioni, un giro lungo lascerebbe il ciclo ad
+    // aspettare la propria.
+    statementTimeout: '60s',
+    searchPath: 'stats, public',
+  });
+  const rollupDb = createKysely(rollupPool);
+
   const db = createKysely(pool);
   const redis = createGameRedis(opts.redisUrl, 'ingest');
   const poller = new StatsPoller({ db, redis, logger: opts.logger, pattern: opts.pattern });
@@ -65,31 +134,54 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
     'campionamento avviato',
   );
 
-  let job: RunningJob | undefined;
+  const jobs: RunningJob[] = [];
   if (opts.schedule !== false) {
-    job = startJob(
-      {
-        name: 'stats-ingest',
-        intervalMs: poller.intervalMs,
-        retryMs: poller.intervalMs,
-        // La griglia e' il punto: i tick devono cadere sui multipli, non
-        // scivolare di quanto e' durato il giro precedente.
-        alignMs: poller.intervalMs,
-        run: () => poller.runOnce(),
-        successMessage: 'ciclo di campionamento',
-        failureMessage: 'ciclo non registrato: quello slot restera` un buco, non uno zero',
-      },
-      opts.logger,
-      opts.registry,
+    jobs.push(
+      startJob(
+        {
+          name: 'stats-ingest',
+          intervalMs: poller.intervalMs,
+          retryMs: poller.intervalMs,
+          // La griglia e' il punto: i tick devono cadere sui multipli, non
+          // scivolare di quanto e' durato il giro precedente.
+          alignMs: poller.intervalMs,
+          run: () => poller.runOnce(),
+          successMessage: 'ciclo di campionamento',
+          failureMessage: 'ciclo non registrato: quello slot restera` un buco, non uno zero',
+        },
+        opts.logger,
+        opts.registry,
+      ),
     );
+
+    for (const r of ROLLUP_JOBS) {
+      jobs.push(
+        startJob(
+          {
+            name: `stats-rollup-${r.level}`,
+            intervalMs: r.intervalMs,
+            retryMs: r.retryMs,
+            run: () => rollupPass(rollupDb, r.level),
+            successMessage: `rollup ${r.level}`,
+            failureMessage: `rollup ${r.level} fermo: i grafici serviranno numeri vecchi`,
+          },
+          opts.logger,
+          opts.registry,
+        ),
+      );
+    }
   }
 
   return {
     poller,
+    rollupDb,
     stop: async () => {
-      job?.stop();
+      // Prima i timer, poi le connessioni: un giro che partisse mentre il pool
+      // si chiude fallirebbe con un errore che non significa niente.
+      for (const j of jobs) j.stop();
       redis.disconnect();
       await pool.end().catch(() => undefined);
+      await rollupPool.end().catch(() => undefined);
     },
   };
 }

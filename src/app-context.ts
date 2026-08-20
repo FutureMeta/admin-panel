@@ -192,6 +192,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     try {
       statsIngest = await startStatsIngest({
         databaseUrl: env.DATABASE_INGEST_URL,
+        ...(env.DATABASE_ROLLUP_URL ? { rollupDatabaseUrl: env.DATABASE_ROLLUP_URL } : {}),
         redisUrl: env.GAME_REDIS_URL ?? env.REDIS_URL,
         pattern: env.GAME_REDIS_PATTERN,
         logger,

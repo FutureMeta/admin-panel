@@ -94,6 +94,13 @@ const EnvSchema = z.object({
    */
   DATABASE_INGEST_URL: z.string().min(1).optional(),
   /**
+   * Il ruolo dei giri di rollup. In assenza si usa quello del campionamento:
+   * cambia solo quale timeout eredita chi si collega a mano. Il pool resta
+   * separato in ogni caso, perche' un giro lungo non deve poter togliere la
+   * connessione al ciclo da trenta secondi.
+   */
+  DATABASE_ROLLUP_URL: z.string().min(1).optional(),
+  /**
    * Il Redis di gioco. In questa installazione e' la stessa istanza del
    * pannello, quindi in assenza si usa REDIS_URL — ma con un client
    * dedicato, con i suoi timeout e senza autopipelining.

@@ -34,7 +34,25 @@
 
 import { Redis } from 'ioredis';
 
+/**
+ * Il Redis di gioco puo' essere lo STESSO del pannello.
+ *
+ * Il disegno assumeva due istanze; in questa installazione e' una sola. Cambia
+ * poco per la sonda — cambiano il pattern e il fatto che DBSIZE conta anche le
+ * chiavi del pannello — ma cambia due cose a valle, ed e' meglio scriverle
+ * dove si scoprono:
+ *
+ *   1. «un Redis di gioco lento non deve rallentare un login» non si ottiene
+ *      piu' con la sola separazione delle connessioni: se l'istanza e' una, la
+ *      contesa e' sul server. Le connessioni separate con timeout propri
+ *      restano necessarie (evitano il blocco in testa alla coda lato client),
+ *      ma non sono sufficienti;
+ *   2. la cache dei payload non puo' vivere qui con `allkeys-lru`, perche' la
+ *      prima pressione di memoria sfratterebbe le sessioni. O si separa
+ *      l'istanza, o la cache prende un prefisso e un TTL e rinuncia alla LRU.
+ */
 const URL_ENV = 'GAME_REDIS_URL';
+const FALLBACK_URL_ENV = 'REDIS_URL';
 const PATTERN = process.env['GAME_REDIS_PATTERN'] ?? 'metaverse:player:*';
 const TTL_SAMPLE = Number(process.env['PROBE_TTL_SAMPLE'] ?? 50);
 
@@ -107,9 +125,12 @@ function hostOf(address: string): string {
 }
 
 async function main(): Promise<void> {
-  const url = process.env[URL_ENV];
+  const url = process.env[URL_ENV] ?? process.env[FALLBACK_URL_ENV];
+  const source = process.env[URL_ENV] ? URL_ENV : FALLBACK_URL_ENV;
   if (!url) {
-    console.error(`serve ${URL_ENV}, per esempio redis://:password@host:6379/0`);
+    console.error(
+      `serve ${URL_ENV} (oppure ${FALLBACK_URL_ENV}, se il Redis di gioco e' lo stesso del pannello).`,
+    );
     process.exitCode = 2;
     return;
   }
@@ -262,7 +283,11 @@ async function main(): Promise<void> {
       JSON.stringify(
         {
           quando: new Date(startedAt).toISOString(),
+          // La variabile, non il suo valore: la stringa contiene la password.
+          sorgente: source,
           pattern: PATTERN,
+          // Se l'istanza e' condivisa col pannello, qui dentro ci sono anche
+          // sessioni e marcatori TOTP: DBSIZE non e' il numero di giocatori.
           dbsize,
           scanIterations: iterations,
           chiavi: {

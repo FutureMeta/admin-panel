@@ -20,7 +20,7 @@
 // destinazione e' mezzo scritto.
 
 import { createWriteStream } from 'node:fs';
-import { rename, rm, stat } from 'node:fs/promises';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
@@ -82,7 +82,13 @@ export async function updateGeoDb(opts: UpdateOptions): Promise<UpdateResult> {
   const t0 = Date.now();
   const doFetch = opts.fetchImpl ?? fetch;
   const now = opts.now ?? new Date();
-  const tmp = join(dirname(opts.path), '.country.mmdb.tmp');
+  const dir = dirname(opts.path);
+  const tmp = join(dir, '.country.mmdb.tmp');
+
+  // Al primo avvio la cartella del volume puo' non esserci ancora. Crearla
+  // qui costa una riga e toglie di mezzo l'unico modo in cui questo job
+  // fallisce per sempre senza che ci sia niente da riparare.
+  await mkdir(dir, { recursive: true });
 
   let lastError = 'nessun tentativo';
   for (const url of candidateUrls(now)) {

@@ -639,7 +639,6 @@ const GIORNO_MESE = new Intl.DateTimeFormat('it-IT', {
   month: '2-digit',
 });
 
-/** Media mobile a 7 giorni: la tendenza sotto il rumore del singolo giorno. */
 function DailyUniques({ data, label }: { data: Overview; label: string }) {
   const { t, v, final } = data.uniques;
   const scale = niceScale(Math.max(1, ...v.filter((x): x is number => x !== null)), 2);

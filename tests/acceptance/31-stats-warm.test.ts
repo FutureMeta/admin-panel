@@ -19,7 +19,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { StatsCache } from '#src/stats/cache.ts';
 import type { ModePayload, OverviewPayload } from '#src/stats/contract.ts';
-import { K, markHot, startStatsWorker, warmOnBoot, warmRange } from '#src/stats/warm.ts';
+import { civilDay, K, markHot, startStatsWorker, warmOnBoot, warmRange } from '#src/stats/warm.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
 import { startTestApp, type TestApp } from '#tests/support/app.ts';
 import { connect } from '#tests/support/postgres.ts';
@@ -345,5 +345,26 @@ describe('le due rotte', () => {
     // giorno il payload dovesse variare per ruolo, si scopre QUI.
     expect(a.headers.etag).toBe(b.headers.etag);
     expect(b.rawPayload.equals(a.rawPayload)).toBe(true);
+  });
+});
+
+describe('la chiave di cache porta il giorno civile', () => {
+  it('a mezzanotte la chiave cambia, quindi il payload si ricostruisce', () => {
+    const ieri = civilDay(new Date('2026-08-20T21:00:00Z'));
+    const oggi = civilDay(new Date('2026-08-20T23:00:00Z'));
+    // Le 23:00 UTC del 20 sono le 01:00 del 21 a Roma: giorno civile diverso.
+    expect(ieri).toBe('2026-08-20');
+    expect(oggi).toBe('2026-08-21');
+
+    // La freschezza di un payload misura il tempo passato dalla
+    // costruzione, e non sa che a mezzanotte il giorno civile cambia:
+    // l'asse dei giorni finirebbe a ieri e resterebbe servito da una chiave
+    // valida fino a un'ora intera sul range 1y.
+    expect(K.ov('1y', ieri)).not.toBe(K.ov('1y', oggi));
+    expect(K.md('duels', '1y', ieri)).not.toBe(K.md('duels', '1y', oggi));
+  });
+
+  it("l'hot-set NON porta il giorno: cio' che si e' guardato non scade a mezzanotte", () => {
+    expect(K.hot('7d')).toBe('stats:v2:hot:7d');
   });
 });

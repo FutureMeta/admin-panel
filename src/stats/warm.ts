@@ -28,17 +28,46 @@ import { buildAll } from './read.ts';
 const S = 1_000;
 const M = 60 * S;
 
+const ROME_DAY = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Rome',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/**
+ * Il giorno civile di Roma, come `2026-08-21`.
+ *
+ * ENTRA NELLA CHIAVE DI CACHE, e non e' un vezzo. La freschezza di un payload
+ * e' «quanto tempo e' passato da quando l'ho costruito», e non sa niente del
+ * fatto che a mezzanotte il giorno civile cambia: l'asse dei giorni del
+ * grafico degli unici finisce a IERI, e resta servito da una chiave
+ * perfettamente valida finche' il giro di warm non ripassa — fino a un'ora
+ * intera sul range 1y. Il grafico sembra fermo, e non c'e' niente che dica
+ * perche'.
+ *
+ * Con il giorno nella chiave, a mezzanotte tutti i range mancano e si
+ * ricostruiscono. Le chiavi vecchie scadono da sole.
+ */
+export function civilDay(now: Date = new Date()): string {
+  return ROME_DAY.format(now);
+}
+
 /**
  * `v2` sta NELLA CHIAVE, non solo nel corpo.
  *
  * Un cambio di contratto e' un namespace nuovo, e le chiavi vecchie scadono da
  * sole. Una cache non si migra: migrare significherebbe scrivere codice che
  * legge un formato che nessuno produce piu', e tenerlo per sempre.
+ *
+ * Anche il GIORNO CIVILE sta nella chiave, per la ragione scritta sopra
+ * `civilDay`.
  */
 export const K = {
-  ov: (r: Range) => `stats:v2:ov:${r}`,
-  md: (m: string, r: Range) => `stats:v2:md:${m}:${r}`,
-  /** UNO PER RANGE, non globale: vedi `hotModes`. */
+  ov: (r: Range, day: string = civilDay()) => `stats:v2:ov:${day}:${r}`,
+  md: (m: string, r: Range, day: string = civilDay()) => `stats:v2:md:${day}:${m}:${r}`,
+  /** UNO PER RANGE, non globale: vedi `hotModes`. Il giorno qui non serve:
+   *  cio' che qualcuno ha guardato non scade a mezzanotte. */
   hot: (r: Range) => `stats:v2:hot:${r}`,
 };
 

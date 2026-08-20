@@ -57,6 +57,7 @@ type Overview = {
   heatmap: { v: number[]; w: number[]; n: number[] };
   uniques: { t: number[]; v: (number | null)[]; final: boolean[] };
   geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
+  current: { at: number; byMode: Record<string, number> } | null;
   geoEnabled: boolean;
   record: { players: number; at: number | null; since: number } | null;
 };
@@ -407,12 +408,14 @@ function Distribution({
   onlineNow: number | null;
   colorOf: (m: string) => string;
 }) {
-  // L'ULTIMO BUCKET CHIUSO, non una media del periodo: la domanda è «chi c'è
-  // adesso», e la risposta più onesta che i rollup sanno dare è l'ultimo
-  // istante per cui esiste una misura.
-  const last = data.online.total.reduce<number>((acc, v, i) => (v === null ? acc : i), -1);
+  // DAL DATO SUO, non dalla serie del range.
+  //
+  // Questo riquadro è l'unico che il selettore in alto non governa: risponde a
+  // «chi c'è adesso». Prendendo l'ultimo punto della serie selezionata cambiava
+  // scegliendo un altro periodo — e su un anno quell'ultimo punto è la media di
+  // un giorno intero, presentata come popolazione corrente.
   const slices = data.modes
-    .map((m) => ({ key: m, value: last >= 0 ? (data.online.series[m]?.[last] ?? 0) : 0 }))
+    .map((m) => ({ key: m, value: data.current?.byMode[m] ?? 0 }))
     .filter((s) => s.value > 0)
     .sort((a, b) => b.value - a.value);
   const total = slices.reduce((a, s) => a + s.value, 0);
@@ -439,8 +442,8 @@ function Distribution({
       </h3>
       <div style={{ fontSize: 12, color: 'var(--tx-muted)', marginBottom: 16 }}>
         Popolazione corrente · {numero.format(Math.round(total))} giocatori
-        {last >= 0 ? ` · ${hhmm(data.online.t[last] as number)}` : ''}. «Non classificata» raccoglie i server
-        non ancora tracciati.
+        {data.current ? ` · ${hhmm(data.current.at)}` : ''}. «Non classificata» raccoglie i server non ancora
+        tracciati.
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
         <svg viewBox="0 0 180 180" style={{ width: 180, height: 180, flex: 'none' }} aria-hidden="true">
@@ -637,46 +640,10 @@ const GIORNO_MESE = new Intl.DateTimeFormat('it-IT', {
 });
 
 /** Media mobile a 7 giorni: la tendenza sotto il rumore del singolo giorno. */
-/**
- * La media mobile, e SOLO dove la finestra e' piena.
- *
- * La versione precedente mediava su «fino a» sette giorni: il primo punto era
- * la media di uno, il quarto di quattro. La linea si chiamava «media mobile
- * 7g» e per i primi sei punti era un'altra cosa — piu' irregolare proprio
- * all'inizio, dove chi guarda cerca l'andamento.
- *
- * Adesso i punti senza finestra completa valgono `null`: la linea comincia al
- * settimo giorno. Un tratto in meno e' preferibile a un tratto che mente.
- */
-function movingAverage(values: (number | null)[], window: number): (number | null)[] {
-  return values.map((_, i) => {
-    if (i + 1 < window) return null;
-    const slice = values.slice(i - window + 1, i + 1);
-    // Un solo giorno mancante e la media di quella finestra non e' calcolabile:
-    // farla sui giorni rimasti darebbe un numero piu' basso che sembra un calo.
-    if (slice.some((v) => v === null)) return null;
-    return (slice as number[]).reduce((a, b) => a + b, 0) / window;
-  });
-}
-
-/**
- * Quanti giorni di media mobile, per periodo.
- *
- * Zero su 24h e 7g: una media a sette giorni su una finestra di sette giorni
- * produce UN punto, e su ventiquattro ore nessuno. Mostrare una linea fatta di
- * un punto solo, con la sua voce di legenda, promette un andamento che quel
- * grafico non puo' contenere.
- */
-function averageWindow(range: string): number {
-  return range === '24h' || range === '7d' ? 0 : 7;
-}
-
-function DailyUniques({ data, label, range }: { data: Overview; label: string; range: string }) {
+function DailyUniques({ data, label }: { data: Overview; label: string }) {
   const { t, v, final } = data.uniques;
   const scale = niceScale(Math.max(1, ...v.filter((x): x is number => x !== null)), 2);
   const max = scale.top;
-  const window = averageWindow(range);
-  const avg = window > 0 ? movingAverage(v, window) : v.map(() => null);
 
   const W2 = 1000;
   const H2 = 240;
@@ -708,22 +675,13 @@ function DailyUniques({ data, label, range }: { data: Overview; label: string; r
           <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, margin: '0 0 4px' }}>
             Giocatori unici
           </h3>
-          <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            {label}
-            {window > 0 ? ` · media mobile ${window}g` : null} · Europe/Rome
-          </div>
+          <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>{label} · Europe/Rome</div>
         </div>
         <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--tx-secondary)' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--ac)' }} />
             Unici del giorno
           </span>
-          {window > 0 ? (
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 14, height: 2, borderRadius: 2, background: 'var(--tx-secondary)' }} />
-              Media {window}g
-            </span>
-          ) : null}
         </div>
       </div>
 
@@ -772,19 +730,6 @@ function DailyUniques({ data, label, range }: { data: Overview; label: string; r
               />
             ),
           )}
-
-          <path
-            d={avg
-              .map((n, i) =>
-                n === null ? '' : `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(n).toFixed(1)}`,
-              )
-              .filter(Boolean)
-              .join(' ')}
-            fill="none"
-            stroke="var(--tx-secondary)"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-          />
 
           <text x={L2} y={232} fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">
             {t.length > 0 ? GIORNO_MESE.format(new Date((t[0] as number) * 1000)) : ''}
@@ -1053,7 +998,7 @@ export function OverviewPage() {
         <Heatmap data={data} label={labelOf(range)} />
       </div>
 
-      <DailyUniques data={data} label={labelOf(range)} range={range} />
+      <DailyUniques data={data} label={labelOf(range)} />
 
       {/*
         La mappa compare SOLO quando c'e' qualcosa da mostrare.

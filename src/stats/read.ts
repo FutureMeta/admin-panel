@@ -468,6 +468,42 @@ async function networkFacts(db: Database): Promise<NetworkFacts> {
   };
 }
 
+/**
+ * La popolazione dell'ULTIMO bucket da cinque minuti, per modalita'.
+ *
+ * Sempre da `rollup_5m`, qualunque range sia scelto: e' la definizione piu'
+ * vicina a «adesso» che i rollup sappiano dare. Il denominatore resta quello
+ * della riga di rete, come ovunque: preso per modalita' darebbe il tempo in
+ * cui quella modalita' era aperta, non quello osservato.
+ */
+async function currentMix(db: Database): Promise<{ at: number; byMode: Record<string, number> } | null> {
+  const res = await sql<{ mode_key: string; players: number | null; at: string }>`
+    WITH latest AS (
+      SELECT max(bucket) AS b FROM stats.v_online_5m
+    ),
+    src AS (
+      SELECT v.mode_key, v.player_seconds, v.covered_s
+        FROM stats.v_online_5m v, latest l
+       WHERE v.bucket = l.b
+    ),
+    cov AS (SELECT covered_s FROM src WHERE mode_key = '__network__' LIMIT 1)
+    SELECT s.mode_key,
+           (sum(s.player_seconds)::float8 / nullif((SELECT covered_s FROM cov), 0)) AS players,
+           extract(epoch FROM (SELECT b FROM latest))::bigint::text AS at
+      FROM src s
+     GROUP BY 1
+  `.execute(db);
+
+  const first = res.rows[0];
+  if (!first || first.at === null) return null;
+  const byMode: Record<string, number> = {};
+  for (const r of res.rows) {
+    if (r.mode_key === '__network__') continue;
+    if (r.players !== null) byMode[r.mode_key] = round1(Number(r.players));
+  }
+  return { at: Number(first.at), byMode };
+}
+
 async function modeLabels(db: Database): Promise<Map<string, { label: string; order: number }>> {
   const res = await sql<{ mode_key: string; display_name: string; sort_order: number }>`
     SELECT DISTINCT mode_key, display_name, sort_order FROM stats.v_server_mode
@@ -677,6 +713,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     distinctModeNow,
     geo,
     facts,
+    current,
   ] = await Promise.all([
     seriesRows(db, range, w),
     heatmapRows(db, w),
@@ -689,6 +726,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
     distinctPlayersByMode(db, w.curFrom, w.curTo),
     geoRows(db, w.curFrom, now),
     networkFacts(db),
+    currentMix(db),
   ]);
   const queryMs = Date.now() - t0;
 
@@ -848,6 +886,7 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
       v: recent.map((d) => d?.uniques ?? null),
       final: recent.map((d) => d?.final ?? false),
     },
+    current,
     geo: geoOf('__network__'),
     geoEnabled: facts.geoEnabled,
     record: facts.record,
@@ -906,6 +945,10 @@ export async function buildAll(db: Database, range: Range, now = new Date()): Pr
         v: dayAxis.map((t) => byDay?.get(t)?.uniques ?? null),
         final: dayAxis.map((t) => byDay?.get(t)?.final ?? false),
       },
+      // La distribuzione e' un riquadro della sola panoramica: nel payload
+      // di una modalita' non ha senso, e un oggetto con una voce sola
+      // sarebbe un invito a disegnarlo.
+      current: null,
       geo: geoOf(m),
       geoEnabled: facts.geoEnabled,
       // Il record e' della RETE, non della modalita': per una modalita' il

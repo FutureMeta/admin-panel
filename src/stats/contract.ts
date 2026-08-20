@@ -117,6 +117,24 @@ export type OverviewPayload = {
    */
   uniques: { t: number[]; v: (number | null)[]; final: boolean[] };
 
+  /**
+   * La popolazione ADESSO, per modalita'. Non dipende dal range.
+   *
+   * La distribuzione risponde a «chi c'e' in questo momento», non «com'e'
+   * andato il periodo»: e' l'unico riquadro della pagina che il selettore in
+   * alto non governa, e il design lo dice nel sottotitolo («Popolazione
+   * corrente»).
+   *
+   * Prima usciva dall'ultimo punto della serie del range selezionato: su 24h
+   * era un bucket da cinque minuti — quasi «adesso» — ma su un anno era la
+   * MEDIA DI UN GIORNO INTERO presentata come popolazione corrente. E
+   * cambiava scegliendo un altro periodo, il che rendeva evidente che
+   * qualcosa non tornava senza dire cosa.
+   *
+   * `null` quando non c'e' nessun ciclo abbastanza recente.
+   */
+  current: { at: number; byMode: Record<string, number> } | null;
+
   /** `null` quando non c'e' nessun paese nel periodo. Vedi `geoEnabled`. */
   geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
 

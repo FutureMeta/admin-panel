@@ -336,3 +336,45 @@ describe('gli unici seguono il selettore, e il giorno mancante e` un buco', () =
     expect(new Set(t).size).toBe(t.length);
   });
 });
+
+describe('la distribuzione per modalita` NON segue il selettore', () => {
+  beforeEach(async () => {
+    await dictionary();
+    await seedHours(40);
+    // Un bucket da cinque minuti recente: e` da li` che esce la popolazione
+    // corrente, qualunque periodo sia scelto.
+    await sql.query(
+      `INSERT INTO stats.rollup_5m
+         (bucket, server_id, samples, covered_s, player_seconds, players_max, players_max_at)
+       SELECT date_trunc('hour', now()), v.server_id, 10, 300,
+              CASE v.server_id WHEN 0 THEN 250 * 300 ELSE 125 * 300 END,
+              CASE v.server_id WHEN 0 THEN 250 ELSE 125 END,
+              date_trunc('hour', now())
+         FROM stats.server v
+        WHERE v.server_id = 0 OR v.server_key IN ($1, $2)
+       ON CONFLICT DO NOTHING`,
+      [ARENA, EVENTO],
+    );
+  });
+
+  it('e` la stessa per ogni range', async () => {
+    const seen: string[] = [];
+    for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {
+      const { payload } = await buildOverview(db, range);
+      expect(payload.current, `range ${range}`).not.toBeNull();
+      seen.push(JSON.stringify(payload.current?.byMode));
+    }
+    // Prima usciva dall`ultimo punto della serie del range: su un anno era la
+    // MEDIA DI UN GIORNO INTERO presentata come popolazione corrente, e
+    // cambiava scegliendo un altro periodo.
+    expect(new Set(seen).size).toBe(1);
+  });
+
+  it('viene dall`ultimo bucket da cinque minuti, non dalla media del periodo', async () => {
+    const { payload } = await buildOverview(db, '1y');
+    // 125 giocatori per modalita` nel bucket recente, contro i 150/200 medi
+    // dello storico orario: se leggesse il periodo, questi numeri sarebbero
+    // altri.
+    expect(payload.current?.byMode['arena']).toBeCloseTo(125, 0);
+  });
+});

@@ -149,14 +149,31 @@ describe('SEC-11 / test 7 — anti-replay TOTP', () => {
   it('last_totp_step registra lo step consumato', async () => {
     const user = await seedUser(t, { roleKey: 'moderatore' });
     const s = await signInAndEnroll(user);
-    expect((await s.verify(totpNow(s.secret))).statusCode).toBe(200);
+
+    // Lo step si racchiude fra due letture, prima e dopo la verifica.
+    //
+    // markUsed() scrive currentStep() calcolato SUL SERVER nell'istante della
+    // verifica, non lo step a cui appartiene il codice. Confrontarlo con un
+    // currentStep() riletto piu' tardi era una corsa: se il confine dei trenta
+    // secondi cadeva nel mezzo, il test falliva su un codice corretto e su un
+    // server corretto. Un test che fallisce a caso è peggio di un test
+    // assente, perché insegna a ignorare il rosso.
+    //
+    // Quando nessun confine viene attraversato — il caso normale — before e
+    // after coincidono e l'asserzione resta l'uguaglianza esatta di prima.
+    const before = currentStep();
+    const res = await s.verify(totpAt(s.secret, before));
+    const after = currentStep();
+    expect(res.statusCode).toBe(200);
 
     const row = await t.ctx.db
       .selectFrom('auth.user')
       .select('last_totp_step')
       .where('id', '=', user.id)
       .executeTakeFirstOrThrow();
-    expect(Number(row.last_totp_step)).toBe(currentStep());
+    const recorded = Number(row.last_totp_step);
+    expect(recorded).toBeGreaterThanOrEqual(before);
+    expect(recorded).toBeLessThanOrEqual(after);
   });
 
   it('un codice del PASSATO remoto e` rifiutato per non-monotonia', async () => {

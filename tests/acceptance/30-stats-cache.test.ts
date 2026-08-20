@@ -39,7 +39,7 @@ async function until(cond: () => boolean | Promise<boolean>, ms = 2_000): Promis
 function payloadWithHighBytes(seed: number): Buffer {
   const obj = {
     seed,
-    testo: 'modalità · sopravvivenza · «unicità» — 100% coperto',
+    text: 'modalità · sopravvivenza · «unicità» — 100% coperto',
     numeri: Array.from({ length: 400 }, (_, i) => (i * seed) % 997),
   };
   return Buffer.from(JSON.stringify(obj), 'utf8');
@@ -334,9 +334,9 @@ describe(`passo 5 — cache dei payload (${describeRedisBackend()})`, () => {
   it('i byte, grezzi e compressi, sono esposti per chiave', async () => {
     const raw = payloadWithHighBytes(9);
     await cache.warmEnvelope('stats:v2:ov:30d', async () => raw, LONG, 11);
-    const [[key, size]] = cache.sizes();
-    expect(key).toBe('stats:v2:ov:30d');
-    expect(size?.raw).toBe(raw.length);
-    expect(size?.br).toBeLessThan(raw.length);
+    const entry = cache.sizes()[0];
+    expect(entry?.[0]).toBe('stats:v2:ov:30d');
+    expect(entry?.[1].raw).toBe(raw.length);
+    expect(entry?.[1].br).toBeLessThan(raw.length);
   });
 });

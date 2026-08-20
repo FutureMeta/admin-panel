@@ -105,6 +105,27 @@ export type OverviewPayload = {
   geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
 };
 
+/**
+ * Il payload di UNA modalita'. Stessa forma, una serie sola.
+ *
+ * IL PICCO QUI E' SEMPRE `null`, ed e' una conseguenza aritmetica, non una
+ * funzione mancante. `players_max` e' memorizzato per SERVER (la modalita' si
+ * risolve in lettura, emendamento E2, cosi' che riclassificare un server
+ * riscriva anche il passato). Il picco di una modalita' con tre server e' il
+ * massimo nel tempo della SOMMA dei tre, e da tre massimi presi
+ * separatamente quella somma non si ricostruisce: il massimo dei tre e' un
+ * limite inferiore, la loro somma un limite superiore, e nessuno dei due e' il
+ * numero. Il massimo di rete resta esatto perche' quello e' memorizzato come
+ * riga propria (`server_id = 0`), che e' esattamente la regola 4.
+ *
+ * Mostrare `max(players_max)` etichettato «picco» sarebbe la stessa bugia che
+ * la regola 4 esiste per impedire, con l'aggravante di essere plausibile.
+ */
+export type ModePayload = Omit<OverviewPayload, 'modes'> & {
+  mode: string;
+  modes: [string];
+};
+
 export class PayloadInvalid extends Error {
   constructor(problems: string) {
     super(`payload delle statistiche non valido: ${problems}`);
@@ -123,7 +144,7 @@ export class PayloadInvalid extends Error {
  * Un build che fallisce lascia in cache la chiave vecchia: servire un payload
  * vecchio e' meno grave che servirne uno rotto.
  */
-export function assertPayload(p: OverviewPayload): void {
+export function assertPayload(p: OverviewPayload | ModePayload): void {
   const n = p.online.t.length;
   const bad: string[] = [];
 

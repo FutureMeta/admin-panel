@@ -41,6 +41,35 @@ export function createRedis(opts: RedisOptions): Redis {
 }
 
 /**
+ * Il client dei payload statistici. §7.2
+ *
+ * SENZA autopipelining, e la ragione e' precisa: con l'autopipelining attivo
+ * un blob da 10 kB finirebbe nella stessa pipeline del round trip di
+ * autorizzazione, e aggiungerebbe latenza a ogni login. Qui i valori sono
+ * grandi e le richieste rare — l'esatto contrario del profilo per cui
+ * l'autopipelining conviene.
+ *
+ * Timeout piu' larghi di quelli del pannello: un payload da 10 kB su una
+ * connessione impegnata puo' metterci piu' di un secondo, e fallire quella
+ * lettura significherebbe ricostruirlo — cioe' pagare un'aggregazione per
+ * risparmiare un decimo di secondo.
+ */
+export function createCacheRedis(opts: RedisOptions): Redis {
+  const client = new Redis(opts.url, {
+    enableAutoPipelining: false,
+    maxRetriesPerRequest: 2,
+    connectTimeout: 2_000,
+    commandTimeout: 3_000,
+    lazyConnect: false,
+    ...(opts.keyPrefix ? { keyPrefix: opts.keyPrefix } : {}),
+  });
+  client.on('error', (err: Error) => {
+    console.error(`[redis:${opts.label ?? 'cache'}] ${err.message}`);
+  });
+  return client;
+}
+
+/**
  * Connessione separata e SENZA autopipelining per l'eventuale pub/sub di
  * fase 2: una connessione in modalita' subscribe non puo' servire comandi
  * normali, e mescolarle e' il modo classico di scoprirlo in produzione.

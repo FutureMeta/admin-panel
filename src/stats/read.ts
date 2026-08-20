@@ -13,7 +13,14 @@
 
 import { sql } from 'kysely';
 import type { Database } from '#src/db/pool.ts';
-import { CONTRACT_VERSION, type Kpi, type OverviewPayload, type Range, round1 } from './contract.ts';
+import {
+  CONTRACT_VERSION,
+  type Kpi,
+  type ModePayload,
+  type OverviewPayload,
+  type Range,
+  round1,
+} from './contract.ts';
 
 const ROME = 'Europe/Rome';
 
@@ -211,6 +218,79 @@ async function heatmapRows(
   return res.rows;
 }
 
+/**
+ * Il NUMERATORE della heatmap per ogni modalita', in una scansione sola.
+ *
+ * Il denominatore non c'e' apposta: e' quello di rete, lo stesso per tutte. Se
+ * ogni modalita' avesse il proprio, la cella delle 03:00 di una modalita'
+ * aperta solo di notte segnerebbe lo stesso colore del picco serale della
+ * rete, e la heatmap smetterebbe di rispondere alla domanda che le si fa
+ * («quando c'e' gente») per rispondere a «quando era aperta».
+ */
+async function heatmapModeRows(
+  db: Database,
+  w: Window,
+): Promise<Array<{ cell: number; mode_key: string; v: string }>> {
+  const res = await sql<{ cell: number; mode_key: string; v: string }>`
+    SELECT (extract(isodow FROM bucket AT TIME ZONE ${ROME})::int - 1) * 24
+             + extract(hour FROM bucket AT TIME ZONE ${ROME})::int AS cell,
+           mode_key,
+           sum(player_seconds)::bigint::text AS v
+      FROM stats.v_online_1h
+     WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo} AND server_id <> 0
+     GROUP BY cell, mode_key
+  `.execute(db);
+  return res.rows;
+}
+
+/**
+ * Gli unici giornalieri PER MODALITA', da `mode_day_unique`.
+ *
+ * Non si derivano dai rollup: gli unici non sono additivi, quindi «unici di
+ * duels» non e' la somma degli unici dei suoi server. Quella tabella esiste
+ * solo per questo, ed e' derivata e ricostruibile — la fonte resta
+ * `player_day_server`, chiavata sul server, che non invecchia quando la
+ * classificazione cambia.
+ */
+async function uniquesByModeRows(
+  db: Database,
+  to: Date,
+): Promise<Array<{ day: string; mode_key: string; uniques: number; final: boolean }>> {
+  const res = await sql<{ t: string; mode_key: string; uniques: number; final: boolean }>`
+    SELECT extract(epoch FROM (u.day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
+           m.mode_key, u.uniques, u.final
+      FROM stats.mode_day_unique u
+      JOIN stats.mode m USING (mode_id)
+     WHERE u.day >= (stats.civil_day(${to}) - ${UNIQUES_DAYS * 2}::int)
+       AND u.day <= stats.civil_day(${to})
+     ORDER BY u.day
+  `.execute(db);
+  return res.rows.map((r) => ({
+    day: r.t,
+    mode_key: r.mode_key,
+    uniques: Number(r.uniques),
+    final: r.final,
+  }));
+}
+
+/**
+ * I giocatori distinti del periodo, per modalita', in una scansione sola.
+ *
+ * Chi ha giocato a due modalita' conta una volta in CIASCUNA e una volta sola
+ * nel totale di rete: e' per questo che il totale non e' la somma di queste
+ * righe, e non deve mai essere presentato come se lo fosse.
+ */
+async function distinctPlayersByMode(db: Database, from: Date, to: Date): Promise<Map<string, number>> {
+  const res = await sql<{ mode_key: string; n: string }>`
+    SELECT sm.mode_key, count(DISTINCT pds.player_id)::bigint::text AS n
+      FROM stats.player_day_server pds
+      JOIN stats.v_server_mode sm USING (server_id)
+     WHERE pds.day >= stats.civil_day(${from}) AND pds.day < stats.civil_day(${to})
+     GROUP BY sm.mode_key
+  `.execute(db);
+  return new Map(res.rows.map((r) => [r.mode_key, Number(r.n)]));
+}
+
 /** Le cadenze presenti nel periodo: due periodi con cadenze diverse non sono confrontabili sul massimo. */
 async function deltasIn(db: Database, w: Window): Promise<number[]> {
   const res = await sql<{ delta_s: number }>`
@@ -374,21 +454,40 @@ function nominalCells(from: Date, to: Date): number[] {
  * Cosi' una serata mancante non sposta la media: abbassa `coverage`, che e' il
  * posto giusto in cui farlo vedere.
  */
-function kpiOf(buckets: Bucket[], from: Date, to: Date, bucketSec: number): Kpi {
+/**
+ * @param numerator I secondi-giocatore da mediare. Per una modalita' sono i
+ *   suoi, per la rete quelli della riga di rete. Il DENOMINATORE non e' mai
+ *   parametrico: viene sempre dalla riga di rete, o `evento_1` — aperta cinque
+ *   minuti al giorno con duecento giocatori — riporterebbe media 200 e
+ *   batterebbe `duels` aperta ventiquattr'ore con 150.
+ * @param hasPeak Falso per le modalita': il massimo non si decompone (vedi
+ *   `ModePayload`). Un limite inferiore etichettato «picco» e' una bugia
+ *   plausibile, che e' la specie peggiore.
+ */
+function kpiOf(
+  buckets: Bucket[],
+  from: Date,
+  to: Date,
+  bucketSec: number,
+  numerator: (b: Bucket) => number = (b) => b.networkSeconds,
+  hasPeak = true,
+): Kpi {
   const nominalS = (to.getTime() - from.getTime()) / 1_000;
   const coveredS = buckets.reduce((a, b) => a + b.coveredS, 0);
 
   let peak: number | null = null;
   let peakAt: number | null = null;
   let peakCoverage = 0;
-  for (const b of buckets) {
-    if (b.peak === null) continue;
-    if (peak === null || b.peak > peak) {
-      peak = b.peak;
-      peakAt = b.t;
-      // Il massimo non viaggia mai da solo: senza la copertura del suo
-      // bucket, un picco misurato su due tick su dieci sembra un picco vero.
-      peakCoverage = Math.min(1, b.coveredS / bucketSec);
+  if (hasPeak) {
+    for (const b of buckets) {
+      if (b.peak === null) continue;
+      if (peak === null || b.peak > peak) {
+        peak = b.peak;
+        peakAt = b.t;
+        // Il massimo non viaggia mai da solo: senza la copertura del suo
+        // bucket, un picco misurato su due tick su dieci sembra un picco vero.
+        peakCoverage = Math.min(1, b.coveredS / bucketSec);
+      }
     }
   }
 
@@ -397,7 +496,7 @@ function kpiOf(buckets: Bucket[], from: Date, to: Date, bucketSec: number): Kpi 
   for (const b of buckets) {
     if (b.coveredS <= 0) continue;
     const c = cellOf(b.t);
-    num[c] = (num[c] ?? 0) + b.networkSeconds;
+    num[c] = (num[c] ?? 0) + numerator(b);
     den[c] = (den[c] ?? 0) + b.coveredS;
   }
 
@@ -424,20 +523,56 @@ function kpiOf(buckets: Bucket[], from: Date, to: Date, bucketSec: number): Kpi 
 
 export type BuildResult = { payload: OverviewPayload; queryMs: number };
 
-/** Costruisce la panoramica. Nessuna cache: quella e' il passo 5. */
+/** La panoramica piu' i payload di ogni modalita', dalla STESSA scansione. */
+export type AllBuild = {
+  overview: OverviewPayload;
+  perMode: Map<string, ModePayload>;
+  queryMs: number;
+};
+
+/**
+ * Costruisce la panoramica.
+ *
+ * Resta come porta d'ingresso di chi vuole solo quella — la rotta e i test —
+ * ma dietro c'e' `buildAll`: una scansione su `rollup_1h` per novanta giorni
+ * costa lo stesso che si voglia una modalita' o venti, perche' e' lo stesso
+ * intervallo di indice. Costruire i payload per modalita' a parte
+ * significherebbe pagare N volte la stessa lettura.
+ */
 export async function buildOverview(db: Database, range: Range, now = new Date()): Promise<BuildResult> {
+  const all = await buildAll(db, range, now);
+  return { payload: all.overview, queryMs: all.queryMs };
+}
+
+export async function buildAll(db: Database, range: Range, now = new Date()): Promise<AllBuild> {
   const plan = PLAN[range];
   const w = windowOf(range, now);
 
   const t0 = Date.now();
-  const [rows, heat, deltas, labels, daily, distinctNow, distinctBefore] = await Promise.all([
+  const [
+    rows,
+    heat,
+    heatByMode,
+    deltas,
+    labels,
+    daily,
+    dailyByMode,
+    distinctNow,
+    distinctBefore,
+    distinctModeNow,
+    distinctModeBefore,
+  ] = await Promise.all([
     seriesRows(db, range, w),
     heatmapRows(db, w),
+    heatmapModeRows(db, w),
     deltasIn(db, w),
     modeLabels(db),
     uniquesRows(db, w.curTo),
+    uniquesByModeRows(db, w.curTo),
     distinctPlayers(db, w.curFrom, w.curTo),
     distinctPlayers(db, w.prevFrom, w.curFrom),
+    distinctPlayersByMode(db, w.curFrom, w.curTo),
+    distinctPlayersByMode(db, w.prevFrom, w.curFrom),
   ]);
   const queryMs = Date.now() - t0;
 
@@ -538,5 +673,86 @@ export async function buildOverview(db: Database, range: Range, now = new Date()
     geo: null, // passo 7
   };
 
-  return { payload, queryMs };
+  // ---------------------------------------------------------------------
+  // I payload per modalita', dagli STESSI array. Niente qui tocca il
+  // database: la scansione e' gia' stata pagata sopra.
+  // ---------------------------------------------------------------------
+
+  const heatModeCells = new Map<string, number[]>();
+  for (const h of heatByMode) {
+    let arr = heatModeCells.get(h.mode_key);
+    if (!arr) {
+      arr = new Array<number>(168).fill(0);
+      heatModeCells.set(h.mode_key, arr);
+    }
+    arr[h.cell] = Number(h.v);
+  }
+
+  const dailyModeIndex = new Map<string, Map<number, { uniques: number; final: boolean }>>();
+  for (const d of dailyByMode) {
+    let byDay = dailyModeIndex.get(d.mode_key);
+    if (!byDay) {
+      byDay = new Map();
+      dailyModeIndex.set(d.mode_key, byDay);
+    }
+    byDay.set(Number(d.day), { uniques: d.uniques, final: d.final });
+  }
+
+  const perMode = new Map<string, ModePayload>();
+  for (const m of modes) {
+    const line = series[m] ?? [];
+    const prevLine = prevAxis.map((t) => {
+      const b = prevByT.get(t);
+      const covered = b?.coveredS ?? 0;
+      return b && covered > 0 ? round1((b.byMode.get(m) ?? 0) / covered) : null;
+    });
+
+    const kpiMode = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec, (b) => b.byMode.get(m) ?? 0, false);
+    const kpiModePrev = kpiOf(
+      prev,
+      w.prevFrom,
+      w.curFrom,
+      plan.bucketSec,
+      (b) => b.byMode.get(m) ?? 0,
+      false,
+    );
+    kpiMode.uniques = distinctModeNow.get(m) ?? null;
+    kpiModePrev.uniques = distinctModeBefore.get(m) ?? null;
+
+    const byDay = dailyModeIndex.get(m);
+    const modeHeat = heatModeCells.get(m) ?? new Array<number>(168).fill(0);
+
+    perMode.set(m, {
+      ...payload,
+      mode: m,
+      modes: [m],
+      labels: { [m]: labels.get(m)?.label ?? m },
+      // `total` E' la riga della modalita', non quella di rete: in questo
+      // payload la domanda e' «quanti su duels», e mostrare il totale di rete
+      // sotto l'etichetta di una modalita' sarebbe il disallineamento che il
+      // §6.8 esiste per intercettare.
+      online: { t: axis, total: line, peak: axis.map(() => null), series: { [m]: line }, coverage },
+      prev: { t: prevAxis, total: prevLine, coverage: prevCoverage },
+      kpi: kpiMode,
+      kpiPrev: kpiModePrev,
+      // La copertura e' quella del ciclo di raccolta, la stessa per tutti:
+      // percio' la confrontabilita' non cambia da modalita' a modalita'.
+      comparable: payload.comparable,
+      // Denominatore e occorrenze restano quelli di RETE (vedi
+      // `heatmapModeRows`): cambia solo il numeratore.
+      heatmap: { v: modeHeat, w: wArr, n: nArr },
+      uniques: {
+        t: recent.map((d) => Number(d.day)),
+        v: recent.map((d) => byDay?.get(Number(d.day))?.uniques ?? null),
+        prev: recent.map((_, i) => {
+          const day = earlier[i];
+          return day ? (byDay?.get(Number(day.day))?.uniques ?? null) : null;
+        }),
+        final: recent.map((d) => byDay?.get(Number(d.day))?.final ?? false),
+      },
+      geo: null, // passo 7
+    });
+  }
+
+  return { overview: payload, perMode, queryMs };
 }

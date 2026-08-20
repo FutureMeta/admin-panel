@@ -117,6 +117,19 @@ const EnvSchema = z.object({
   GAME_REDIS_URL: z.string().min(1).optional(),
   /** Il pattern dell'insieme online, misurato dalla sonda del passo 0. */
   GAME_REDIS_PATTERN: z.string().min(1).default('metaverse:player:*'),
+  /**
+   * Il Redis dei payload statistici.
+   *
+   * Il §7.2 vuole un'istanza dedicata (`allkeys-lru`, `save ""`, 64 MB): su
+   * quell'istanza vivono SOLO payload, quindi `evicted_keys != 0` diventa un
+   * allarme invece di una statistica — con ~1,5 MB previsti contro 64 MB, una
+   * eviction significa che qualcuno ci ha scritto chiavi non previste.
+   *
+   * In assenza si usa REDIS_URL: le chiavi stanno tutte sotto `stats:v2:` e il
+   * client e' comunque dedicato, quindi separare l'istanza un domani non
+   * richiede di toccare il codice.
+   */
+  CACHE_REDIS_URL: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

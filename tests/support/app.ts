@@ -41,6 +41,16 @@ export type TestAppOptions = {
   idleSeconds?: number;
   /** SEC-40: alza la versione del pepper per riprodurre lo stato post-rotazione. */
   pepperVersion?: number;
+  /**
+   * Configura DATABASE_STATS_URL, cioe' il ruolo di sola lettura delle
+   * statistiche.
+   *
+   * Senza, le rotte /api/stats rispondono 503 — che e' il comportamento giusto
+   * per un'installazione che non le ha accese, e quindi anche il default qui:
+   * aprire un pool in piu' in ognuna delle suite che non guardano le
+   * statistiche sarebbe lavoro per niente.
+   */
+  statsDb?: boolean;
 };
 
 /**
@@ -172,6 +182,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     SESSION_ABSOLUTE_SECONDS: '28800',
     SESSION_IDLE_SECONDS: String(opts.idleSeconds ?? 1800),
     LOG_LEVEL: 'fatal',
+    ...(opts.statsDb ? { DATABASE_STATS_URL: db.statsUrl } : {}),
   });
 
   const ctx = await buildContext({

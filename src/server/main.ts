@@ -7,12 +7,13 @@
 
 import { fileURLToPath } from 'node:url';
 import closeWithGrace from 'close-with-grace';
-import { buildContext } from '#src/app-context.ts';
+import { buildContext, startStatsWarming } from '#src/app-context.ts';
 import { parseEnv } from '#src/config/env.ts';
 import { InMemoryMailer, type Mailer, ResendMailer } from '#src/email/mailer.ts';
 import { loadIndexHtml } from '#src/http/index-html.ts';
 import { createLogger } from '#src/http/logger.ts';
 import { buildServer } from '#src/http/server.ts';
+import { startEventLoopMonitor } from '#src/observability/event-loop.ts';
 import { currentBranch, currentCommit } from './version.ts';
 
 const env = parseEnv();
@@ -83,6 +84,11 @@ if (rateLimitInMemory && env.NODE_ENV === 'production') {
   );
 }
 
+// Il ritardo dell'event loop si misura sul processo intero, e va acceso prima
+// di qualunque lavoro: e' cio' su cui il giro di warm decide se rimandare una
+// compressione, ed e' l'unica metrica che lega quel giro alla latenza di login.
+startEventLoopMonitor();
+
 // `startJobs`: i quattro lavori periodici partono con il server e si
 // fermano con `ctx.close()`. Il primo giro di ognuno e' immediato, perche' le
 // partizioni servono prima della prima scrittura e l'integrita' va saputa
@@ -111,6 +117,10 @@ logger.info(
   },
   'MetaMC Admin avviato',
 );
+
+// Il riempimento della cache statistiche parte ADESSO, a porta gia' aperta e
+// senza essere atteso: /health/ready non deve mai dipendere da un rollup.
+startStatsWarming(ctx);
 
 // §13 — SIGTERM: readiness a 503 SUBITO, poi drenaggio.
 //

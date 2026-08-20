@@ -7,6 +7,7 @@ import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import type { AppContext } from '#src/app-context.ts';
 import { verifyRecent } from '#src/audit/integrity.ts';
+import { eventLoopDelayP99 } from '#src/observability/event-loop.ts';
 
 const PROBE_TIMEOUT_MS = 1_000;
 
@@ -142,6 +143,77 @@ export async function registerHealthRoutes(app: FastifyInstance, ctx: AppContext
         ...jobs.map(([name, s]) => `metamc_job_successes_total{job="${name}"} ${s.successes}`),
       );
     }
+    // -----------------------------------------------------------------------
+    // §7.9 — la cache delle statistiche.
+    //
+    // `cache_age_seconds` E' LA METRICA. Con il warm anticipato l'hit rate e'
+    // ~100% per costruzione, e resta al 100% anche se il worker e' morto e
+    // Redis serve lo stesso payload da tre ore: chi allarma sull'hit rate non
+    // allarmera' mai. L'eta' della chiave servita e' l'unica cosa che
+    // distingue «cache che funziona» da «cache che ha smesso di aggiornarsi
+    // ma continua a rispondere». Soglia: 3x la cadenza di warm del suo range.
+    // -----------------------------------------------------------------------
+    const cm = ctx.statsCache.metrics;
+    lines.push(
+      '# HELP metamc_event_loop_delay_ms ritardo dell`event loop, 99esimo percentile',
+      '# TYPE metamc_event_loop_delay_ms gauge',
+      `metamc_event_loop_delay_ms{quantile="0.99"} ${eventLoopDelayP99().toFixed(2)}`,
+      '# HELP metamc_stats_cache_hits_total letture servite da una chiave fresca',
+      '# TYPE metamc_stats_cache_hits_total counter',
+      `metamc_stats_cache_hits_total ${cm.hits}`,
+      '# HELP metamc_stats_cache_stale_total letture servite da una chiave obsoleta ma valida',
+      '# TYPE metamc_stats_cache_stale_total counter',
+      `metamc_stats_cache_stale_total ${cm.stale}`,
+      '# HELP metamc_stats_cache_misses_total letture che hanno dovuto costruire',
+      '# TYPE metamc_stats_cache_misses_total counter',
+      `metamc_stats_cache_misses_total ${cm.misses}`,
+      '# HELP metamc_stats_singleflight_joined_total richieste attaccate a una costruzione gia` in corso',
+      '# TYPE metamc_stats_singleflight_joined_total counter',
+      // Sempre 0 significa che il percorso pigro non e' mai stato esercitato,
+      // cioe' che non e' verificato da niente.
+      `metamc_stats_singleflight_joined_total ${cm.singleflightJoined}`,
+      '# HELP metamc_stats_redis_unavailable_total operazioni di cache fallite per Redis',
+      '# TYPE metamc_stats_redis_unavailable_total counter',
+      `metamc_stats_redis_unavailable_total ${cm.redisUnavailable}`,
+      '# HELP metamc_stats_build_failures_total costruzioni di payload fallite',
+      '# TYPE metamc_stats_build_failures_total counter',
+      `metamc_stats_build_failures_total ${cm.buildFailures}`,
+      '# HELP metamc_stats_compress_peak massimo di compressioni concorrenti osservato: deve valere 1',
+      '# TYPE metamc_stats_compress_peak gauge',
+      // Due compressioni insieme sono due thread tolti ad Argon2. Se questo
+      // numero diventa 2, un grafico ha rallentato un login.
+      `metamc_stats_compress_peak ${cm.compressPeak}`,
+    );
+
+    const ages = ctx.statsCache.ages();
+    if (ages.length > 0) {
+      lines.push(
+        '# HELP metamc_stats_cache_age_seconds eta` del payload servibile. Allarme oltre 3x la cadenza di warm',
+        '# TYPE metamc_stats_cache_age_seconds gauge',
+        ...ages.map(([key, age]) => `metamc_stats_cache_age_seconds{key="${key}"} ${age}`),
+        '# HELP metamc_stats_payload_bytes byte del payload. Oltre 120 kB grezzi va indagato',
+        '# TYPE metamc_stats_payload_bytes gauge',
+        ...ctx.statsCache
+          .sizes()
+          .flatMap(([key, s]) => [
+            `metamc_stats_payload_bytes{key="${key}",enc="raw"} ${s.raw}`,
+            `metamc_stats_payload_bytes{key="${key}",enc="br"} ${s.br}`,
+          ]),
+      );
+    }
+
+    const builds = ctx.statsCache.buildTimes();
+    if (builds.length > 0) {
+      lines.push(
+        '# HELP metamc_stats_build_ms tempo per stadio dell`ultima costruzione. Soglia 2000 su query',
+        '# TYPE metamc_stats_build_ms gauge',
+        ...builds.flatMap(([key, b]) => [
+          `metamc_stats_build_ms{key="${key}",stage="query"} ${b.query}`,
+          `metamc_stats_build_ms{key="${key}",stage="compress"} ${b.compress}`,
+        ]),
+      );
+    }
+
     reply.header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');
     reply.header('Cache-Control', 'no-store');
     return reply.send(`${lines.join('\n')}\n`);

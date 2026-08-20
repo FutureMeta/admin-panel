@@ -8,8 +8,9 @@
 // Questo NON e' un mock: ioredis ci si collega davvero, parla davvero RESP2,
 // e il codice sotto test non sa che esiste. Implementa il sottoinsieme di
 // comandi che il pannello usa: GET/SET(+EX,PX,NX,XX)/DEL/EXISTS/MGET/EXPIRE/
-// TTL/PTTL/INCR/INCRBY/TYPE/KEYS/SCAN/DBSIZE/FLUSHDB, piu' gli hash usati
-// dalla fase 2: HSET/HGET/HGETALL/HDEL.
+// TTL/PTTL/INCR/INCRBY/TYPE/KEYS/SCAN/DBSIZE/FLUSHDB, gli hash usati dalla
+// fase 2 (HSET/HGET/HGETALL/HDEL) e gli ZSET dell'hot-set
+// (ZADD/ZREVRANGE/ZREMRANGEBYSCORE/ZCARD).
 //
 // NON implementa EVAL. rate-limiter-flexible su Redis gira uno script Lua, e
 // un interprete Lua qui sarebbe una seconda implementazione da mantenere.
@@ -30,9 +31,26 @@ import { createServer, type Server, type Socket } from 'node:net';
  * connection-time. Senza HGETALL qui, il poller si potrebbe provare solo
  * contro un finto scritto a mano — cioe' contro le proprie assunzioni.
  */
-type Entry = { value: Buffer; hash?: undefined; expiresAt: number | null };
-type HashEntry = { value?: undefined; hash: Map<string, Buffer>; expiresAt: number | null };
-type AnyEntry = Entry | HashEntry;
+type Entry = { value: Buffer; hash?: undefined; zset?: undefined; expiresAt: number | null };
+type HashEntry = {
+  value?: undefined;
+  hash: Map<string, Buffer>;
+  zset?: undefined;
+  expiresAt: number | null;
+};
+/**
+ * Gli ZSET servono all'hot-set del §7.4: quali modalita' qualcuno ha
+ * GUARDATO di recente, per range. Senza, il ramo che scalda i payload per
+ * modalita' non sarebbe mai esercitato da un test — cioe' esisterebbe
+ * verificato solo dal fatto di essere stato scritto.
+ */
+type ZsetEntry = {
+  value?: undefined;
+  hash?: undefined;
+  zset: Map<string, number>;
+  expiresAt: number | null;
+};
+type AnyEntry = Entry | HashEntry | ZsetEntry;
 
 const CRLF = '\r\n';
 
@@ -229,7 +247,65 @@ export class MiniRedis {
       case 'TYPE': {
         const key = a[0];
         const e = key === undefined ? undefined : this.#live(key);
-        return encodeSimple(e === undefined ? 'none' : e.hash ? 'hash' : 'string');
+        if (e === undefined) return encodeSimple('none');
+        return encodeSimple(e.hash ? 'hash' : e.zset ? 'zset' : 'string');
+      }
+
+      // -------------------------------------------------------------------
+      // ZSET: il minimo che serve all'hot-set del §7.4.
+      // -------------------------------------------------------------------
+
+      case 'ZADD': {
+        const key = a[0];
+        if (key === undefined || a.length < 3) return encodeError('wrong number of arguments');
+        const existing = this.#live(key);
+        const zset = existing?.zset ?? new Map<string, number>();
+        let added = 0;
+        for (let i = 1; i + 1 < a.length; i += 2) {
+          const member = a[i + 1] as string;
+          if (!zset.has(member)) added += 1;
+          zset.set(member, Number(a[i]));
+        }
+        this.#store.set(key, { zset, expiresAt: existing?.expiresAt ?? null });
+        return encodeInteger(added);
+      }
+
+      case 'ZREMRANGEBYSCORE': {
+        const [key, min, max] = a;
+        if (key === undefined || min === undefined || max === undefined) {
+          return encodeError('wrong number of arguments');
+        }
+        const zset = this.#live(key)?.zset;
+        if (!zset) return encodeInteger(0);
+        const lo = min === '-inf' ? Number.NEGATIVE_INFINITY : Number(min);
+        const hi = max === '+inf' ? Number.POSITIVE_INFINITY : Number(max);
+        let removed = 0;
+        for (const [member, score] of [...zset]) {
+          if (score >= lo && score <= hi) {
+            zset.delete(member);
+            removed += 1;
+          }
+        }
+        return encodeInteger(removed);
+      }
+
+      case 'ZREVRANGE': {
+        const [key, start, stop] = a;
+        if (key === undefined || start === undefined || stop === undefined) {
+          return encodeError('wrong number of arguments');
+        }
+        const zset = this.#live(key)?.zset;
+        if (!zset) return encodeArray([]);
+        const ordered = [...zset.entries()].sort((x, y) => y[1] - x[1]).map(([m]) => m);
+        const from = Number(start) < 0 ? Math.max(0, ordered.length + Number(start)) : Number(start);
+        const to = Number(stop) < 0 ? ordered.length + Number(stop) : Number(stop);
+        return encodeArray(ordered.slice(from, to + 1).map((m) => encodeBulk(Buffer.from(m, 'latin1'))));
+      }
+
+      case 'ZCARD': {
+        const key = a[0];
+        if (key === undefined) return encodeError('wrong number of arguments');
+        return encodeInteger(this.#live(key)?.zset?.size ?? 0);
       }
 
       case 'DBSIZE': {

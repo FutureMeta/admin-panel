@@ -15,7 +15,7 @@ import { PasswordService } from '#src/auth/password.ts';
 import { HashSemaphore } from '#src/auth/semaphore.ts';
 import { TotpReplayGuard } from '#src/auth/totp.ts';
 import { AuthzStore } from '#src/authz/store.ts';
-import { type CacheService, PassthroughCache } from '#src/cache/service.ts';
+import type { CacheService } from '#src/cache/service.ts';
 import type { Env } from '#src/config/env.ts';
 import { type DerivedKeys, deriveKeys, pepperRing } from '#src/crypto/keys.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
@@ -25,9 +25,12 @@ import type { IndexHtml } from '#src/http/index-html.ts';
 import { createLogger } from '#src/http/logger.ts';
 import { type MaintenanceKeeper, startMaintenance } from '#src/jobs/keeper.ts';
 import { MinecraftSkins } from '#src/minecraft/skins.ts';
+import { eventLoopDelayP99 } from '#src/observability/event-loop.ts';
 import { RateLimitService } from '#src/ratelimit/limiter.ts';
-import { createRedis } from '#src/redis/client.ts';
+import { createCacheRedis, createRedis } from '#src/redis/client.ts';
+import { StatsCache } from '#src/stats/cache.ts';
 import { type StatsIngest, startStatsIngest } from '#src/stats/keeper.ts';
+import { type StatsWorker, startStatsWorker, warmOnBoot } from '#src/stats/warm.ts';
 
 export type AppContext = {
   env: Env;
@@ -58,6 +61,20 @@ export type AppContext = {
    * configurato: le rotte rispondono 503 e il resto del pannello non cambia.
    */
   statsDb: Database | null;
+  /**
+   * La cache dei payload. Esiste SEMPRE, anche senza DATABASE_STATS_URL: le
+   * rotte rispondono 503 prima di arrivarci, e un campo annullabile
+   * costringerebbe ogni chiamante a un ramo che non serve a niente.
+   */
+  statsCache: StatsCache;
+  /** Il client Redis dei payload. Ci vivono anche gli hot-set del §7.4. */
+  cacheRedis: Redis;
+  /**
+   * Il giro di warm. `null` senza `startJobs` o senza il pool di lettura:
+   * scaldare una cache che nessuno legge sarebbe lavoro sprecato, e nei test
+   * il contesto si costruisce mille volte.
+   */
+  statsWarm: StatsWorker | null;
   totpGuard: TotpReplayGuard;
   mailer: Mailer;
   /** Fase 2: la cache vera si scrive dietro questa interfaccia (§16.4). */
@@ -223,9 +240,29 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     : null;
   const statsDb = statsPool ? createKysely(statsPool) : null;
 
+  // CLIENT DEDICATO, anche quando l'istanza e' la stessa del pannello.
+  //
+  // Il documento vuole un'istanza Valkey a parte (`allkeys-lru`, senza
+  // persistenza); qui il Redis e' uno solo, e cio' che si puo' comunque
+  // togliere si toglie: senza autopipelining, un payload da 10 kB non finisce
+  // nella stessa pipeline del round trip di autorizzazione di un login. Le
+  // chiavi vivono tutte sotto `stats:v2:`, quindi il giorno in cui l'istanza
+  // si separa non cambia una riga di codice.
+  const cacheRedis = createCacheRedis({
+    url: env.CACHE_REDIS_URL ?? env.REDIS_URL,
+    label: 'cache',
+  });
+
+  const statsCache = new StatsCache({
+    redis: cacheRedis,
+    // Sotto pressione il giro di warm si ferma e riprende al tick dopo: un
+    // grafico non puo' far rallentare un login.
+    pressure: () => eventLoopDelayP99() > 100 || semaphore.stats.inFlight >= 5,
+  });
+
   const shuttingDown = { value: false };
 
-  return {
+  const context: AppContext = {
     env,
     keys,
     logger,
@@ -243,9 +280,16 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     maintenance,
     statsIngest,
     statsDb,
+    statsCache,
+    cacheRedis,
+    // Si accende DOPO `listen()`, in `startStatsWarming`.
+    statsWarm: null,
     totpGuard,
     mailer: opts.mailer,
-    cache: new PassthroughCache(),
+    // La cache generica del §16.4 e quella delle statistiche sono lo STESSO
+    // oggetto: l'interfaccia era stata scritta in fase 1 esattamente perche'
+    // la fase 2 potesse infilarcisi dentro senza toccare i chiamanti.
+    cache: statsCache,
     indexHtml: opts.indexHtml,
     startedAt: new Date(),
     shuttingDown,
@@ -256,9 +300,47 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       // spegnimento.
       maintenance.stop();
       await statsIngest?.stop().catch(() => undefined);
+      context.statsWarm?.stop();
       await statsDb?.destroy().catch(() => undefined);
+      await cacheRedis.quit().catch(() => undefined);
       await db.destroy().catch(() => undefined);
       await redis.quit().catch(() => undefined);
     },
   };
+
+  return context;
+}
+
+/**
+ * Accende il riempimento della cache. Da chiamare DOPO `listen()`.
+ *
+ * MAI PRIMA, e non e' pignoleria: `/health/ready` non deve mai dipendere dalle
+ * statistiche, o un rollup lento terrebbe il pannello fuori dal bilanciatore
+ * per colpa di una schermata secondaria.
+ *
+ * Il primo riempimento e' sequenziale e non atteso: `statsPool` ha quattro
+ * connessioni, e lanciare cinque aggregazioni insieme su una page cache fredda
+ * trasforma un warm da due secondi in uno da venti rubando CPU al percorso di
+ * login. Il worker periodico parte quando il primo giro e' finito, cosi' i
+ * cinque range non si accavallano nemmeno al primo tick.
+ */
+export function startStatsWarming(ctx: AppContext): void {
+  if (!ctx.statsDb) return;
+  const deps = {
+    statsDb: ctx.statsDb,
+    cache: ctx.statsCache,
+    redis: ctx.cacheRedis,
+    logger: ctx.logger,
+  };
+  void (async () => {
+    try {
+      await warmOnBoot(deps);
+    } finally {
+      // Anche se il primo giro e' andato male: un guasto momentaneo non deve
+      // lasciare il pannello senza worker fino al prossimo riavvio.
+      if (!ctx.shuttingDown.value) {
+        ctx.statsWarm = startStatsWorker(deps, ctx.maintenance.registry);
+      }
+    }
+  })();
 }

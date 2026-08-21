@@ -200,3 +200,50 @@ impedisce l'abuso, ma lo rende impossibile da cancellare.
 **Rientro.** Nessuno programmato. Se lo si rimette, il posto è
 `requireStepUp` in `src/http/guards.ts`, dove il commento conserva l'elenco
 chiuso delle operazioni che lo richiedevano.
+
+---
+
+## D-10 — Risposte cacheabili sotto `/api/stats/*` (contro §9 del progetto)
+
+**Da cosa devia.** La regola del §9 è: «nessuna risposta il cui contenuto
+dipende dai permessi viene cachata». Applicata alla lettera, tutte le rotte
+dietro `requireLevel` risponderebbero `no-store`.
+
+**Cosa facciamo.** Le due rotte di statistiche — `/api/stats/overview` e
+`/api/stats/mode` — rispondono `Cache-Control: private, max-age=0,
+must-revalidate` e portano un `ETag`, quindi accettano la richiesta
+condizionale e possono rispondere `304`. Lo stesso payload sta in una cache
+Redis condivisa fra tutti i richiedenti, non una copia per principale.
+
+**Perché.** La premessa della regola qui non ricorre. Il payload è *gated*
+da `requireLevel(actor, 'statistiche', 1)` ma non *varia* per ruolo: sono
+conteggi di rete, identici per chiunque abbia il diritto di vederli. Con
+`no-store` la richiesta condizionale sarebbe vietata e l’ETag diventerebbe
+decorativo: si pagherebbe il trasferimento completo di ~40 kB a ogni
+aggiornamento, ogni minuto, per ogni schermata aperta, senza proteggere
+niente.
+
+**Cosa perdiamo, detto per intero.** Se un giorno il payload cominciasse a
+variare per ruolo — un contatore visibile solo agli owner, un elenco che si
+restringe per i moderatori — la cache condivisa lo servirebbe a chi non deve
+vederlo, e non ci sarebbe niente nel comportamento che lo riveli. È una
+fuga silenziosa, del tipo che si scopre quando qualcuno la nota per caso.
+
+**Cosa la compensa.** L’invariante I13, verificata a ogni esecuzione della
+suite in `tests/acceptance/31-stats-warm.test.ts`: due utenti di ruoli
+diversi chiedono la stessa chiave e i **byte** devono coincidere. Non gli
+oggetti, i byte — così anche un campo aggiunto in fondo la fa fallire. È il
+prezzo scritto accanto alla deroga nel progetto, e non è opzionale: nel
+momento in cui il payload dovesse variare per ruolo, quel test diventa rosso
+prima che il codice arrivi in produzione.
+
+Restano `private` (nessuna cache intermedia condivisa lato rete) e
+`max-age=0, must-revalidate` (nessuna risposta servita senza rivalidare),
+quindi la deroga riguarda la cache **applicativa** e la richiesta
+condizionale, non l’assenza di controllo.
+
+**Rientro.** Con SSE. Se `onlineNow` passa sul canale, l’overview si
+ricarica una volta per apertura di schermata invece che ogni minuto, il
+guadagno della richiesta condizionale diventa marginale e questa deroga si
+può **ritirare** — che è sempre preferibile a mantenerla. La rotta è già
+predisposta in `deploy/nginx.conf`.

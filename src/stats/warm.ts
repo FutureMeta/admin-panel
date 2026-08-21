@@ -22,7 +22,14 @@ import type { Logger } from 'pino';
 import type { Database } from '#src/db/pool.ts';
 import { type JobRegistry, startJob } from '#src/jobs/scheduler.ts';
 import type { StatsCache, Ttl } from './cache.ts';
-import { assertPayload, type ModePayload, type OverviewPayload, RANGES, type Range } from './contract.ts';
+import {
+  assertPayload,
+  CONTRACT_VERSION,
+  type ModePayload,
+  type OverviewPayload,
+  RANGES,
+  type Range,
+} from './contract.ts';
 import { buildAll } from './read.ts';
 
 const S = 1_000;
@@ -54,21 +61,38 @@ export function civilDay(now: Date = new Date()): string {
 }
 
 /**
- * `v2` sta NELLA CHIAVE, non solo nel corpo.
+ * La versione del contratto sta NELLA CHIAVE, non solo nel corpo.
  *
  * Un cambio di contratto e' un namespace nuovo, e le chiavi vecchie scadono da
  * sole. Una cache non si migra: migrare significherebbe scrivere codice che
  * legge un formato che nessuno produce piu', e tenerlo per sempre.
  *
+ * DERIVATA, non scritta a mano. Per un po' qui c'e' stato `stats:v2:` come
+ * letterale mentre `CONTRACT_VERSION` viveva per conto suo nel corpo del
+ * payload: il commento sopra la costante prometteva gia' allora che la
+ * versione stesse «nella CHIAVE di cache, non solo nel corpo», e non era vero.
+ * Alzarla non avrebbe cambiato una sola chiave — cioe' il meccanismo che esiste
+ * per impedire di servire una forma vecchia era inerte, e lo era in silenzio,
+ * perche' un meccanismo inerte non fallisce: non fa niente.
+ *
+ * SI E' VISTO. Aggiungendo `byServer` al payload di modalita' senza alzare
+ * niente, le voci costruite prima del rilascio hanno continuato a essere
+ * servite finche' il giro di riscaldamento non le ha rifatte: per un minuto il
+ * grafico ha mostrato il solo totale, senza le righe per server e senza niente
+ * che dicesse perche'. Un minuto e' poco; il difetto non lo era, perche' la
+ * stessa dimenticanza su un campo NON opzionale serve un payload rotto.
+ *
  * Anche il GIORNO CIVILE sta nella chiave, per la ragione scritta sopra
  * `civilDay`.
  */
+const V = `v${CONTRACT_VERSION}`;
+
 export const K = {
-  ov: (r: Range, day: string = civilDay()) => `stats:v2:ov:${day}:${r}`,
-  md: (m: string, r: Range, day: string = civilDay()) => `stats:v2:md:${day}:${m}:${r}`,
+  ov: (r: Range, day: string = civilDay()) => `stats:${V}:ov:${day}:${r}`,
+  md: (m: string, r: Range, day: string = civilDay()) => `stats:${V}:md:${day}:${m}:${r}`,
   /** UNO PER RANGE, non globale: vedi `hotModes`. Il giorno qui non serve:
    *  cio' che qualcuno ha guardato non scade a mezzanotte. */
-  hot: (r: Range) => `stats:v2:hot:${r}`,
+  hot: (r: Range) => `stats:${V}:hot:${r}`,
 };
 
 /**

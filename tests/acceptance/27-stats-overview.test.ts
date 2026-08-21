@@ -22,7 +22,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
-import { assertPayload } from '#src/stats/contract.ts';
+import { assertPayload, CONTRACT_VERSION } from '#src/stats/contract.ts';
 import { buildAll, buildOverview } from '#src/stats/read.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
@@ -146,7 +146,7 @@ describe('la forma del payload e` verificata prima di spedirlo', () => {
     for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {
       const { payload } = await buildOverview(db, range);
       expect(() => assertPayload(payload), `range ${range}`).not.toThrow();
-      expect(payload.v).toBe(2);
+      expect(payload.v).toBe(CONTRACT_VERSION);
       expect(payload.tz).toBe('Europe/Rome');
       expect(payload.online.total).toHaveLength(payload.online.t.length);
       expect(payload.heatmap.v).toHaveLength(168);

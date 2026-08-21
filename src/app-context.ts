@@ -257,7 +257,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   // persistenza); qui il Redis e' uno solo, e cio' che si puo' comunque
   // togliere si toglie: senza autopipelining, un payload da 10 kB non finisce
   // nella stessa pipeline del round trip di autorizzazione di un login. Le
-  // chiavi vivono tutte sotto `stats:v2:`, quindi il giorno in cui l'istanza
+  // chiavi vivono tutte sotto `stats:v<n>:`, quindi il giorno in cui l'istanza
   // si separa non cambia una riga di codice.
   const cacheRedis = createCacheRedis({
     url: env.CACHE_REDIS_URL ?? env.REDIS_URL,

@@ -125,7 +125,7 @@ const EnvSchema = z.object({
    * allarme invece di una statistica — con ~1,5 MB previsti contro 64 MB, una
    * eviction significa che qualcuno ci ha scritto chiavi non previste.
    *
-   * In assenza si usa REDIS_URL: le chiavi stanno tutte sotto `stats:v2:` e il
+   * In assenza si usa REDIS_URL: le chiavi stanno tutte sotto `stats:v<n>:` e il
    * client e' comunque dedicato, quindi separare l'istanza un domani non
    * richiede di toccare il codice.
    */

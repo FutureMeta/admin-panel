@@ -24,7 +24,7 @@
 //     del bucket in cui e' avvenuto.
 
 /** Nella CHIAVE di cache, non solo nel corpo: una cache non si migra. */
-export const CONTRACT_VERSION = 2;
+export const CONTRACT_VERSION = 3;
 
 export type Range = '24h' | '7d' | '30d' | '90d' | '1y';
 

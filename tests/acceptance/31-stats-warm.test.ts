@@ -18,7 +18,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { decode, StatsCache } from '#src/stats/cache.ts';
-import { type ModePayload, type OverviewPayload, RANGES } from '#src/stats/contract.ts';
+import { CONTRACT_VERSION, type ModePayload, type OverviewPayload, RANGES } from '#src/stats/contract.ts';
 import { civilDay, K, markHot, startStatsWorker, warmOnBoot, warmRange } from '#src/stats/warm.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
 import { startTestApp, type TestApp } from '#tests/support/app.ts';
@@ -244,7 +244,7 @@ describe('le due rotte', () => {
     expect(res.headers['content-encoding']).toBe('br');
     const { brotliDecompressSync } = await import('node:zlib');
     const payload = JSON.parse(brotliDecompressSync(res.rawPayload).toString('utf8')) as OverviewPayload;
-    expect(payload.v).toBe(2);
+    expect(payload.v).toBe(CONTRACT_VERSION);
     expect(payload.modes).toContain('arena');
   });
 
@@ -260,7 +260,7 @@ describe('le due rotte', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-encoding']).toBeUndefined();
-    expect((res.json() as OverviewPayload).v).toBe(2);
+    expect((res.json() as OverviewPayload).v).toBe(CONTRACT_VERSION);
   });
 
   it('una modalita` che non esiste e` un 404, mai un payload vuoto', async () => {
@@ -374,7 +374,19 @@ describe('la chiave di cache porta il giorno civile', () => {
   });
 
   it("l'hot-set NON porta il giorno: cio' che si e' guardato non scade a mezzanotte", () => {
-    expect(K.hot('7d')).toBe('stats:v2:hot:7d');
+    expect(K.hot('7d')).toBe(`stats:v${CONTRACT_VERSION}:hot:7d`);
+  });
+
+  it('la versione nella chiave e` quella del CONTRATTO, non un numero a parte', () => {
+    // Scritta a mano, la costante e la chiave si separano al primo che alza
+    // l'una e non l'altra — ed e` successo: `byServer` e` entrato nel payload
+    // mentre le chiavi restavano a `v2`, e per un giro di riscaldamento sono
+    // state servite voci costruite prima del rilascio, senza le righe per
+    // server. Il meccanismo che doveva impedirlo non ha fallito: non faceva
+    // niente, che e` il modo in cui una guardia sbagliata passa inosservata.
+    for (const k of [K.ov('7d'), K.md('duels', '7d'), K.hot('7d')]) {
+      expect(k.startsWith(`stats:v${CONTRACT_VERSION}:`), k).toBe(true);
+    }
   });
 });
 

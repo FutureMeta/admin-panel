@@ -35,7 +35,7 @@ export type Kpi = {
 };
 
 export type Overview = {
-  v: 2;
+  v: 3;
   range: '24h' | '7d' | '30d' | '90d' | '1y';
   tz: string;
   bucketSec: number;

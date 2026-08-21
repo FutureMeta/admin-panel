@@ -191,6 +191,14 @@ const RULES: Rule[] = [
       /^(?!.*anyMode \?).*\b(heatmapModeRows|uniquesByModeRows|distinctPlayersByMode|serverMix|serverSeriesRows)\(db[,)]/,
     exempt: (rel) => rel !== join('src', 'stats', 'read.ts'),
   },
+  {
+    id: 'stats/cache-key-version-is-derived',
+    why: "la versione del contratto sta nella chiave di cache perche' una forma vecchia non venga servita dopo un rilascio che l'ha cambiata. Scritta a mano, la costante e la chiave si separano al primo che alza l'una e non l'altra — ed e` gia` successo: `byServer` e` entrato nel payload mentre le chiavi restavano `stats:v2:`, e le voci costruite prima del rilascio hanno continuato a essere servite senza le righe per server. Una guardia inerte non fallisce: non fa niente, e nessun test se ne accorge.",
+    // `stats:v<n>:` letterale in una stringa. La forma giusta interpola `V`,
+    // che deriva da CONTRACT_VERSION, quindi non contiene mai una cifra qui.
+    pattern: /stats:v\d/,
+    exempt: (rel) => rel !== join('src', 'stats', 'warm.ts'),
+  },
 ];
 
 function walk(dir: string, out: string[]): void {

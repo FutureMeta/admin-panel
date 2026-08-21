@@ -11,6 +11,7 @@ import {
   createRouter,
   Outlet,
   RouterProvider,
+  retainSearchParams,
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router';
@@ -19,7 +20,7 @@ import { createRoot } from 'react-dom/client';
 import { type Command, CommandPalette, Sidebar, Topbar } from './components/shell.tsx';
 import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
-import { RangeProvider } from './lib/range.tsx';
+import { rangeSearch } from './lib/range.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
@@ -145,29 +146,27 @@ function AppShell() {
   const showFilters = !pathname.startsWith('/utenti') && !pathname.startsWith('/registro');
 
   return (
-    <RangeProvider>
-      <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
-        <Sidebar me={data} onOpenPalette={() => setPaletteOpen(true)} />
-        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
-          <Topbar
-            me={data}
-            breadcrumb={breadcrumb}
-            onLogout={() => {
-              void api('/api/session/logout-all', { method: 'POST' }).finally(() =>
-                window.location.assign('/login'),
-              );
-            }}
-            feedDisconnected={false}
-            showFilters={showFilters}
-          />
-          <main className="app-main">
-            <Outlet />
-          </main>
-        </div>
-
-        <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
+      <Sidebar me={data} onOpenPalette={() => setPaletteOpen(true)} />
+      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
+        <Topbar
+          me={data}
+          breadcrumb={breadcrumb}
+          onLogout={() => {
+            void api('/api/session/logout-all', { method: 'POST' }).finally(() =>
+              window.location.assign('/login'),
+            );
+          }}
+          feedDisconnected={false}
+          showFilters={showFilters}
+        />
+        <main className="app-main">
+          <Outlet />
+        </main>
       </div>
-    </RangeProvider>
+
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+    </div>
   );
 }
 
@@ -258,7 +257,30 @@ const resetRoute = createRoute({
   component: ResetPasswordPage,
 });
 
-const shellRoute = createRoute({ getParentRoute: () => rootRoute, id: 'shell', component: AppShell });
+// Il PERIODO sta qui, sulla rotta del guscio, e ogni schermata sotto lo
+// eredita: il selettore vive nella barra in alto, che e` del guscio, e
+// dichiararlo su ognuna sarebbe cinque occasioni di dimenticarlo su una.
+const shellRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  id: 'shell',
+  component: AppShell,
+  validateSearch: rangeSearch,
+  // IL PERIODO SOPRAVVIVE ALLA NAVIGAZIONE, e senza questa riga non lo farebbe.
+  //
+  // Il router NON conserva i parametri di ricerca da solo: verificato contro
+  // il router vero, non dedotto. Con `?range=30d` sulla panoramica, un
+  // collegamento a una modalità produceva `/dettaglio-modalita/duels` e basta,
+  // cioè il periodo tornava a sette giorni cambiando schermata — una
+  // regressione rispetto allo stato in React che c'era prima, e proprio nel
+  // gesto che si fa più spesso.
+  //
+  // Resta anche su Utenti e Registro, che un periodo non ce l'hanno e lo
+  // ignorano. È il prezzo di una riga sola invece di un elenco di rotte da
+  // tenere aggiornato: quelle due schermate portano in URL un parametro inerte,
+  // e in cambio andare a controllare un utente e tornare indietro non
+  // ricomincia da capo.
+  search: { middlewares: [retainSearchParams(['range'])] },
+});
 const homeRoute = createRoute({ getParentRoute: () => shellRoute, path: '/', component: HomePage });
 const usersRoute = createRoute({ getParentRoute: () => shellRoute, path: '/utenti', component: UsersRoute });
 const overviewRoute = createRoute({

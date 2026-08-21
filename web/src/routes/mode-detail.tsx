@@ -52,7 +52,7 @@ import { Button } from '../components/ui.tsx';
 import { WorldMap } from '../components/world-map.tsx';
 import { api, apiWithHeaders, type Me } from '../lib/api.ts';
 import { slicesOf } from '../lib/distribution.ts';
-import { labelOf, type Range, useRange } from '../lib/range.tsx';
+import { labelOf, type Range, useRange } from '../lib/range.ts';
 import { axisLabel } from '../lib/when.ts';
 
 type ModeStats = Overview & {

@@ -45,7 +45,7 @@ import {
 import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
 import { slicesOf } from '../lib/distribution.ts';
-import { labelOf, useRange } from '../lib/range.tsx';
+import { labelOf, useRange } from '../lib/range.ts';
 import { axisLabel, dayAndTime } from '../lib/when.ts';
 
 export function OverviewPage() {

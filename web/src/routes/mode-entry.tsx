@@ -25,7 +25,7 @@ import { type Overview, StatsSkeleton } from '../components/stats-panels.tsx';
 import { Button, EmptyState, SkeletonRows } from '../components/ui.tsx';
 import { api, apiWithHeaders, type Me } from '../lib/api.ts';
 import { busiestMode } from '../lib/busiest.ts';
-import { useRange } from '../lib/range.tsx';
+import { useRange } from '../lib/range.ts';
 
 export function ModeEntryPage({ me }: { me: Me }) {
   const { range } = useRange();

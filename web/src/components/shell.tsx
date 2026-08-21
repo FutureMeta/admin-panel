@@ -7,7 +7,7 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Me, ModuleKey } from '../lib/api.ts';
-import { RANGES, useRange } from '../lib/range.tsx';
+import { RANGES, useRange } from '../lib/range.ts';
 import { loadWorld } from '../lib/world.ts';
 import { Avatar, ICONS, Icon } from './ui.tsx';
 

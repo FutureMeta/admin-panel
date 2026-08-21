@@ -31,6 +31,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { type Dictionary, EditModeDialog, NewModeDialog } from '../components/mode-editor.tsx';
 import { ModePicker } from '../components/mode-picker.tsx';
 import {
   type Card,
@@ -47,8 +48,9 @@ import {
   StatsPanelsSkeleton,
   StatsSkeleton,
 } from '../components/stats-panels.tsx';
+import { Button } from '../components/ui.tsx';
 import { WorldMap } from '../components/world-map.tsx';
-import { apiWithHeaders } from '../lib/api.ts';
+import { api, apiWithHeaders, type Me } from '../lib/api.ts';
 import { slicesOf } from '../lib/distribution.ts';
 import { labelOf, type Range, useRange } from '../lib/range.tsx';
 import { axisLabel } from '../lib/when.ts';
@@ -92,25 +94,30 @@ function ModeHeader({
   colorOf,
   range,
   when,
+  actions,
 }: {
   mode: string;
   labels: Record<string, string>;
   colorOf: (m: string) => string;
   range: Range;
   when: ReactNode;
+  actions: ReactNode;
 }) {
   return (
-    <div>
-      {/*
-        Il selettore È il titolo, e l'elenco viene dal DIZIONARIO del payload —
-        non da una seconda chiamata. Ogni payload lo porta intero da quando
-        nomi e colori hanno smesso di dipendere dal range, quindi il menù è
-        identico su ogni modalità e non cambia mentre si naviga.
-      */}
-      <ModePicker mode={mode} labels={labels} colorOf={colorOf} />
-      <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 6 }}>
-        {labelOf(range)} · fuso Europe/Rome · {when}
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20 }}>
+      <div>
+        {/*
+          Il selettore È il titolo, e l'elenco viene dal DIZIONARIO del payload
+          — non da una seconda chiamata. Ogni payload lo porta intero da quando
+          nomi e colori hanno smesso di dipendere dal range, quindi il menù è
+          identico su ogni modalità e non cambia mentre si naviga.
+        */}
+        <ModePicker mode={mode} labels={labels} colorOf={colorOf} />
+        <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 6 }}>
+          {labelOf(range)} · fuso Europe/Rome · {when}
+        </div>
       </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>{actions}</div>
     </div>
   );
 }
@@ -139,9 +146,22 @@ function useSettled(flag: boolean, ms: number): boolean {
   return flag && elapsed;
 }
 
-export function ModeDetailPage() {
+export function ModeDetailPage({ me }: { me: Me }) {
   const { range } = useRange();
   const { key } = useParams({ from: '/shell/dettaglio-modalita/$key' });
+  const [editing, setEditing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const canManage = (me.permissions.statistiche ?? 0) >= 3;
+
+  // IL DIZIONARIO SI SCARICA SOLO A CHI PUO' USARLO. Serve ai due dialoghi —
+  // regole, server liberi, chiavi già prese — e chi non gestisce le modalità
+  // non vede nemmeno i pulsanti: fargli pagare la richiesta sarebbe un costo
+  // per una cosa che non può fare.
+  const dict = useQuery({
+    queryKey: ['stats-modes'],
+    queryFn: () => api<Dictionary>('/api/stats/modes'),
+    enabled: canManage,
+  });
 
   const q = useQuery({
     // La chiave porta modalità E periodo: senza, passando da una modalità
@@ -204,6 +224,49 @@ export function ModeDetailPage() {
     };
   }, [data?.labels, data?.colors]);
 
+  /** Tutti i server osservati: quelli assegnati e quelli ancora liberi. */
+  const allServers = useMemo(
+    () => [...(dict.data?.unclassified ?? []), ...(dict.data?.modes ?? []).flatMap((m) => m.servers)].sort(),
+    [dict.data],
+  );
+  /** La riga di dizionario di QUESTA modalità: regole, colore scelto, bandiere. */
+  const record = dict.data?.modes.find((m) => m.modeKey === key);
+
+  // I due pulsanti del mockup, a destra dell'intestazione. Compaiono solo a
+  // chi può usarli: un pulsante che risponde «non puoi» è un modo di far
+  // scoprire i permessi provandoli.
+  const actions = canManage ? (
+    <>
+      <Button size="sm" disabled={!record} onClick={() => setEditing(true)}>
+        Modifica
+      </Button>
+      <Button size="sm" variant="primary" disabled={!dict.data} onClick={() => setCreating(true)}>
+        Nuova modalità
+      </Button>
+    </>
+  ) : null;
+
+  const dialogs = (
+    <>
+      {editing && record ? (
+        <EditModeDialog
+          mode={record}
+          available={allServers}
+          warnings={dict.data?.warnings ?? []}
+          canManage={canManage}
+          onClose={() => setEditing(false)}
+        />
+      ) : null}
+      {creating && dict.data ? (
+        <NewModeDialog
+          available={allServers}
+          taken={dict.data.modes.map((m) => m.modeKey)}
+          onClose={() => setCreating(false)}
+        />
+      ) : null}
+    </>
+  );
+
   if (q.isError) {
     return (
       <div style={{ padding: 24, fontSize: 13, color: 'var(--tx-secondary)' }}>
@@ -236,8 +299,10 @@ export function ModeDetailPage() {
           colorOf={colorOfMode}
           range={range}
           when={<span style={{ color: 'var(--tx-muted)' }}>caricamento…</span>}
+          actions={actions}
         />
         <StatsPanelsSkeleton cards={4} />
+        {dialogs}
       </main>
     );
   }
@@ -311,6 +376,7 @@ export function ModeDetailPage() {
         colorOf={colorOfMode}
         range={range}
         when={<span className="mono">aggiornato {hhmm(data.generatedAt)}</span>}
+        actions={actions}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cards.length}, 1fr)`, gap: 12 }}>
@@ -378,6 +444,7 @@ export function ModeDetailPage() {
           }
         />
       )}
+      {dialogs}
     </main>
   );
 }

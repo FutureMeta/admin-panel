@@ -58,20 +58,16 @@ const NAV: NavItem[] = [
   // popolata in questo momento e rimanda lì. Una chiave scritta qui sarebbe
   // quella giusta il primo giorno e quella sbagliata tutti gli altri.
   //
-  // Il percorso del dettaglio sta SOTTO questo, non sotto `/modalita`: lo
-  // stato attivo della barra è un `startsWith`, e con `/modalita` e
-  // `/modalita/duels` le due voci qui sotto si accendevano insieme.
+  // E' UNA VOCE SOLA perché la schermata è una sola. Il dizionario — creare
+  // una modalità, cambiarne nome, colore e regole — stava su una schermata sua
+  // accanto a questa, e chiedeva di uscire dai grafici per andare a cambiare
+  // ciò che i grafici mostrano. Adesso i due pulsanti stanno nell'intestazione
+  // del dettaglio, come nel mockup, e si modifica la modalità mentre la si
+  // guarda.
   {
     modules: ['statistiche'],
     label: 'Dettaglio modalità',
     to: '/dettaglio-modalita',
-    area: 'Analisi',
-    icon: ICONS.log,
-  },
-  {
-    modules: ['statistiche'],
-    label: 'Modalità e server',
-    to: '/modalita',
     area: 'Analisi',
     icon: ICONS.log,
   },

@@ -1,10 +1,17 @@
 // Modalità: il dizionario che decide come i server si raggruppano nei grafici.
 //
-// SEGUE `frontend/5-dettaglio-modalita.dc.html`. La prima versione di questa
-// schermata era disegnata da zero e sbagliava la forma di entrambe le cose che
-// contano: la creazione (una finestra modale, non un modulo in fondo alla
-// pagina) e la scelta dei server (elenco esplicito OPPURE pattern, non una
-// regola per volta).
+// SEGUE `frontend/5-dettaglio-modalita.dc.html`, che è UNA schermata sola: i
+// grafici di una modalità, e in alto a destra il pulsante che ne crea una
+// nuova. Per un po' il dizionario è stato una schermata a parte, il che
+// chiedeva di uscire dai grafici per andare a cambiare ciò che i grafici
+// mostrano. Adesso è di nuovo quello che il mockup diceva: due finestre che si
+// aprono sopra il dettaglio, e questo file non è più una schermata ma i pezzi
+// che le compongono.
+//
+// La prima versione sbagliava la forma di entrambe le cose che contano: la
+// creazione (una finestra modale, non un modulo in fondo alla pagina) e la
+// scelta dei server (elenco esplicito OPPURE pattern, non una regola per
+// volta).
 //
 // PERCHÉ L'ANTEPRIMA È IL CUORE. Su questa rete esistono `duels_1..6`,
 // `duels_lobby_1..2` e `duels_event_1`. Una regola «inizia per duels_» le
@@ -13,17 +20,17 @@
 // inserendo davvero la regola e annullando la transazione: così non esiste una
 // seconda copia della logica di risoluzione che possa divergere da quella vera.
 
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
-import { PageHeader, Panel, PanelBar, SelectField } from '../components/page.tsx';
-import { Banner, Button, EmptyState, Field, SkeletonRows } from '../components/ui.tsx';
-import { api, type Me } from '../lib/api.ts';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
+import { api } from '../lib/api.ts';
+import { SelectField } from './page.tsx';
+import { Banner, Button, Field } from './ui.tsx';
 
 type MatchKind = 'server' | 'prefix' | 'suffix' | 'contains';
 type Alias = { matchKind: MatchKind; matchValue: string };
 
-type Mode = {
+export type Mode = {
   modeId: number;
   modeKey: string;
   displayName: string;
@@ -39,7 +46,7 @@ type ColourWarning =
   | { kind: 'simile'; modeKey: string; otherKey: string; distance: number }
   | { kind: 'contrasto'; modeKey: string; ratio: number };
 
-type Dictionary = { modes: Mode[]; unclassified: string[]; warnings: ColourWarning[] };
+export type Dictionary = { modes: Mode[]; unclassified: string[]; warnings: ColourWarning[] };
 type PreviewChange = { serverKey: string; before: string; after: string };
 type Preview = { changes: PreviewChange[]; captured: number; unchanged: number };
 
@@ -387,24 +394,29 @@ function PreviewResult({ preview }: { preview: Preview }) {
   );
 }
 
-function NewModeDialog({
-  available,
+/**
+ * La conchiglia dei due dialoghi: sfondo, riquadro, intestazione, piede.
+ *
+ * Sta in un pezzo solo perché creare e modificare una modalità sono la stessa
+ * finestra con dentro cose diverse, e due copie di cento righe di cornice
+ * divergono al primo ritocco — di solito nel modo peggiore, cioè una delle due
+ * smette di chiudersi con Escape e nessuno se ne accorge finché non serve.
+ */
+function Dialog({
+  title,
+  sub,
   onClose,
-  taken,
+  closeLabel,
+  children,
+  footer,
 }: {
-  available: string[];
+  title: string;
+  sub: string;
   onClose: () => void;
-  taken: string[];
+  closeLabel: string;
+  children: ReactNode;
+  footer: ReactNode;
 }) {
-  const qc = useQueryClient();
-  const [name, setName] = useState('');
-  const [color, setColor] = useState(PALETTE[0] as string);
-  const [source, setSource] = useState<'elenco' | 'pattern'>('elenco');
-  const [picked, setPicked] = useState<string[]>([]);
-  const [op, setOp] = useState<MatchKind>('prefix');
-  const [pattern, setPattern] = useState('');
-  const [error, setError] = useState<string | undefined>();
-
   // Esc chiude, come ovunque nel pannello.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -413,34 +425,6 @@ function NewModeDialog({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-
-  const key = slug(name);
-  const aliases: Alias[] =
-    source === 'elenco'
-      ? picked.map((s) => ({ matchKind: 'server' as const, matchValue: s }))
-      : pattern.trim() === ''
-        ? []
-        : [{ matchKind: op, matchValue: pattern.trim().toLowerCase() }];
-
-  const create = useMutation({
-    mutationFn: async () => {
-      await api('/api/stats/modes', {
-        method: 'POST',
-        body: { modeKey: key, displayName: name.trim(), color },
-      });
-      if (aliases.length > 0) {
-        await api(`/api/stats/modes/${key}/aliases`, { method: 'PUT', body: { aliases } });
-      }
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['stats-modes'] });
-      onClose();
-    },
-    onError: () => setError('Non creata. Riprova, o cambia nome se ne esiste già una uguale.'),
-  });
-
-  const duplicate = taken.includes(key);
-  const canCreate = name.trim() !== '' && key !== '' && !duplicate && !create.isPending;
 
   return (
     <div
@@ -464,7 +448,7 @@ function NewModeDialog({
       */}
       <button
         type="button"
-        aria-label="Chiudi senza creare"
+        aria-label={closeLabel}
         onClick={onClose}
         style={{
           position: 'absolute',
@@ -478,7 +462,7 @@ function NewModeDialog({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Nuova modalità da tracciare"
+        aria-label={title}
         style={{
           position: 'relative',
           width: 560,
@@ -510,11 +494,9 @@ function NewModeDialog({
                 letterSpacing: '-.01em',
               }}
             >
-              Nuova modalità da tracciare
+              {title}
             </div>
-            <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 4 }}>
-              I dati live vengono letti da Redis. La modalità compare nei grafici entro un minuto.
-            </div>
+            <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 4 }}>{sub}</div>
           </div>
           <button
             type="button"
@@ -536,58 +518,7 @@ function NewModeDialog({
         </div>
 
         <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          {error ? <Banner tone="err" title={error} /> : null}
-
-          <div>
-            <label
-              htmlFor="nuova-modalita-nome"
-              style={{
-                display: 'block',
-                fontSize: 12,
-                fontWeight: 600,
-                color: 'var(--tx-secondary)',
-                marginBottom: 7,
-              }}
-            >
-              Nome modalità
-            </label>
-            <input
-              id="nuova-modalita-nome"
-              value={name}
-              placeholder="es. Duels"
-              onChange={(e) => setName(e.target.value)}
-              style={{
-                width: '100%',
-                height: 38,
-                padding: '0 12px',
-                border: '1px solid var(--bd-subtle)',
-                borderRadius: 'var(--r-sm)',
-                background: 'var(--s-inset)',
-                color: 'var(--tx-primary)',
-                fontSize: 13,
-                outline: 'none',
-              }}
-            />
-            {duplicate ? (
-              <div style={{ fontSize: 11.5, color: 'var(--st-err)', marginTop: 7 }}>
-                Esiste già una modalità con questo nome.
-              </div>
-            ) : null}
-          </div>
-
-          <ColourPicker value={color} onPick={setColor} />
-
-          <ServerSource
-            available={available}
-            picked={picked}
-            setPicked={setPicked}
-            op={op}
-            setOp={setOp}
-            pattern={pattern}
-            setPattern={setPattern}
-            mode={source}
-            setMode={setSource}
-          />
+          {children}
         </div>
 
         <div
@@ -600,14 +531,146 @@ function NewModeDialog({
             background: 'var(--s-inset)',
           }}
         >
+          {footer}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function NewModeDialog({
+  available,
+  onClose,
+  taken,
+}: {
+  available: string[];
+  onClose: () => void;
+  taken: string[];
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(PALETTE[0] as string);
+  const [source, setSource] = useState<'elenco' | 'pattern'>('elenco');
+  const [picked, setPicked] = useState<string[]>([]);
+  const [op, setOp] = useState<MatchKind>('prefix');
+  const [pattern, setPattern] = useState('');
+  const [error, setError] = useState<string | undefined>();
+
+  const key = slug(name);
+  const aliases: Alias[] =
+    source === 'elenco'
+      ? picked.map((s) => ({ matchKind: 'server' as const, matchValue: s }))
+      : pattern.trim() === ''
+        ? []
+        : [{ matchKind: op, matchValue: pattern.trim().toLowerCase() }];
+
+  const create = useMutation({
+    mutationFn: async () => {
+      await api('/api/stats/modes', {
+        method: 'POST',
+        body: { modeKey: key, displayName: name.trim(), color },
+      });
+      if (aliases.length > 0) {
+        await api(`/api/stats/modes/${key}/aliases`, { method: 'PUT', body: { aliases } });
+      }
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stats-modes'] });
+      onClose();
+    },
+    onError: () => setError('Non creata. Riprova, o cambia nome se ne esiste già una uguale.'),
+  });
+
+  const duplicate = taken.includes(key);
+  const canCreate = name.trim() !== '' && key !== '' && !duplicate && !create.isPending;
+
+  return (
+    <Dialog
+      title="Nuova modalità da tracciare"
+      sub="I dati live vengono letti da Redis. La modalità compare nei grafici entro un minuto."
+      closeLabel="Chiudi senza creare"
+      onClose={onClose}
+      footer={
+        <>
           <Button size="sm" onClick={onClose}>
             Annulla
           </Button>
           <Button size="sm" variant="primary" disabled={!canCreate} onClick={() => create.mutate()}>
             Crea modalità
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
+      {error ? <Banner tone="err" title={error} /> : null}
+
+      <NameField
+        id="nuova-modalita-nome"
+        value={name}
+        onChange={setName}
+        note={duplicate ? 'Esiste già una modalità con questo nome.' : undefined}
+      />
+
+      <ColourPicker value={color} onPick={setColor} />
+
+      <ServerSource
+        available={available}
+        picked={picked}
+        setPicked={setPicked}
+        op={op}
+        setOp={setOp}
+        pattern={pattern}
+        setPattern={setPattern}
+        mode={source}
+        setMode={setSource}
+      />
+    </Dialog>
+  );
+}
+
+/** Il campo del nome, uguale nei due dialoghi. */
+function NameField({
+  id,
+  value,
+  onChange,
+  note,
+}: {
+  id: string;
+  value: string;
+  onChange: (v: string) => void;
+  note?: string | undefined;
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        style={{
+          display: 'block',
+          fontSize: 12,
+          fontWeight: 600,
+          color: 'var(--tx-secondary)',
+          marginBottom: 7,
+        }}
+      >
+        Nome modalità
+      </label>
+      <input
+        id={id}
+        value={value}
+        placeholder="es. Duels"
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          width: '100%',
+          height: 38,
+          padding: '0 12px',
+          border: '1px solid var(--bd-subtle)',
+          borderRadius: 'var(--r-sm)',
+          background: 'var(--s-inset)',
+          color: 'var(--tx-primary)',
+          fontSize: 13,
+          outline: 'none',
+        }}
+      />
+      {note ? <div style={{ fontSize: 11.5, color: 'var(--st-err)', marginTop: 7 }}>{note}</div> : null}
     </div>
   );
 }
@@ -753,140 +816,184 @@ function ColourNotices({ warnings, modes }: { warnings: ColourWarning[]; modes: 
   );
 }
 
-export function ModesPage({ me }: { me: Me }) {
-  const [selected, setSelected] = useState<string | undefined>();
-  const [creating, setCreating] = useState(false);
-  const canManage = (me.permissions.statistiche ?? 0) >= 3;
+/** Un interruttore per una scelta di visualizzazione. Nessun totale cambia. */
+function Flag({
+  id,
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  hint: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 10,
+        padding: '11px 12px',
+        border: '1px solid var(--bd-subtle)',
+        borderRadius: 'var(--r-sm)',
+        background: 'var(--s-inset)',
+        cursor: 'pointer',
+      }}
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={{ marginTop: 2, flex: 'none', accentColor: 'var(--ac)' }}
+      />
+      <span>
+        <span style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: 'var(--tx-primary)' }}>
+          {label}
+        </span>
+        <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tx-muted)', marginTop: 3 }}>
+          {hint}
+        </span>
+      </span>
+    </label>
+  );
+}
 
-  const dict = useQuery({
-    queryKey: ['stats-modes'],
-    queryFn: () => api<Dictionary>('/api/stats/modes'),
+/**
+ * Modificare una modalità esistente: nome, colore, come si disegna, e le regole.
+ *
+ * DUE SALVATAGGI DISTINTI, e non è una svista. L'anagrafica (nome, colore,
+ * bandiere) va con «Salva»; le regole si applicano una alla volta dal loro
+ * riquadro, perché ognuna passa dall'anteprima — vedere quali server si
+ * sposterebbero PRIMA di spostarli è tutto il punto di quel pezzo, e un
+ * salvataggio unico in fondo lo aggirerebbe.
+ *
+ * SI MANDA SOLO CIO' CHE E' CAMBIATO. Il `PATCH` scrive una riga nel registro
+ * con prima e dopo: rispedire i campi intatti la riempirebbe di modifiche che
+ * non sono avvenute, e il registro è append-only — quelle righe restano.
+ */
+export function EditModeDialog({
+  mode,
+  available,
+  warnings,
+  canManage,
+  onClose,
+}: {
+  mode: Mode;
+  available: string[];
+  warnings: ColourWarning[];
+  canManage: boolean;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [name, setName] = useState(mode.displayName);
+  const [color, setColor] = useState(mode.color ?? (PALETTE[0] as string));
+  const [hidden, setHidden] = useState(mode.hidden);
+  const [inBreakdown, setInBreakdown] = useState(mode.inBreakdown);
+  const [error, setError] = useState<string | undefined>();
+
+  const trimmed = name.trim();
+  const changes = {
+    ...(trimmed !== '' && trimmed !== mode.displayName ? { displayName: trimmed } : {}),
+    ...(color !== mode.color ? { color } : {}),
+    ...(hidden !== mode.hidden ? { hidden } : {}),
+    ...(inBreakdown !== mode.inBreakdown ? { inBreakdown } : {}),
+  };
+  const dirty = Object.keys(changes).length > 0;
+
+  const save = useMutation({
+    mutationFn: () => api(`/api/stats/modes/${mode.modeKey}`, { method: 'PATCH', body: changes }),
+    onSuccess: () => {
+      // Il dizionario cambia i nomi e i colori di OGNI grafico, non solo di
+      // questo: si invalidano anche le statistiche, o la pagina sotto resta
+      // con l'etichetta di prima finché non scade da sola.
+      void qc.invalidateQueries({ queryKey: ['stats-modes'] });
+      void qc.invalidateQueries({ queryKey: ['stats-mode'] });
+      void qc.invalidateQueries({ queryKey: ['stats-overview'] });
+      onClose();
+    },
+    onError: () => setError('Modifica non salvata. Riprova.'),
   });
 
-  const modes = useMemo(() => dict.data?.modes ?? [], [dict.data]);
-  const current = modes.find((m) => m.modeKey === selected);
-
-  /** Tutti i server osservati: quelli assegnati e quelli ancora liberi. */
-  const allServers = useMemo(
-    () => [...(dict.data?.unclassified ?? []), ...modes.flatMap((m) => m.servers)].sort(),
-    [dict.data, modes],
-  );
-
   return (
-    <>
-      <PageHeader
-        title="Modalità e server"
-        sub="Come i server della rete si raggruppano nei grafici. Cambiare una regola cambia i numeri per modalità dal giro successivo e non tocca lo storico: si può cambiare idea."
-        action={
-          canManage ? (
-            <Button size="sm" variant="primary" onClick={() => setCreating(true)}>
-              Nuova modalità
-            </Button>
-          ) : undefined
-        }
+    <Dialog
+      title={`Modifica «${mode.displayName}»`}
+      sub="Nome e colore cambiano ovunque, subito. Le regole cambiano i numeri per modalità dal giro successivo e non toccano lo storico: si può cambiare idea."
+      closeLabel="Chiudi senza salvare"
+      onClose={onClose}
+      footer={
+        <>
+          <Button size="sm" onClick={onClose}>
+            Annulla
+          </Button>
+          <Button
+            size="sm"
+            variant="primary"
+            disabled={!canManage || !dirty || save.isPending}
+            onClick={() => save.mutate()}
+          >
+            Salva
+          </Button>
+        </>
+      }
+    >
+      {error ? <Banner tone="err" title={error} /> : null}
+      <ColourNotices warnings={warnings} modes={[mode]} />
+
+      <NameField
+        id="modifica-modalita-nome"
+        value={name}
+        onChange={setName}
+        note={trimmed === '' ? 'Il nome non può restare vuoto.' : undefined}
       />
 
-      {dict.isPending ? <SkeletonRows rows={3} /> : null}
-      {dict.data ? <ColourNotices warnings={dict.data.warnings} modes={modes} /> : null}
+      <ColourPicker value={color} onPick={setColor} />
 
-      {/* Le schede, come nel design: pallino del colore piu` il nome. */}
-      {modes.length > 0 ? (
-        <div
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 2,
-            padding: 3,
-            background: 'var(--s-inset)',
-            border: '1px solid var(--bd-subtle)',
-            borderRadius: 'var(--r-sm)',
-          }}
-        >
-          {modes.map((m) => (
-            <button
-              key={m.modeKey}
-              type="button"
-              onClick={() => setSelected(selected === m.modeKey ? undefined : m.modeKey)}
-              aria-pressed={selected === m.modeKey}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 7,
-                border: 'none',
-                borderRadius: 'var(--r-xs)',
-                background: selected === m.modeKey ? 'var(--s-overlay)' : 'transparent',
-                color: selected === m.modeKey ? 'var(--tx-primary)' : 'var(--tx-muted)',
-                fontSize: 12.5,
-                fontWeight: 600,
-                padding: '6px 11px',
-                cursor: 'pointer',
-              }}
-            >
-              <Dot color={m.color} />
-              {m.displayName}
-              <span className="mono" style={{ fontSize: 11, opacity: 0.7 }}>
-                {m.servers.length}
-              </span>
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {current ? (
-        <Panel>
-          <PanelBar>
-            <Dot color={current.color} size={9} />
-            <span style={{ fontSize: 12.5, color: 'var(--tx-secondary)' }}>{current.displayName}</span>
-            <span className="mono" style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--tx-muted)' }}>
-              {current.servers.length === 0 ? 'nessun server' : `${current.servers.length} server`}
-            </span>
-            {/*
-              LA VIA D'INGRESSO al dettaglio, e sta qui perché è qui che si
-              guarda una modalità alla volta. Solo se ha almeno un server:
-              senza, la rotta risponde 404 di proposito — «esiste ma non ha
-              osservazioni» — e un collegamento che porta a un errore è peggio
-              di un collegamento assente.
-            */}
-            {current.servers.length > 0 ? (
-              <Link
-                to="/dettaglio-modalita/$key"
-                params={{ key: current.modeKey }}
-                style={{ fontSize: 12, color: 'var(--ac-text)', textDecoration: 'none' }}
-              >
-                Vedi le statistiche →
-              </Link>
-            ) : null}
-          </PanelBar>
-          <ModeRules mode={current} available={allServers} canManage={canManage} />
-        </Panel>
-      ) : null}
+      <div style={{ display: 'grid', gap: 8 }}>
+        <Flag
+          id="modifica-modalita-hidden"
+          label="Non accenderla all'apertura"
+          hint="Resta nella legenda e si può riaccendere. Nessun totale cambia: la riga di rete è misurata, non sommata dalle modalità."
+          checked={hidden}
+          onChange={setHidden}
+        />
+        <Flag
+          id="modifica-modalita-breakdown"
+          label="Tienila nella ripartizione"
+          hint="Toglierla la esclude dalla torta, che si dichiara sotto: una fetta tolta in silenzio sposterebbe la percentuale di tutte le altre."
+          checked={inBreakdown}
+          onChange={setInBreakdown}
+        />
+      </div>
 
       {/*
-        Quando il campionamento non ha ancora osservato niente lo si dice qui,
-        e si dice che i grafici non hanno dati: «nessuna modalita'» e «nessun
-        server» si assomigliano e non sono la stessa cosa.
+        Le regole hanno il loro salvataggio, con anteprima: qui si mostra il
+        riquadro com'è, dentro una cornice, invece di rifarlo in piccolo.
       */}
-      {!dict.isPending && allServers.length === 0 ? (
-        <EmptyState
-          title="Nessun server osservato"
-          description="I server non si configurano: li scopre il campionamento leggendo chi è online. Finché non è acceso, qui non c'è niente da raggruppare — e i grafici non hanno dati."
-        />
-      ) : null}
-
-      {modes.length === 0 && !dict.isPending ? (
-        <EmptyState
-          title="Il dizionario è vuoto"
-          description="Nessuno sa a priori come questa rete vuole raggruppare i propri server: le modalità le crei tu, e finché non esistono i grafici mostrano una serie sola."
-        />
-      ) : null}
-
-      {creating ? (
-        <NewModeDialog
-          available={allServers}
-          taken={modes.map((m) => m.modeKey)}
-          onClose={() => setCreating(false)}
-        />
-      ) : null}
-    </>
+      <div
+        style={{
+          border: '1px solid var(--bd-subtle)',
+          borderRadius: 'var(--r-sm)',
+          background: 'var(--s-surface)',
+        }}
+      >
+        <div
+          style={{
+            padding: '11px 20px',
+            borderBottom: '1px solid var(--bd-subtle)',
+            fontSize: 12,
+            fontWeight: 600,
+            color: 'var(--tx-secondary)',
+          }}
+        >
+          Server catturati da questa modalità
+        </div>
+        <ModeRules mode={mode} available={available} canManage={canManage} />
+      </div>
+    </Dialog>
   );
 }

@@ -27,7 +27,6 @@ import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { ModeDetailPage } from './routes/mode-detail.tsx';
 import { ModeEntryPage } from './routes/mode-entry.tsx';
-import { ModesPage } from './routes/modes.tsx';
 import { OverviewPage } from './routes/overview.tsx';
 import { ForgotPasswordPage, ResetPasswordPage } from './routes/password.tsx';
 import { ForbiddenPage, NotFoundPage } from './routes/states.tsx';
@@ -220,25 +219,18 @@ function OverviewRoute() {
   return <OverviewPage />;
 }
 
-function ModesRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
-  return <ModesPage me={me.data} />;
-}
-
 function ModeDetailRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
   if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
-  return <ModeDetailPage />;
+  return <ModeDetailPage me={me.data} />;
 }
 
 function ModeEntryRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
   if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
-  return <ModeEntryPage />;
+  return <ModeEntryPage me={me.data} />;
 }
 
 function AuditRoute() {
@@ -274,11 +266,6 @@ const overviewRoute = createRoute({
   path: '/panoramica',
   component: OverviewRoute,
 });
-const modesRoute = createRoute({
-  getParentRoute: () => shellRoute,
-  path: '/modalita',
-  component: ModesRoute,
-});
 const modeDetailRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/dettaglio-modalita/$key',
@@ -305,15 +292,7 @@ const routeTree = rootRoute.addChildren([
   acceptRoute,
   forgotRoute,
   resetRoute,
-  shellRoute.addChildren([
-    homeRoute,
-    usersRoute,
-    overviewRoute,
-    modesRoute,
-    modeEntryRoute,
-    modeDetailRoute,
-    auditRoute,
-  ]),
+  shellRoute.addChildren([homeRoute, usersRoute, overviewRoute, modeEntryRoute, modeDetailRoute, auditRoute]),
 ]);
 
 const router = createRouter({ routeTree, defaultPreload: false });

@@ -30,7 +30,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   type Card,
   DailyUniques,
@@ -167,6 +167,30 @@ function ModeHeader({
   );
 }
 
+/**
+ * Vero quando `flag` è vero ININTERROTTAMENTE da almeno `ms`.
+ *
+ * Serve a non mostrare mai un'attesa che non c'è stata. Uno scheletro che
+ * compare e sparisce in centocinquanta millisecondi si legge come uno sfarfallio,
+ * non come un caricamento: è più fastidioso del caricamento stesso, e la rotta
+ * risponde quasi sempre più in fretta di così. Il ritardo lo tiene fuori dal
+ * caso normale senza toglierlo dal caso lento, dove invece serve.
+ */
+function useSettled(flag: boolean, ms: number): boolean {
+  const [elapsed, setElapsed] = useState(false);
+
+  useEffect(() => {
+    if (!flag) {
+      setElapsed(false);
+      return;
+    }
+    const timer = setTimeout(() => setElapsed(true), ms);
+    return () => clearTimeout(timer);
+  }, [flag, ms]);
+
+  return flag && elapsed;
+}
+
 export function ModeDetailPage() {
   const { range } = useRange();
   const { key } = useParams({ from: '/shell/modalita/$key' });
@@ -184,17 +208,25 @@ export function ModeDetailPage() {
     // modalità, e quindi sa già come si chiama e di che colore è quella
     // appena chiesta. Senza, l'intestazione non avrebbe niente da disegnare e
     // la barra delle modalità sparirebbe sotto il dito che l'ha appena
-    // toccata. Cosa si può disegnare oltre all'intestazione lo decide
-    // `stale`, non questa riga: i NUMERI di prima non si mostrano mai sotto
-    // il nome di un'altra modalità.
+    // toccata. Quanto a lungo si possano tenere anche i NUMERI lo decide
+    // `tooLong`, non questa riga.
     placeholderData: (previous) => previous,
   });
 
   const data = q.data?.data;
-  /** Il payload in mano parla di un'altra modalità: intestazione sì, numeri no. */
+  /** Numeri di prima sullo schermo, nuovi in arrivo. Cambio di periodo o di modalità. */
+  const busy = q.isPlaceholderData && q.isFetching;
+  /** I numeri in mano sono di un'altra modalità: l'intestazione è avanti, loro no. */
   const stale = data !== undefined && data.mode !== key;
-  /** Stessa modalità, periodo nuovo in arrivo: si smorza invece di sparire. */
-  const refreshing = q.isPlaceholderData && q.isFetching && !stale;
+  /**
+   * Il ritardo è finito e i numeri di prima non si possono più tenere.
+   *
+   * Sotto i due decimi di secondo — il caso normale, la rotta sta sui 50-130ms
+   * — non compare niente: i grafici si smorzano e vengono sostituiti, come
+   * cambiando periodo. Oltre, smorzati o no restano i numeri di un'altra
+   * modalità sotto un altro nome, e allora lo scheletro dice la verità.
+   */
+  const tooLong = useSettled(stale, 220);
 
   /** Gli estremi del periodo disegnato, per l'etichetta dell'asse. */
   const span = useMemo(() => {
@@ -240,11 +272,14 @@ export function ModeDetailPage() {
   // Primo ingresso: non si sa ancora niente, nemmeno il dizionario.
   if (!data) return <StatsSkeleton cards={4} />;
 
-  // Modalità appena cambiata. L'intestazione è già quella giusta — nome,
-  // colore e scheda evidenziata vengono da `key` e dal dizionario, non dai
-  // numeri — e sotto caricano i riquadri. Restare sui numeri di prima sarebbe
-  // la solita risposta giusta alla domanda sbagliata.
-  if (stale) {
+  // La modalità nuova si fa attendere. Fin qui i riquadri di prima erano
+  // rimasti smorzati — così il cambio di modalità si legge come quello di
+  // periodo, che è la cosa che funzionava — ma oltre un certo punto tenerli
+  // vuol dire lasciare i numeri di un'altra modalità sotto un altro nome, e a
+  // quel punto lo scheletro dice la verità. L'intestazione resta comunque
+  // quella giusta: nome, colore e scheda evidenziata vengono da `key` e dal
+  // dizionario, non dai numeri.
+  if (tooLong) {
     return (
       <main style={{ display: 'flex', flexDirection: 'column', gap: 24 }} aria-busy>
         <ModeHeader
@@ -259,7 +294,13 @@ export function ModeDetailPage() {
     );
   }
 
-  const label = data.labels[key] ?? key;
+  // L'etichetta dei RIQUADRI segue i dati, non l'URL. Finché sotto ci sono i
+  // numeri della modalità di prima, i riquadri dicono di chi sono: altrimenti
+  // per un attimo si leggerebbe «Giocatori su Duels» sopra la curva di Towny,
+  // che è la solita bugia plausibile, solo più breve. L'intestazione invece
+  // segue `key`, perché quella deve rispondere al clic. A dire che i due non
+  // sono ancora d'accordo è la smorzatura.
+  const label = data.labels[data.mode] ?? data.mode;
   const online = mix.slices.reduce((a, s) => a + s.value, 0);
   const today = data.uniques.v.length > 0 ? (data.uniques.v[data.uniques.v.length - 1] ?? null) : null;
 
@@ -311,10 +352,10 @@ export function ModeDetailPage() {
         display: 'flex',
         flexDirection: 'column',
         gap: 24,
-        opacity: refreshing ? 0.5 : 1,
+        opacity: busy ? 0.5 : 1,
         transition: 'opacity var(--dur) var(--ease)',
       }}
-      aria-busy={refreshing}
+      aria-busy={busy}
     >
       <ModeHeader
         mode={key}

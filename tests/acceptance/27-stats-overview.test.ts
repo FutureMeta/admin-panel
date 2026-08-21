@@ -533,6 +533,24 @@ describe('nomi e colori non dipendono dal periodo scelto', () => {
     expect(anno.payload.colors).toEqual(giorno.payload.colors);
   });
 
+  it('i sentinella hanno un nome, il totale non e` una modalita`', async () => {
+    // Un server SENZA alias: e` l'unico modo in cui `__unknown__` esiste, ed
+    // e` anche l'unico in cui puo` comparire nei dati. Le due condizioni sono
+    // la stessa, quindi il nome c'e` sempre quando serve.
+    await sql.query('INSERT INTO stats.server (server_key) VALUES ($1)', ['orfano_1']);
+    const { payload } = await buildOverview(db, '24h');
+
+    // SERIE VISIBILI, quindi devono avere un nome: la torta chiude sul totale
+    // solo se ci sono, e senza nome la schermata mostrerebbe «__transit__».
+    expect(payload.labels.__transit__).toBe('In transito');
+    expect(payload.labels.__unknown__).toBe('Non classificata');
+
+    // Il totale non e` una modalita`: nessun riquadro lo disegna come serie, e
+    // lasciarlo in elenco sposterebbe di un posto i colori di ripiego, che si
+    // scelgono per posizione nel dizionario.
+    expect(payload.labels.__network__).toBeUndefined();
+  });
+
   it('una modalita` senza colore non ne riceve uno inventato', async () => {
     const { payload } = await buildOverview(db, '24h');
     // Riempire il buco qui farebbe sembrare deciso cio` che non lo e`, e

@@ -581,12 +581,19 @@ type ModeDictionary = Map<string, { label: string; order: number; color: string 
  * legge «arena» minuscolo dove ovunque altrove c'e' «Arena». Sembra un
  * problema di dati e invece e' una proiezione fatta nel posto sbagliato.
  *
- * Le chiavi di servizio restano fuori: `__transit__` e `__unknown__` hanno gia'
- * un nome deciso altrove, e `__network__` non e' una modalita'.
+ * `__transit__` e `__unknown__` CI SONO, perche' sono serie visibili: la torta
+ * deve chiudere sul totale, e senza di loro il primo che se ne accorge
+ * normalizza le percentuali — cioe' spalma i non classificati sulle modalita'
+ * vere. `v_server_mode` gli da' gia' un nome («In transito», «Non
+ * classificata»), che e' esattamente quello che qui serve.
+ *
+ * `__network__` no: e' il totale, non una modalita'. Nessun riquadro lo
+ * disegna come serie, e lasciarlo in elenco sposterebbe di un posto i colori
+ * di ripiego, che si scelgono per posizione.
  */
 function dictionaryLabels(dict: ModeDictionary): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const [key, v] of dict) out[key] = v.label;
+  for (const [key, v] of dict) if (key !== '__network__') out[key] = v.label;
   return out;
 }
 

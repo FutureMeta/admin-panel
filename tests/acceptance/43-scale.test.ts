@@ -7,10 +7,15 @@
 // essere la causa — ma per affermarlo serviva un metro.
 //
 // Questo file e' il metro: diciannove server, due giorni di 5m/1h/1d,
-// diecimila righe in player_day e ventimila in player_day_server, cinquemila
-// cicli di poll. La stessa forma della produzione. Qui il payload si costruisce
-// in meno di cento millisecondi, e da li' si sa che quei 2,4 s non stanno ne'
-// nel codice ne' nel volume dei dati.
+// diecimila righe in player_day, ventimila in player_day_server, cinquemila
+// cicli di poll. Qui il payload si costruisce in meno di cento millisecondi.
+//
+// I SERVER PARTONO DA server_id 100, non da 2. La prima versione di questo
+// seme riempiva `player_day_server` con `WHERE server_id IN (2, 3)` e
+// inseriva ZERO righe: la tabella che la meta' «per modalita'» di `geoRows`
+// scandisce non era nella misura, e la misura diceva lo stesso che andava
+// tutto bene. Un seme che sbaglia in silenzio non falsifica il test — lo
+// rende d'accordo con qualunque cosa. Si semina per chiave, non per id.
 //
 // LA SOGLIA E' LARGA DI PROPOSITO. Non misura la macchina, sorveglia gli
 // ordini di grandezza: una regressione che porti un range da 60 ms a un
@@ -28,6 +33,8 @@ let testDb: TestDatabase;
 let pool: pg.Pool;
 let db: Database;
 let sql: pg.Client;
+/** Un istante fisso: due letture diverse dell'orologio sposterebbero le finestre. */
+const FISSO = new Date();
 const SERVERS = Array.from({ length: 19 }, (_, i) => `srv_${i + 1}`);
 
 beforeAll(async () => {
@@ -71,13 +78,16 @@ beforeAll(async () => {
             stats.day_seconds(stats.civil_day(bucket)), sum(player_seconds), max(players_max), max(players_max_at)
        FROM stats.rollup_1h GROUP BY 1,2 ON CONFLICT DO NOTHING`);
   // 5000 giocatori al giorno, su due giorni, ciascuno su due server.
-  await sql.query(`INSERT INTO stats.player_day (day, player_id, seconds_online, sessions, first_seen_at, last_seen_at)
-     SELECT d::date, n, 3600, 2, now(), now()
+  //
+  // IL PAESE VA SEMINATO, altrimenti le mappe escono nulle da entrambe le
+  // parti e il confronto fra «con» e «senza» passa senza confrontare niente.
+  await sql.query(`INSERT INTO stats.player_day (day, player_id, country, seconds_online, sessions, first_seen_at, last_seen_at)
+     SELECT d::date, n, (ARRAY['IT','FR','DE','MA','RO'])[1 + (n % 5)], 3600, 2, now(), now()
        FROM generate_series(stats.civil_day(now()) - 1, stats.civil_day(now()), interval '1 day') d,
             generate_series(1, 5000) n`);
   await sql.query(`INSERT INTO stats.player_day_server (day, player_id, server_id)
      SELECT p.day, p.player_id, v.server_id
-       FROM stats.player_day p CROSS JOIN stats.server v WHERE v.server_id IN (2, 3)`);
+       FROM stats.player_day p CROSS JOIN stats.server v WHERE v.server_key IN ('srv_1', 'srv_2')`);
   await sql.query(
     'ANALYZE stats.player_day; ANALYZE stats.player_day_server; ANALYZE stats.rollup_1h; ANALYZE stats.rollup_5m; ANALYZE stats.poll_cycle;',
   );
@@ -110,5 +120,27 @@ describe('alla scala della rete vera, un payload costa poco', () => {
     const built = await buildAll(db, '90d', undefined, []);
     expect(Object.keys(built.slowest)).toHaveLength(3);
     for (const v of Object.values(built.slowest)) expect(v).toBeGreaterThanOrEqual(0);
+  }, 600_000);
+});
+
+describe('la provenienza per modalita` ha il suo cancello, come le altre', () => {
+  it('senza modalita` richieste, il payload di rete e` identico', async () => {
+    // LA CONDIZIONE DI SICUREZZA: saltare il pezzo per modalita` non deve
+    // cambiare di una virgola cio` che la panoramica mostra. Se un giorno lo
+    // cambiasse, la mappa direbbe due cose diverse a seconda di cosa qualcun
+    // altro ha guardato di recente.
+    const senza = await buildAll(db, '30d', FISSO, []);
+    const con = await buildAll(db, '30d', FISSO);
+    // Prima che siano uguali: che ci siano. Due mappe nulle sono uguali fra
+    // loro e non dimostrano niente.
+    expect(senza.overview.geo?.cc.length).toBeGreaterThan(0);
+    expect(senza.overview.geo).toEqual(con.overview.geo);
+  }, 600_000);
+
+  it('e con una modalita` richiesta la sua provenienza c`e` ancora', async () => {
+    // Il cancello non deve spegnere la funzione: chi apre il dettaglio di una
+    // modalita` deve continuare a vedere la sua mappa.
+    const con = await buildAll(db, '30d', FISSO, ['duels']);
+    expect(con.perMode.get('duels')?.geo).not.toBeNull();
   }, 600_000);
 });

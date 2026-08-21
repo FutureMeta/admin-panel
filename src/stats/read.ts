@@ -475,10 +475,29 @@ async function distinctPlayers(db: Database, from: Date, to: Date): Promise<numb
  * primo sintomo che il campo `ip` ha cambiato semantica; scartandolo, la mappa
  * continuerebbe a sembrare corretta mentre misura un terzo dei giocatori.
  */
+/**
+ * La provenienza, di rete e — solo se servono — per modalita'.
+ *
+ * IL PEZZO PER MODALITA' HA UN CANCELLO, come le altre tre query per
+ * modalita'. Qui era sfuggito perche' non e' una funzione a parte: sta dentro
+ * la stessa query, nella CTE `per_mode`, e da fuori sembrava una query sola.
+ *
+ * Costava. In produzione questa era LA query del giro di warm: 2,5-3,0 secondi
+ * contro numeri a una cifra per tutte le altre dodici, ripetuti su 30g, 90g e
+ * 1y — cioe' i 7,9 s del giro erano quasi interamente lei. E il lavoro era
+ * buttato: `deferred: 0` e `payloads: 5` dicono cinque panoramiche e zero
+ * modalita', perche' nessuno aveva aperto un dettaglio.
+ *
+ * `sql.lit` e non un parametro: con un literal la condizione e' costante al
+ * momento del piano e PostgreSQL pota l'intero ramo, invece di pianificare una
+ * scansione che poi salta. Il valore e' un booleano di JavaScript, quindi non
+ * c'e' niente da citare.
+ */
 async function geoRows(
   db: Database,
   from: Date,
   now: Date,
+  perMode: boolean,
 ): Promise<Array<{ mode_key: string; cc: string | null; uniques: number }>> {
   const res = await sql<{ mode_key: string; cc: string | null; uniques: string }>`
     WITH ranged AS (
@@ -496,7 +515,8 @@ async function geoRows(
       SELECT DISTINCT sm.mode_key, pds.player_id
         FROM stats.player_day_server pds
         JOIN stats.v_server_mode sm USING (server_id)
-       WHERE pds.day >= stats.civil_day(${from}) AND pds.day <= stats.civil_day(${now})
+       WHERE ${sql.lit(perMode)}
+         AND pds.day >= stats.civil_day(${from}) AND pds.day <= stats.civil_day(${now})
     )
     SELECT '__network__' AS mode_key, t.cc, count(*)::bigint::text AS uniques
       FROM ranged t GROUP BY 1, 2
@@ -1029,7 +1049,7 @@ export async function buildAll(
       'distinctMode',
       anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo) : new Map<string, number>(),
     ),
-    timed('geo', geoRows(db, w.curFrom, now)),
+    timed('geo', geoRows(db, w.curFrom, now, anyMode)),
     timed('facts', networkFacts(db)),
     timed('current', currentMix(db)),
     timed('liveUniques', liveDayUniques(db, now)),

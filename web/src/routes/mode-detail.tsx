@@ -252,7 +252,6 @@ export function ModeDetailPage({ me }: { me: Me }) {
         <EditModeDialog
           mode={record}
           available={allServers}
-          warnings={dict.data?.warnings ?? []}
           canManage={canManage}
           onClose={() => setEditing(false)}
         />

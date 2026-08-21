@@ -42,6 +42,14 @@ export type Mode = {
   servers: string[];
 };
 
+/**
+ * Gli avvisi sui colori, che il server calcola e che il pannello NON mostra
+ * più: erano un banner in cima al dialogo di modifica, e su questa rete
+ * elencava mezza dozzina di coppie ogni volta che lo si apriva. Il tipo resta
+ * perché resta nella risposta: descrivere ciò che arriva è il lavoro di un
+ * tipo, anche quando nessuno lo disegna. L'anteprima della serie, accanto alla
+ * tavolozza, mostra comunque il colore scelto per quello che è.
+ */
 type ColourWarning =
   | { kind: 'simile'; modeKey: string; otherKey: string; distance: number }
   | { kind: 'contrasto'; modeKey: string; ratio: number };
@@ -798,24 +806,6 @@ function ModeRules({ mode, available, canManage }: { mode: Mode; available: stri
   );
 }
 
-function ColourNotices({ warnings, modes }: { warnings: ColourWarning[]; modes: Mode[] }) {
-  if (warnings.length === 0) return null;
-  const nameOf = (k: string) => modes.find((m) => m.modeKey === k)?.displayName ?? k;
-  return (
-    <Banner
-      tone="warn"
-      title="Colori da rivedere"
-      description={warnings
-        .map((w) =>
-          w.kind === 'contrasto'
-            ? `«${nameOf(w.modeKey)}» ha un contrasto di ${w.ratio}:1 sul fondo: sotto 3:1 la sua linea sparisce nel grafico.`
-            : `«${nameOf(w.modeKey)}» e «${nameOf(w.otherKey)}» hanno colori quasi identici: sul grafico le due linee non si distinguono.`,
-        )
-        .join(' ')}
-    />
-  );
-}
-
 /** Un interruttore per una scelta di visualizzazione. Nessun totale cambia. */
 function Flag({
   id,
@@ -879,13 +869,11 @@ function Flag({
 export function EditModeDialog({
   mode,
   available,
-  warnings,
   canManage,
   onClose,
 }: {
   mode: Mode;
   available: string[];
-  warnings: ColourWarning[];
   canManage: boolean;
   onClose: () => void;
 }) {
@@ -942,7 +930,6 @@ export function EditModeDialog({
       }
     >
       {error ? <Banner tone="err" title={error} /> : null}
-      <ColourNotices warnings={warnings} modes={[mode]} />
 
       <NameField
         id="modifica-modalita-nome"

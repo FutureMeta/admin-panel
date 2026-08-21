@@ -27,6 +27,7 @@ import { startJob } from '#src/jobs/scheduler.ts';
 import { createGameRedis } from './game-redis.ts';
 import { StatsPoller } from './poller.ts';
 import { dailyClose, type RollupLevel, type RollupResult, runRollup } from './rollup.ts';
+import { consequenceOf, runSelfcheck } from './selfcheck.ts';
 
 /**
  * Cadenze e attese, dal documento normativo.
@@ -275,6 +276,42 @@ export async function startStatsIngest(opts: StatsIngestOptions): Promise<StatsI
         ),
       );
     }
+
+    // GLI INVARIANTI, ogni ora. §9.1.
+    //
+    // Il giro non fallisce quando trova qualcosa: trovare e` il suo lavoro, e
+    // un job in stato di errore verrebbe ritentato fra cinque minuti come se
+    // fosse stato lui a rompersi. Le violazioni escono dalla riga di log e
+    // dalla metrica, e restano nella tabella.
+    jobs.push(
+      startJob(
+        {
+          name: 'stats-selfcheck',
+          intervalMs: 60 * 60 * 1_000,
+          retryMs: 5 * 60 * 1_000,
+          run: async () => {
+            const results = await runSelfcheck(rollupDb);
+            const broken = results.filter((e) => e.failures !== 0);
+            for (const e of broken) {
+              opts.logger.error(
+                { invariante: e.name, violazioni: e.failures, esempio: e.detail },
+                `invariante violato: ${consequenceOf(e.name)}`,
+              );
+            }
+            return {
+              controlli: results.length,
+              violati: broken.length,
+              ms: Object.fromEntries(results.map((e) => [e.name, e.ms])),
+            };
+          },
+          successMessage: 'invarianti verificati',
+          failureMessage:
+            'invarianti non verificati: i difetti che contano falliscono in silenzio, e senza questo giro nessuno li vede',
+        },
+        opts.logger,
+        opts.registry,
+      ),
+    );
 
     for (const r of ROLLUP_JOBS) {
       jobs.push(

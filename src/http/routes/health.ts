@@ -9,6 +9,7 @@ import type { AppContext } from '#src/app-context.ts';
 import { verifyRecent } from '#src/audit/integrity.ts';
 import { eventLoopDelayP99 } from '#src/observability/event-loop.ts';
 import { rollupWatermarks } from '#src/stats/rollup.ts';
+import { invariantState } from '#src/stats/selfcheck.ts';
 
 const PROBE_TIMEOUT_MS = 1_000;
 
@@ -204,6 +205,26 @@ export async function registerHealthRoutes(app: FastifyInstance, ctx: AppContext
       // Due compressioni insieme sono due thread tolti ad Argon2. Se questo
       // numero diventa 2, un grafico ha rallentato un login.
       `metamc_stats_compress_peak ${cm.compressPeak}`,
+    );
+
+    // GLI INVARIANTI DI §9.1. Due metriche e non una, perche' rispondono a due
+    // domande diverse: `offenders` e` quante righe sono sbagliate ADESSO, ed e`
+    // quello su cui si allarma («> 0»); `violations_total` conta quante volte
+    // un controllo ha trovato qualcosa da quando il processo gira, e non
+    // scende mai — serve a vedere un guasto che va e viene, che con il solo
+    // valore corrente si perderebbe fra due raschiate.
+    //
+    // Un `-1` significa che il controllo non si e` potuto ESEGUIRE. Non e` un
+    // successo e non deve assomigliarci: e` il caso in cui una tabella non
+    // c'e` piu`, o la query e` andata fuori tempo massimo.
+    const invarianti = invariantState();
+    lines.push(
+      '# HELP metamc_stats_invariant_offenders righe che violano l`invariante nell`ultimo giro. -1 = controllo non eseguito',
+      '# TYPE metamc_stats_invariant_offenders gauge',
+      ...invarianti.map((i) => `metamc_stats_invariant_offenders{name="${i.name}"} ${i.offenders}`),
+      '# HELP metamc_stats_invariant_violations_total giri in cui l`invariante ha trovato qualcosa',
+      '# TYPE metamc_stats_invariant_violations_total counter',
+      ...invarianti.map((i) => `metamc_stats_invariant_violations_total{name="${i.name}"} ${i.seen}`),
     );
 
     const ages = ctx.statsCache.ages();

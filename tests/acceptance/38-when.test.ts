@@ -13,7 +13,7 @@
 // «oggi» qualcosa di ieri.
 
 import { describe, expect, it } from 'vitest';
-import { dayAndTime } from '#web/lib/when.ts';
+import { axisLabel, dayAndTime } from '#web/lib/when.ts';
 
 /** Secondi epoch da un istante UTC scritto per esteso. */
 const sec = (iso: string): number => Math.floor(new Date(iso).getTime() / 1000);
@@ -57,5 +57,28 @@ describe("il picco dice il giorno, non solo l'ora", () => {
     // divisione direbbe «oggi».
     const now = new Date('2026-03-29T20:00:00Z'); // 22:00 a Roma, ora legale
     expect(dayAndTime(sec('2026-03-28T21:00:00Z'), now)).toBe('ieri alle 22:00');
+  });
+});
+
+describe("le tacche dell'asse dicono cosa cambia fra una e l'altra", () => {
+  const T = Math.floor(new Date('2026-08-20T18:00:00Z').getTime() / 1000); // gio 20:00
+
+  it('sul 24h basta l`ora: tre ore di passo', () => {
+    expect(axisLabel(T, 300 * 36)).toBe('20:00');
+  });
+
+  it('sul 7g serve anche il giorno: ventuno ore di passo', () => {
+    // Con sole ore, otto tacche a ventun ore di distanza coprono cinque
+    // giorni diversi senza dirlo: sembrano un unico giorno letto male.
+    expect(axisLabel(T, 3_600 * 21)).toBe('gio 20:00');
+  });
+
+  it('oltre due giorni di passo l`ora ha smesso di distinguere', () => {
+    // IL DIFETTO DI PARTENZA: sul range 1y le tacche erano otto «00:00»
+    // identiche, cioe` un asse che non ordina niente e sembra un errore di
+    // caricamento.
+    expect(axisLabel(T, 86_400 * 46)).toBe('20 ago');
+    expect(axisLabel(T, 21_600 * 45)).toBe('20 ago'); // 90g
+    expect(axisLabel(T, 7_200 * 45)).toBe('20 ago'); // 30g
   });
 });

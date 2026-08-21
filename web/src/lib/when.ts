@@ -84,3 +84,37 @@ export function dayAndTime(epochSec: number, now: Date = new Date()): string {
   const date = sameYear ? SHORT_DATE.format(at) : SHORT_DATE_YEAR.format(at);
   return `${date} alle ${time}`;
 }
+
+/** «gio», minuscolo abbreviato: sul 7g serve il giorno della settimana. */
+const WEEKDAY_HOUR = new Intl.DateTimeFormat('it-IT', {
+  timeZone: ROME,
+  weekday: 'short',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+/**
+ * L'etichetta di una tacca dell'asse dei tempi.
+ *
+ * SI SCEGLIE DAL PASSO FRA UNA TACCA E L'ALTRA, non dal range: è il passo a
+ * dire quale parte dell'istante distingue una tacca dalla successiva.
+ * L'asse ne mostra otto qualunque sia il periodo, quindi con un anno di dati
+ * il passo è di quarantasei giorni e con ventiquattro ore è di tre.
+ *
+ * Prima erano sempre ore e minuti. Su un anno significava otto «00:00»
+ * identiche — un asse che non ordina niente e che sembra un errore di
+ * caricamento; su trenta e novanta giorni, ore senza data, cioè etichette che
+ * sembrano precise e non identificano nulla.
+ *
+ *  * meno di sei ore di passo: l'ora basta, il giorno è sempre lo stesso o
+ *    quasi, e scriverlo ruberebbe spazio a otto tacche affiancate;
+ *  * fino a due giorni: il giorno della settimana con l'ora, perché il 7g
+ *    salta di ventun ore per tacca e l'ora da sola non dice quale giorno;
+ *  * oltre: la data, perché l'ora ha smesso di distinguere.
+ */
+export function axisLabel(epochSec: number, spacingSec: number): string {
+  const at = new Date(epochSec * 1000);
+  if (spacingSec < 6 * 3_600) return TIME.format(at);
+  if (spacingSec < 48 * 3_600) return WEEKDAY_HOUR.format(at);
+  return SHORT_DATE.format(at);
+}

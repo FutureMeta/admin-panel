@@ -28,7 +28,7 @@ import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
 import { slicesOf } from '../lib/distribution.ts';
 import { labelOf, useRange } from '../lib/range.tsx';
-import { dayAndTime } from '../lib/when.ts';
+import { axisLabel, dayAndTime } from '../lib/when.ts';
 
 type Series = {
   t: number[];
@@ -387,7 +387,7 @@ function OnlineChart({
             fontSize="11"
             fontFamily="JetBrains Mono"
           >
-            {hhmm(t)}
+            {axisLabel(t, data.bucketSec * xTickEvery)}
           </text>
         ))}
     </svg>
@@ -899,6 +899,15 @@ export function OverviewPage() {
   // Ora viene dal dizionario (`stats.mode.color`, scelto dall'operatore), che
   // non sa cosa sia un range. Chi non ha ancora un colore proprio ripiega
   // sulla sua POSIZIONE nel dizionario, che è comunque stabile.
+  /** Gli estremi del periodo disegnato, e la sua ampiezza. `null` se vuoto. */
+  const span = useMemo(() => {
+    const t = data?.online.t ?? [];
+    if (t.length === 0) return null;
+    const from = t[0] as number;
+    const to = t[t.length - 1] as number;
+    return { from, to, sec: to - from };
+  }, [data?.online.t]);
+
   const colorOf = useMemo(() => {
     const dictionary = Object.keys(data?.labels ?? {});
     const chosen = data?.colors ?? {};
@@ -1007,8 +1016,14 @@ export function OverviewPage() {
           >
             Panoramica network
           </h2>
+          {/*
+            IL PERIODO VIENE DAL SELETTORE. Era scritto a mano — «Ultime 24
+            ore» — e restava tale su ogni periodo: con l'apertura su 7g la
+            pagina si presentava contraddicendo il pulsante acceso sopra di
+            sé, e su un anno di dati diceva ventiquattro ore.
+          */}
           <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
-            Ultime 24 ore · fuso Europe/Rome · aggiornato{' '}
+            {labelOf(range)} · fuso Europe/Rome · aggiornato{' '}
             <span className="mono">{hhmm(data.generatedAt)}</span>
           </div>
         </div>
@@ -1038,10 +1053,17 @@ export function OverviewPage() {
             Andamento online nel tempo
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            Giocatori connessi · {labelOf(range)} (
-            {data.online.t.length > 0 ? hhmm(data.online.t[0] as number) : '—'}–
-            {data.online.t.length > 0 ? hhmm(data.online.t[data.online.t.length - 1] as number) : '—'},
-            Europe/Rome) · copertura {Math.round(data.kpi.coverage * 100)}%
+            {/*
+              Gli estremi si scrivono con la stessa regola dell'asse: erano
+              ore e minuti sempre, quindi su un anno di dati l'intervallo
+              diceva «00:00–00:00». Sul 24h la regola tiene il giorno della
+              settimana, ed è un guadagno: «mer 12:00–gio 12:00» dice a colpo
+              d'occhio che la finestra scavalca la mezzanotte, che è
+              esattamente l'equivoco del picco.
+            */}
+            Giocatori connessi · {labelOf(range)} ({span === null ? '—' : axisLabel(span.from, span.sec)}–
+            {span === null ? '—' : axisLabel(span.to, span.sec)}, Europe/Rome) · copertura{' '}
+            {Math.round(data.kpi.coverage * 100)}%
           </div>
         </div>
         <div

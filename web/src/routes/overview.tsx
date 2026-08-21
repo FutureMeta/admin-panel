@@ -28,6 +28,7 @@ import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
 import { slicesOf } from '../lib/distribution.ts';
 import { labelOf, useRange } from '../lib/range.tsx';
+import { dayAndTime } from '../lib/when.ts';
 
 type Series = {
   t: number[];
@@ -944,7 +945,7 @@ export function OverviewPage() {
       // n'è nemmeno uno non c'è niente da aspettare, c'è un livello di
       // aggregazione che non ha ancora girato.
       note: data.kpi.peakAt
-        ? `alle ${hhmm(data.kpi.peakAt)}`
+        ? dayAndTime(data.kpi.peakAt)
         : data.online.total.every((v) => v === null)
           ? 'nessun dato in questo periodo'
           : 'nessun bucket chiuso',

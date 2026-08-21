@@ -34,12 +34,23 @@ export function labelOf(range: Range): string {
   return RANGES.find((r) => r.key === range)?.label ?? range;
 }
 
+/**
+ * Il periodo con cui si apre la pagina.
+ *
+ * SETTE GIORNI, non ventiquattro ore. Il 24h e' l'unico range che puo' non
+ * avere ancora una forma: alle nove del mattino sono nove punti, e una rete
+ * che vive di sera li ha quasi tutti bassi. Sette giorni mostrano subito il
+ * ritmo settimanale — che e' la domanda vera che si fa aprendo la panoramica —
+ * e non dipendono dall'ora in cui qualcuno guarda.
+ */
+export const DEFAULT_RANGE: Range = '7d';
+
 type RangeState = { range: Range; setRange: (r: Range) => void };
 
-const RangeContext = createContext<RangeState>({ range: '24h', setRange: () => undefined });
+const RangeContext = createContext<RangeState>({ range: DEFAULT_RANGE, setRange: () => undefined });
 
 export function RangeProvider({ children }: { children: ReactNode }) {
-  const [range, setRange] = useState<Range>('24h');
+  const [range, setRange] = useState<Range>(DEFAULT_RANGE);
   const value = useMemo(() => ({ range, setRange }), [range]);
   return <RangeContext.Provider value={value}>{children}</RangeContext.Provider>;
 }

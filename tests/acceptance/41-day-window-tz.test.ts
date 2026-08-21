@@ -31,7 +31,7 @@ let sql: pg.Client;
 const ARENA = 'duels_1';
 
 /** Pomeriggio del 21 agosto, ora legale: la mezzanotte romana e' alle 22Z. */
-const ADESSO = new Date('2026-08-21T12:00:00Z');
+const NOW = new Date('2026-08-21T12:00:00Z');
 
 beforeAll(async () => {
   testDb = await createTestDatabase('fuso');
@@ -88,7 +88,7 @@ describe('il fuso del processo non sposta la finestra dei giorni', () => {
   });
 
   it("l'ultimo giorno della finestra c'e`, e porta il suo picco", async () => {
-    const { payload } = await buildOverview(db, '1y', ADESSO);
+    const { payload } = await buildOverview(db, '1y', NOW);
 
     // Con il parametro nudo, la finestra diventava [2025-08-20, 2026-08-20):
     // il 20 restava fuori, la query non tornava NIENTE, e il pannello
@@ -99,7 +99,7 @@ describe('il fuso del processo non sposta la finestra dei giorni', () => {
   });
 
   it('e il punto sta sull`ultima casella dell`asse, non altrove', async () => {
-    const { payload } = await buildOverview(db, '1y', ADESSO);
+    const { payload } = await buildOverview(db, '1y', NOW);
     const i = payload.online.total.findIndex((v) => v !== null);
     // L'ultimo punto dell'asse e` la mezzanotte del 20: oggi si esclude
     // perche` e` un giorno parziale.

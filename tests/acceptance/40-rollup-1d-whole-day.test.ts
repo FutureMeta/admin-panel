@@ -31,9 +31,9 @@ let sql: pg.Client;
 const ARENA = 'duels_1';
 
 /** Un giorno intero, chiuso, lontano da mezzanotte e dai cambi ora. */
-const GIORNO = '2026-02-10';
+const DAY = '2026-02-10';
 /** Le 23:00 di quel giorno, ora italiana: l'ultima ora da consumare. */
-const ULTIMA_ORA = new Date('2026-02-10T22:00:00Z');
+const LAST_HOUR = new Date('2026-02-10T22:00:00Z');
 
 beforeAll(async () => {
   testDb = await createTestDatabase('giorno');
@@ -76,11 +76,11 @@ beforeEach(async () => {
 });
 
 /** Copertura e secondi-giocatore della riga di RETE per quel giorno. */
-async function rigaDiRete(): Promise<{ covered_s: number; player_seconds: number } | null> {
+async function networkRow(): Promise<{ covered_s: number; player_seconds: number } | null> {
   const r = await sql.query(
     `SELECT covered_s, player_seconds FROM stats.rollup_1d
       WHERE server_id = 0 AND day = $1::date`,
-    [GIORNO],
+    [DAY],
   );
   const row = r.rows[0] as { covered_s: number; player_seconds: string } | undefined;
   return row ? { covered_s: row.covered_s, player_seconds: Number(row.player_seconds) } : null;
@@ -90,8 +90,8 @@ describe('il giorno vale ventiquattro ore, non le ultime della finestra', () => 
   it('un giro solo che copre tutto il giorno lo scrive intero', async () => {
     // Il caso facile, ed e' l'unico che i test esistenti esercitano: una
     // finestra sola abbastanza larga da contenere il giorno.
-    await runRollup(db, '1d', ULTIMA_ORA.getTime() + 3_600_000);
-    expect(await rigaDiRete()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+    await runRollup(db, '1d', LAST_HOUR.getTime() + 3_600_000);
+    expect(await networkRow()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
   });
 
   it('e ventiquattro giri da un`ora lo scrivono uguale', async () => {
@@ -101,23 +101,23 @@ describe('il giorno vale ventiquattro ore, non le ultime della finestra', () => 
     for (let h = 0; h <= 24; h += 1) {
       await runRollup(db, '1d', new Date('2026-02-09T23:00:00Z').getTime() + h * 3_600_000);
     }
-    expect(await rigaDiRete()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+    expect(await networkRow()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
   });
 
   it('e rieseguirlo dopo non lo accorcia', async () => {
     // Idempotenza vera: un giro in piu' quando il giorno e' gia' scritto non
     // deve sostituirlo con la sola coda della finestra.
-    await runRollup(db, '1d', ULTIMA_ORA.getTime() + 3_600_000);
-    await runRollup(db, '1d', ULTIMA_ORA.getTime() + 7_200_000);
-    expect(await rigaDiRete()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+    await runRollup(db, '1d', LAST_HOUR.getTime() + 3_600_000);
+    await runRollup(db, '1d', LAST_HOUR.getTime() + 7_200_000);
+    expect(await networkRow()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
   });
 });
 
 describe('«definitivo» si dice quando il rollup ha finito, non a mezzanotte', () => {
   /** `final` della riga di rete per il giorno seminato. */
-  async function definitivo(): Promise<boolean | null> {
+  async function isFinal(): Promise<boolean | null> {
     const r = await sql.query(`SELECT final FROM stats.rollup_1d WHERE server_id = 0 AND day = $1::date`, [
-      GIORNO,
+      DAY,
     ]);
     return (r.rows[0] as { final: boolean } | undefined)?.final ?? null;
   }
@@ -135,7 +135,7 @@ describe('«definitivo» si dice quando il rollup ha finito, non a mezzanotte', 
     // IL DIFETTO: qui usciva `true`, e da quel momento il rollup non poteva
     // piu` toccare la riga. Le ore mancanti erano perse per sempre, con la
     // media serale congelata al posto della giornaliera.
-    expect(await definitivo()).toBe(false);
+    expect(await isFinal()).toBe(false);
   });
 
   it('e diventa definitivo appena il rollup lo ha superato', async () => {
@@ -146,9 +146,9 @@ describe('«definitivo» si dice quando il rollup ha finito, non a mezzanotte', 
 
     await dailyClose(db, new Date('2026-02-11T00:01:00Z'));
 
-    expect(await definitivo()).toBe(true);
+    expect(await isFinal()).toBe(true);
     // E il giorno che si congela e` quello INTERO, non la sua coda.
-    expect(await rigaDiRete()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+    expect(await networkRow()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
   });
 });
 

@@ -41,7 +41,7 @@ const UNATTRIBUTED: Record<string, string> = {
   '--': 'non rilevati',
 };
 
-const numero = new Intl.NumberFormat('it-IT');
+const numberFmt = new Intl.NumberFormat('it-IT');
 
 /**
  * I nomi dei paesi in italiano, dal browser.
@@ -325,7 +325,7 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
                         return;
                       }
                       setLit(hit.cc);
-                      hover.at(e, nameOf(hit.cc), `${numero.format(hit.v)} giocatori · ${pct(hit.v)}`);
+                      hover.at(e, nameOf(hit.cc), `${numberFmt.format(hit.v)} giocatori · ${pct(hit.v)}`);
                     }}
                   />
                 );
@@ -392,7 +392,7 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
                     fontVariantNumeric: 'tabular-nums',
                   }}
                 >
-                  {numero.format(c.v)}
+                  {numberFmt.format(c.v)}
                 </span>
                 <span
                   style={{
@@ -430,7 +430,7 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
               dice: senza, le percentuali sarebbero calcolate su una
               popolazione piu' piccola senza che si veda quanto. */}
           {missing.length > 0
-            ? `${missing.map((m) => `${numero.format(m.v)} ${UNATTRIBUTED[m.cc]}`).join(', ')} · fuori dalle percentuali. `
+            ? `${missing.map((m) => `${numberFmt.format(m.v)} ${UNATTRIBUTED[m.cc]}`).join(', ')} · fuori dalle percentuali. `
             : ''}
           Provenienza approssimata: VPN, proxy e datacenter non sono distinguibili. Non usare come prova in
           una decisione di moderazione.

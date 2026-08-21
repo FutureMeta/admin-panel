@@ -84,10 +84,10 @@ const ROME = new Intl.DateTimeFormat('it-IT', {
   minute: '2-digit',
 });
 
-const numero = new Intl.NumberFormat('it-IT');
+const numberFmt = new Intl.NumberFormat('it-IT');
 
 /** Per la data di inizio della raccolta: giorno e mese bastano. */
-const giorno = new Intl.DateTimeFormat('it-IT', {
+const dayFmt = new Intl.DateTimeFormat('it-IT', {
   timeZone: 'Europe/Rome',
   day: 'numeric',
   month: 'long',
@@ -322,7 +322,7 @@ function OnlineChart({
             fontSize="11"
             fontFamily="JetBrains Mono"
           >
-            {numero.format(Math.round(t.v))}
+            {numberFmt.format(Math.round(t.v))}
           </text>
         </g>
       ))}
@@ -454,7 +454,7 @@ function Distribution({
         Distribuzione per modalità
       </h3>
       <div style={{ fontSize: 12, color: 'var(--tx-muted)', marginBottom: 16 }}>
-        Popolazione corrente · {numero.format(Math.round(total))} giocatori
+        Popolazione corrente · {numberFmt.format(Math.round(total))} giocatori
         {data.current ? ` · ${hhmm(data.current.at)}` : ''}. «Non classificata» raccoglie i server non ancora
         tracciati.
       </div>
@@ -474,7 +474,7 @@ function Distribution({
                 hover.at(
                   e,
                   data.labels[p.key] ?? p.key,
-                  `${numero.format(Math.round(p.value))} giocatori · ${
+                  `${numberFmt.format(Math.round(p.value))} giocatori · ${
                     total > 0 ? ((p.value / total) * 100).toFixed(1).replace('.', ',') : '—'
                   }%`,
                 )
@@ -482,7 +482,7 @@ function Distribution({
             />
           ))}
           <text x="90" y="86" textAnchor="middle" fill="var(--tx-primary)" fontSize="26" fontWeight="700">
-            {onlineNow === null ? '—' : numero.format(onlineNow)}
+            {onlineNow === null ? '—' : numberFmt.format(onlineNow)}
           </text>
           <text x="90" y="104" textAnchor="middle" fill="var(--tx-muted)" fontSize="11">
             online adesso
@@ -529,7 +529,7 @@ function Distribution({
                     className="mono"
                     style={{ marginLeft: 'auto', fontSize: 12.5, fontVariantNumeric: 'tabular-nums' }}
                   >
-                    {numero.format(Math.round(s.value))}
+                    {numberFmt.format(Math.round(s.value))}
                   </span>
                 </div>
                 <div
@@ -559,7 +559,7 @@ function Distribution({
           */}
           {excluded > 0 ? (
             <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 2 }}>
-              {numero.format(Math.round(excluded))} giocatori in modalità escluse dalla ripartizione: le
+              {numberFmt.format(Math.round(excluded))} giocatori in modalità escluse dalla ripartizione: le
               percentuali qui sopra non li contano.
             </span>
           ) : null}
@@ -573,7 +573,7 @@ function Distribution({
 // 4b — heatmap di affluenza
 // ---------------------------------------------------------------------------
 
-const GIORNI = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
+const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
 /** Le ventiquattro ore come VALORI: la cella è identificata dall'ora, non dalla posizione. */
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
 
@@ -637,7 +637,7 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
               background: 'linear-gradient(90deg,#0F212A,#1E5670,#8A7147,#F0A63F)',
             }}
           />
-          <span>{numero.format(Math.round(max))}</span>
+          <span>{numberFmt.format(Math.round(max))}</span>
         </div>
       </div>
       <div
@@ -646,19 +646,19 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
         style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 3 }}
       >
         <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
-        {GIORNI.map((giorno, row) => (
-          <div key={giorno} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 28, fontSize: 11, color: 'var(--tx-muted)', flex: 'none' }}>{giorno}</span>
+        {WEEKDAYS.map((weekday, row) => (
+          <div key={weekday} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 28, fontSize: 11, color: 'var(--tx-muted)', flex: 'none' }}>{weekday}</span>
             <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: 3 }}>
               {HOURS.map((hour) => {
                 const c = cells[row * 24 + hour] as (typeof cells)[number];
                 return (
                   <div
-                    key={`${giorno}-${hour}`}
+                    key={`${weekday}-${hour}`}
                     onPointerMove={(e) =>
                       hover.at(
                         e,
-                        `${giorno} ${String(hour).padStart(2, '0')}:00`,
+                        `${weekday} ${String(hour).padStart(2, '0')}:00`,
                         // Zero occorrenze non significa «ora inesistente»: quel
                         // caso — l'ora saltata di marzo — e' raro, mentre la
                         // causa normale e' che quella coppia giorno/ora non e'
@@ -669,7 +669,7 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
                           ? 'dati non presenti'
                           : c.avg === null
                             ? 'non rilevato'
-                            : `${numero.format(Math.round(c.avg))} giocatori`,
+                            : `${numberFmt.format(Math.round(c.avg))} giocatori`,
                       )
                     }
                     style={{ height: 20, borderRadius: 3, background: colour(c) }}
@@ -698,7 +698,7 @@ function Heatmap({ data, label }: { data: Overview; label: string }) {
 // 5 — giocatori unici giornalieri
 // ---------------------------------------------------------------------------
 
-const GIORNO_MESE = new Intl.DateTimeFormat('it-IT', {
+const DAY_MONTH = new Intl.DateTimeFormat('it-IT', {
   timeZone: 'Europe/Rome',
   day: '2-digit',
   month: '2-digit',
@@ -745,7 +745,7 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
         <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--tx-secondary)' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--ac)' }} />
-            Unici del giorno
+            Unici del dayFmt
           </span>
         </div>
       </div>
@@ -762,8 +762,8 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
       */}
       {v.every((n) => n === null) ? (
         <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', padding: '24px 0' }}>
-          Nessun giorno con dati in questo periodo. Gli unici si chiudono a fine giornata: il primo punto
-          compare il giorno dopo il primo giorno raccolto.
+          Nessun dayFmt con dati in questo periodo. Gli unici si chiudono a fine giornata: il primo punto
+          compare il dayFmt dopo il primo dayFmt raccolto.
         </div>
       ) : (
         <div ref={hover.boxRef} onPointerLeave={hover.clear} style={{ position: 'relative' }}>
@@ -786,7 +786,7 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
                   fontSize="11"
                   fontFamily="JetBrains Mono"
                 >
-                  {numero.format(tick)}
+                  {numberFmt.format(tick)}
                 </text>
               </g>
             ))}
@@ -805,8 +805,8 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
                 onPointerMove={(e) =>
                   hover.at(
                     e,
-                    GIORNO_MESE.format(new Date((t[i] as number) * 1000)),
-                    n === null ? 'non rilevato' : `${numero.format(n)} giocatori`,
+                    DAY_MONTH.format(new Date((t[i] as number) * 1000)),
+                    n === null ? 'non rilevato' : `${numberFmt.format(n)} giocatori`,
                   )
                 }
               />
@@ -832,7 +832,7 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
             )}
 
             <text x={L2} y={232} fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">
-              {t.length > 0 ? GIORNO_MESE.format(new Date((t[0] as number) * 1000)) : ''}
+              {t.length > 0 ? DAY_MONTH.format(new Date((t[0] as number) * 1000)) : ''}
             </text>
             <text
               x={W2 - 20}
@@ -842,7 +842,7 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
               fontSize="11"
               fontFamily="JetBrains Mono"
             >
-              {t.length > 0 ? GIORNO_MESE.format(new Date((t[t.length - 1] as number) * 1000)) : ''}
+              {t.length > 0 ? DAY_MONTH.format(new Date((t[t.length - 1] as number) * 1000)) : ''}
             </text>
           </svg>
         </div>
@@ -947,7 +947,7 @@ export function OverviewPage() {
   }, [data?.online.t]);
 
   /** Cosa è spento adesso: i click se ci sono stati, altrimenti il dizionario. */
-  const spente = useMemo(() => hidden ?? new Set(data?.hidden ?? []), [hidden, data?.hidden]);
+  const hiddenNow = useMemo(() => hidden ?? new Set(data?.hidden ?? []), [hidden, data?.hidden]);
 
   const colorOf = useMemo(() => {
     const dictionary = Object.keys(data?.labels ?? {});
@@ -979,12 +979,12 @@ export function OverviewPage() {
   // che ho a disposizione — media, copertura — sarebbe stato comodo e
   // sbagliato: la pagina va confrontata col design, e due carte diverse
   // rendono il confronto impossibile a chiunque non le abbia scritte.
-  const oggi = data.uniques.v.length > 0 ? (data.uniques.v[data.uniques.v.length - 1] ?? null) : null;
+  const today = data.uniques.v.length > 0 ? (data.uniques.v[data.uniques.v.length - 1] ?? null) : null;
 
   const cards: Card[] = [
     {
       label: 'Giocatori online ora',
-      value: onlineNow ? numero.format(Number(onlineNow)) : '—',
+      value: onlineNow ? numberFmt.format(Number(onlineNow)) : '—',
       unit: 'gioc.',
       delta: '',
       note: onlineAt ? `rilevato alle ${hhmm(Number(onlineAt))}` : 'nessun ciclo recente',
@@ -993,7 +993,7 @@ export function OverviewPage() {
     },
     {
       label: 'Picco del periodo',
-      value: data.kpi.peak === null ? '—' : numero.format(data.kpi.peak),
+      value: data.kpi.peak === null ? '—' : numberFmt.format(data.kpi.peak),
       unit: 'gioc.',
       // Il massimo non viaggia mai da solo: senza il suo istante e la
       // copertura del bucket in cui e' avvenuto non e' verificabile.
@@ -1015,18 +1015,18 @@ export function OverviewPage() {
     },
     {
       label: 'Giocatori unici',
-      value: oggi === null ? '—' : numero.format(oggi),
+      value: today === null ? '—' : numberFmt.format(today),
       unit: 'gioc.',
       delta: '',
       // Il giorno in corso non e' definitivo: dirlo evita che qualcuno lo
       // annoti come il totale della giornata a meta' pomeriggio.
-      note: oggi === null ? 'nessun giorno con dati' : 'giorno in corso',
+      note: today === null ? 'nessun giorno con dati' : 'giorno in corso',
       tone: 'muted',
-      ready: oggi !== null,
+      ready: today !== null,
     },
     {
       label: 'Record storico',
-      value: data.record ? numero.format(data.record.players) : '—',
+      value: data.record ? numberFmt.format(data.record.players) : '—',
       unit: 'gioc.',
       delta: '',
       // DA QUANDO, sempre. Un «record di sempre» calcolato su tre giorni di
@@ -1034,7 +1034,7 @@ export function OverviewPage() {
       // saperlo dal numero. Il giorno in cui lo storico sara` lungo, questa
       // nota smettera` di essere una precisazione e diventera` un vanto.
       note: data.record
-        ? `dal ${giorno.format(new Date(data.record.since * 1000))}`
+        ? `dal ${dayFmt.format(new Date(data.record.since * 1000))}`
         : 'nessun giorno con dati',
       tone: 'muted',
       ready: data.record !== null,
@@ -1136,7 +1136,7 @@ export function OverviewPage() {
                 cursor: 'pointer',
                 fontSize: 12,
                 color: 'var(--tx-secondary)',
-                opacity: spente.has(m) ? 0.35 : 1,
+                opacity: hiddenNow.has(m) ? 0.35 : 1,
               }}
             >
               <span style={{ width: 18, height: 3, borderRadius: 2, background: colorOf(m) }} />
@@ -1144,7 +1144,7 @@ export function OverviewPage() {
             </button>
           ))}
         </div>
-        <OnlineChart data={data} hidden={spente} colorOf={colorOf} />
+        <OnlineChart data={data} hidden={hiddenNow} colorOf={colorOf} />
       </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16 }}>

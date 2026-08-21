@@ -32,10 +32,10 @@ let sql: pg.Client;
 const ARENA = 'duels_1';
 
 /** Il 26 ottobre 2025 l'ora torna indietro: quel giorno civile dura 25 ore. */
-const DOPO_IL_CAMBIO = new Date('2025-11-10T12:00:00Z');
+const AFTER_FALL_BACK = new Date('2025-11-10T12:00:00Z');
 
 /** L'ultima domenica di marzo 2026: quel giorno ne dura 23. */
-const DOPO_IL_SALTO = new Date('2026-04-10T12:00:00Z');
+const AFTER_SPRING_FORWARD = new Date('2026-04-10T12:00:00Z');
 
 beforeAll(async () => {
   testDb = await createTestDatabase('asse');
@@ -84,35 +84,35 @@ afterAll(async () => {
 });
 
 /** Quanti punti dell'asse hanno trovato il loro dato. */
-function pieni(total: (number | null)[]): number {
+function filled(total: (number | null)[]): number {
   return total.filter((v) => v !== null).length;
 }
 
 describe("l'asse non scivola quando l'ora cambia", () => {
   it('30g attraverso il ritorno all`ora solare: nessun punto perso', async () => {
-    const { payload } = await buildOverview(db, '30d', DOPO_IL_CAMBIO);
+    const { payload } = await buildOverview(db, '30d', AFTER_FALL_BACK);
     // Copertura piena e continua per tutto il periodo: ogni punto dell'asse
     // deve avere il suo dato. Con la griglia a passi fissi ne combaciavano
     // meno di un quarto.
-    expect(pieni(payload.online.total)).toBe(payload.online.t.length);
+    expect(filled(payload.online.total)).toBe(payload.online.t.length);
   });
 
   it('30g attraverso il salto in avanti: nessun punto perso', async () => {
-    const { payload } = await buildOverview(db, '30d', DOPO_IL_SALTO);
-    expect(pieni(payload.online.total)).toBe(payload.online.t.length);
+    const { payload } = await buildOverview(db, '30d', AFTER_SPRING_FORWARD);
+    expect(filled(payload.online.total)).toBe(payload.online.t.length);
   });
 
   it('90g, bucket da sei ore, attraverso il cambio', async () => {
-    const { payload } = await buildOverview(db, '90d', DOPO_IL_CAMBIO);
-    expect(pieni(payload.online.total)).toBe(payload.online.t.length);
+    const { payload } = await buildOverview(db, '90d', AFTER_FALL_BACK);
+    expect(filled(payload.online.total)).toBe(payload.online.t.length);
   });
 
   it('7g resta sano anche col passo di un`ora', async () => {
     // Il caso di controllo: qui il difetto non si vedeva, perche' un passo di
     // un'ora ricade sulla griglia comunque. Se questo test fallisce, la
     // correzione ha rotto il caso che gia' funzionava.
-    const { payload } = await buildOverview(db, '7d', DOPO_IL_CAMBIO);
-    expect(pieni(payload.online.total)).toBe(payload.online.t.length);
+    const { payload } = await buildOverview(db, '7d', AFTER_FALL_BACK);
+    expect(filled(payload.online.total)).toBe(payload.online.t.length);
   });
 
   it("l'asse dei giorni e` fatto di mezzanotti civili, non di multipli di 86400", async () => {
@@ -121,6 +121,6 @@ describe("l'asse non scivola quando l'ora cambia", () => {
     // sopravvivevano 88 su 365: tutti i giorni fra l'una e l'altra erano
     // nulli, con i dati presenti e la copertura piena.
     expect(payload.online.t).toHaveLength(365);
-    expect(pieni(payload.online.total)).toBe(365);
+    expect(filled(payload.online.total)).toBe(365);
   });
 });

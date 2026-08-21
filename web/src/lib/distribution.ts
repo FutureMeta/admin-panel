@@ -48,13 +48,13 @@ export function slicesOf(
   current: { byMode: Record<string, number> } | null | undefined,
   outOfBreakdown: readonly string[] = [],
 ): Distribution {
-  const escluse = new Set(outOfBreakdown);
+  const excludedKeys = new Set(outOfBreakdown);
   const slices: Slice[] = [];
   let excluded = 0;
 
   for (const [key, value] of Object.entries(current?.byMode ?? {})) {
     if (value <= 0) continue;
-    if (escluse.has(key)) excluded += value;
+    if (excludedKeys.has(key)) excluded += value;
     else slices.push({ key, value });
   }
 

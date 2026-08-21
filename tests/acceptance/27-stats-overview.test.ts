@@ -34,7 +34,7 @@ let sql: pg.Client;
 
 const ARENA = 'duels_1';
 /** Un istante fissato: due `new Date()` diversi sposterebbero gli assi. */
-const FISSO = new Date();
+const FIXED_NOW = new Date();
 const EVENTO = 'evento_1';
 
 beforeAll(async () => {
@@ -484,8 +484,8 @@ describe('la panoramica non paga i payload per modalita` che nessuno ha chiesto'
     // ne leggesse una, aprire il pannello e aprire il dettaglio di una
     // modalita` mostrerebbero due panoramiche diverse — e la differenza
     // dipenderebbe da cosa qualcun altro ha guardato di recente.
-    const nessuna = await buildAll(db, '90d', FISSO, []);
-    const tutte = await buildAll(db, '90d', FISSO);
+    const nessuna = await buildAll(db, '90d', FIXED_NOW, []);
+    const tutte = await buildAll(db, '90d', FIXED_NOW);
     expect(nessuna.overview).toEqual(tutte.overview);
   });
 });
@@ -589,9 +589,9 @@ describe('i due interruttori del dizionario hanno un effetto, e nessuno tocca un
     // diventa un altro nome per «falsifica» — e chi guarda non avrebbe modo
     // di accorgersene. La riga di rete e` misurata, non sommata dalle
     // modalita`, quindi il vincolo si puo` davvero rispettare.
-    const prima = await buildOverview(db, '7d', FISSO);
+    const prima = await buildOverview(db, '7d', FIXED_NOW);
     await sql.query("UPDATE stats.mode SET hidden = true, in_breakdown = false WHERE mode_key = 'eventi'");
-    const dopo = await buildOverview(db, '7d', FISSO);
+    const dopo = await buildOverview(db, '7d', FIXED_NOW);
 
     expect(dopo.payload.kpi).toEqual(prima.payload.kpi);
     expect(dopo.payload.online.total).toEqual(prima.payload.online.total);

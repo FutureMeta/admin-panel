@@ -270,7 +270,7 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
         // cinque range sarebbero sessantacinque per riga, ogni minuto, e una
         // riga che nessuno legge non e' osservabilita': e' rumore che nasconde
         // le righe che contano. Il peggiore basta a sapere dove guardare.
-        let peggiore: { range: Range; ms: number; slowest: Record<string, number> } | null = null;
+        let worst: { range: Range; ms: number; slowest: Record<string, number> } | null = null;
         let payloads = 0;
         let deferred = 0;
         for (const range of RANGES) {
@@ -279,7 +279,7 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
             payloads += r.payloads;
             deferred += r.deferred;
             ms[range] = r.ms;
-            if (!peggiore || r.ms > peggiore.ms) peggiore = { range, ms: r.ms, slowest: r.slowest };
+            if (!worst || r.ms > worst.ms) worst = { range, ms: r.ms, slowest: r.slowest };
             pronti.push(range);
           } catch {
             // UN range rotto non ne ferma altri quattro: il 90g che va in
@@ -299,7 +299,7 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
           deferred,
           ms,
           totaleMs: Date.now() - t0,
-          piuLento: peggiore ? { range: peggiore.range, query: peggiore.slowest } : null,
+          piuLento: worst ? { range: worst.range, query: worst.slowest } : null,
         };
       },
       successMessage: 'payload statistiche ricostruiti',

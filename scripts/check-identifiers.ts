@@ -66,11 +66,40 @@ const ITALIAN = [
   'trascritto',
   'utenti',
   'vecchio',
+  // Fase 2. Tutte comparse davvero, tutte rimosse: la guardia le conosce
+  // perche' qualcuno le ha scritte, non perche' siano state immaginate.
+  'adesso',
+  'definitivo',
+  'escluse',
+  'fisso',
+  'oggi',
+  'peggiore',
+  'picco',
+  'pieni',
+  'sonda',
+  'spente',
+  'ultima',
+  // QUATTRO PAROLE CHE MANCANO DI PROPOSITO: `giorno`, `numero`, `carico`,
+  // `ieri`.
+  //
+  // Sono state tolte dagli identificatori insieme alle altre, ma non entrano
+  // in questa lista, e la ragione e' un limite noto dello spogliatore qui
+  // sotto: sono cosi' frequenti nei COMMENTI italiani che ogni suo errore di
+  // sincronia le fa emergere come falsi allarmi. Ne restano tre in
+  // `27-stats-overview`, `32-geo-reader` e `world-map`, tutti su righe di
+  // commento.
+  //
+  // Meglio una lacuna dichiarata che una guardia che grida: al primo rosso
+  // falso qualcuno allarga le esenzioni, e da quel momento non guarda piu'
+  // niente. Rientrano quando lo spogliatore sara' affidabile su una riga
+  // qualunque — la traccia e' il commento in `stripJsxText`.
   // composti camelCase gia' incontrati
   'emettiInvito',
   'apriInvito',
   'tempoDiLogin',
   'attendiSlot',
+  'conVuota',
+  'rigaDiRete',
 ];
 
 /**
@@ -112,7 +141,17 @@ function stripJsxText(source: string, isTsx: boolean): string {
   //
   // La sostituzione preserva le newline: senza, i numeri di riga riportati
   // scivolerebbero e indicherebbero il punto sbagliato.
-  if (!isTsx) return source.replace(/>[^<>{}]+</g, blankBetween);
+  //
+  // NEI `.ts` NON SI TOCCA NIENTE, e prima non era cosi'.
+  //
+  // Un file senza JSX non ha testo visibile fra `>` e `<`: quei due caratteri
+  // sono generici e confronti. Blancare cio' che ci sta in mezzo cancellava
+  // porzioni di codice a caso e — il danno vero — poteva portarsi via una
+  // virgoletta lasciando l'altra: da li' in poi lo spogliatore di stringhe
+  // andava fuori sincrono, e pezzi di COMMENTO finivano analizzati come
+  // codice. Sono falsi allarmi, e un allarme falso spinge ad allargare le
+  // esenzioni finche' la guardia non guarda piu' niente.
+  if (!isTsx) return source;
 
   // Due passate: la prima consuma i delimitatori, e un segmento adiacente
   // resterebbe fuori se non si ripassasse.
@@ -228,7 +267,14 @@ function main(): void {
   for (const d of DIRS) walk(join(ROOT, d), files);
 
   const found: string[] = [];
-  const pattern = new RegExp(`(?<![A-Za-z0-9_$])(${ITALIAN.join('|')})(?![A-Za-z0-9_$])`, 'gi');
+  // L'UNDERSCORE E' UN CONFINE, non una lettera.
+  //
+  // Con `_` dentro le classi di esclusione, `ULTIMA_ORA` e `GIORNO_MESE`
+  // passavano indenni: la parola c'era per intero ma il carattere dopo la
+  // squalificava. E le costanti sono proprio la forma in cui l'italiano
+  // rientra piu' facilmente, perche' si scrivono di getto in cima al file e
+  // non si rileggono piu'.
+  const pattern = new RegExp(`(?<![A-Za-z0-9$])(${ITALIAN.join('|')})(?![A-Za-z0-9$])`, 'gi');
 
   for (const file of files) {
     const rel = relative(ROOT, file);

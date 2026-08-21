@@ -348,18 +348,18 @@ describe('le due rotte', () => {
 
 describe('la chiave di cache porta il giorno civile', () => {
   it('a mezzanotte la chiave cambia, quindi il payload si ricostruisce', () => {
-    const ieri = civilDay(new Date('2026-08-20T21:00:00Z'));
-    const oggi = civilDay(new Date('2026-08-20T23:00:00Z'));
+    const yesterday = civilDay(new Date('2026-08-20T21:00:00Z'));
+    const today = civilDay(new Date('2026-08-20T23:00:00Z'));
     // Le 23:00 UTC del 20 sono le 01:00 del 21 a Roma: giorno civile diverso.
-    expect(ieri).toBe('2026-08-20');
-    expect(oggi).toBe('2026-08-21');
+    expect(yesterday).toBe('2026-08-20');
+    expect(today).toBe('2026-08-21');
 
     // La freschezza di un payload misura il tempo passato dalla
     // costruzione, e non sa che a mezzanotte il giorno civile cambia:
     // l'asse dei giorni finirebbe a ieri e resterebbe servito da una chiave
     // valida fino a un'ora intera sul range 1y.
-    expect(K.ov('1y', ieri)).not.toBe(K.ov('1y', oggi));
-    expect(K.md('duels', '1y', ieri)).not.toBe(K.md('duels', '1y', oggi));
+    expect(K.ov('1y', yesterday)).not.toBe(K.ov('1y', today));
+    expect(K.md('duels', '1y', yesterday)).not.toBe(K.md('duels', '1y', today));
   });
 
   it("l'hot-set NON porta il giorno: cio' che si e' guardato non scade a mezzanotte", () => {

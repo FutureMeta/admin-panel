@@ -34,7 +34,7 @@ let pool: pg.Pool;
 let db: Database;
 let sql: pg.Client;
 /** Un istante fisso: due letture diverse dell'orologio sposterebbero le finestre. */
-const FISSO = new Date();
+const FIXED_NOW = new Date();
 const SERVERS = Array.from({ length: 19 }, (_, i) => `srv_${i + 1}`);
 
 beforeAll(async () => {
@@ -129,8 +129,8 @@ describe('la provenienza per modalita` ha il suo cancello, come le altre', () =>
     // cambiare di una virgola cio` che la panoramica mostra. Se un giorno lo
     // cambiasse, la mappa direbbe due cose diverse a seconda di cosa qualcun
     // altro ha guardato di recente.
-    const senza = await buildAll(db, '30d', FISSO, []);
-    const con = await buildAll(db, '30d', FISSO);
+    const senza = await buildAll(db, '30d', FIXED_NOW, []);
+    const con = await buildAll(db, '30d', FIXED_NOW);
     // Prima che siano uguali: che ci siano. Due mappe nulle sono uguali fra
     // loro e non dimostrano niente.
     expect(senza.overview.geo?.cc.length).toBeGreaterThan(0);
@@ -140,7 +140,7 @@ describe('la provenienza per modalita` ha il suo cancello, come le altre', () =>
   it('e con una modalita` richiesta la sua provenienza c`e` ancora', async () => {
     // Il cancello non deve spegnere la funzione: chi apre il dettaglio di una
     // modalita` deve continuare a vedere la sua mappa.
-    const con = await buildAll(db, '30d', FISSO, ['duels']);
+    const con = await buildAll(db, '30d', FIXED_NOW, ['duels']);
     expect(con.perMode.get('duels')?.geo).not.toBeNull();
   }, 600_000);
 });

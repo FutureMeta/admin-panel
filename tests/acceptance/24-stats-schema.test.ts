@@ -108,11 +108,8 @@ describe('il fuso: Europe/Rome vive in due funzioni e da nessun`altra parte', ()
     // Il cast a text si fa in SQL: node-postgres restituisce un Date, e
     // formattarlo in JS reintrodurrebbe proprio il fuso del processo che
     // questa funzione esiste per togliere di mezzo.
-    const giorno = await one<string>(
-      mig,
-      `SELECT stats.civil_day('2026-06-14 22:30:00+00'::timestamptz)::text`,
-    );
-    expect(giorno).toBe('2026-06-15');
+    const day = await one<string>(mig, `SELECT stats.civil_day('2026-06-14 22:30:00+00'::timestamptz)::text`);
+    expect(day).toBe('2026-06-15');
   });
 
   it('un giorno non dura 86400 secondi, due volte l`anno', async () => {

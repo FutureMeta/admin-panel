@@ -27,7 +27,7 @@ let sql: pg.Client;
 
 /** Ventidue server come in produzione, non uno. */
 const SERVERS = Array.from({ length: 22 }, (_, i) => `srv_${i + 1}`);
-const PICCO = 824;
+const PEAK = 824;
 
 beforeAll(async () => {
   t = await startTestApp({ label: 'anno', statsDb: true });
@@ -81,7 +81,7 @@ beforeAll(async () => {
             30 * 3546 * (SELECT count(*) FROM stats.server WHERE server_id > 1),
             $1::int, o.bucket + interval '17 minutes'
        FROM ore o`,
-    [PICCO],
+    [PEAK],
   );
   await sql.query(
     `INSERT INTO stats.rollup_1d (day, server_id, samples, covered_s, expected_s, player_seconds, players_max, players_max_at)
@@ -119,7 +119,7 @@ describe('il pannello a fuso UTC, dalla rotta', () => {
   it('1y porta il picco, e non e` quello di un altro range', async () => {
     const p = await overview('1y');
     // IL SINTOMO SEGNALATO: picco a «—» sul solo 1y.
-    expect(p.kpi.peak).toBe(PICCO);
+    expect(p.kpi.peak).toBe(PEAK);
     expect(p.kpi.peakAt).not.toBeNull();
   });
 
@@ -138,7 +138,7 @@ describe('il pannello a fuso UTC, dalla rotta', () => {
     // deve uscire da rollup_5m, da rollup_1h e da rollup_1d.
     for (const r of ['7d', '30d', '90d', '1y'] as const) {
       const p = await overview(r);
-      expect(p.kpi.peak, `range ${r}`).toBe(PICCO);
+      expect(p.kpi.peak, `range ${r}`).toBe(PEAK);
     }
   });
 
@@ -156,6 +156,6 @@ describe('il pannello a fuso UTC, dalla rotta', () => {
 
     expect(await t.ctx.cacheRedis.exists(K.ov('1y'))).toBe(1);
     const p = await overview('1y');
-    expect(p.kpi.peak).toBe(PICCO);
+    expect(p.kpi.peak).toBe(PEAK);
   });
 });

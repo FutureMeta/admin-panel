@@ -51,7 +51,7 @@ const NAV: NavItem[] = [
     label: 'Panoramica network',
     to: '/panoramica',
     area: 'Analisi',
-    icon: ICONS.log,
+    icon: ICONS.grid,
     prefetch: () => void loadWorld().catch(() => undefined),
   },
   // Porta all'INGRESSO, non a una modalità fissata: la rotta risolve la più
@@ -69,7 +69,7 @@ const NAV: NavItem[] = [
     label: 'Dettaglio modalità',
     to: '/dettaglio-modalita',
     area: 'Analisi',
-    icon: ICONS.log,
+    icon: ICONS.modes,
   },
   {
     modules: ['utenti', 'ruoli', 'inviti'],

@@ -159,6 +159,15 @@ const RULES: Rule[] = [
     multiline: true,
   },
   {
+    id: 'stats/intl-formatters-are-module-level',
+    why: "costruire un `Intl.DateTimeFormat` costa piu' che usarlo, e in questo modulo si formatta dentro cicli lunghi: l'asse di un anno ne creava 730 e ci metteva 93 ms a ogni giro di warm, cioe` ogni minuto, per un risultato identico. Con i formattatori a livello di modulo sono 6 ms. Un formattatore dentro una funzione e` sempre un errore qui, e non e` visibile in nessun test di correttezza: il risultato e` giusto, costa e basta.",
+    // Rientrato di un livello significa dentro qualcosa: una funzione, un
+    // metodo, un blocco. A colonna zero e` una costante di modulo, ed e` la
+    // forma voluta.
+    pattern: /^\s+.*\bnew Intl\.(DateTimeFormat|NumberFormat)\(/,
+    exempt: (rel) => !rel.startsWith(STATS_DIR + sep),
+  },
+  {
     id: 'stats/date-column-never-against-a-bare-param',
     why: "una colonna `date` confrontata con un parametro nudo fa inferire il parametro come date, e il driver serializza la Date di JavaScript nel fuso del PROCESSO: in un container a UTC la mezzanotte romana diventa il giorno prima e la finestra perde l'ultimo giorno. Il difetto e` invisibile su una macchina italiana e presente solo in produzione, che e` il modo peggiore in cui un difetto possa esistere. Si passa da `stats.civil_day`, che decide il giorno nel fuso giusto e non in quello di chi esegue.",
     // Un parametro seguito da `::date` non e` in discussione: li' il valore

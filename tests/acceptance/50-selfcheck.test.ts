@@ -90,9 +90,15 @@ beforeEach(async () => {
 
   // I CICLI, sulla griglia dei trenta secondi. La griglia e` il punto: e`
   // quella che `ticks_missing_24h` cammina.
+  //
+  // UN `run_id` SOLO per tutta la storia, come in un processo che non si e`
+  // mai riavviato. Con uno diverso per riga — che e` come questa fixture
+  // nasceva — ogni buco sarebbe sembrato un riavvio, e il controllo non
+  // avrebbe potuto trovare niente: il test avrebbe misurato la propria
+  // fixture invece del codice.
   await sql.query(`
     INSERT INTO stats.poll_cycle (tick_at, run_id, status, delta_s, players, keys_read)
-    SELECT g, gen_random_uuid(), 'ok', 30, 150, 150
+    SELECT g, '00000000-0000-4000-8000-0000000000aa'::uuid, 'ok', 30, 150, 150
       FROM generate_series(
         to_timestamp(floor(extract(epoch FROM now() - interval '25 hours') / 30) * 30),
         to_timestamp(floor(extract(epoch FROM now()) / 30) * 30) - interval '30 seconds',
@@ -239,15 +245,49 @@ describe('ogni invariante grida quando lo si viola', () => {
     expect(await offendersOf('rollup_vs_raw')).toBe(1);
   });
 
-  it('ticks_missing_24h: uno slot che nessuno ha mai tentato', async () => {
-    // Un buco non e` uno zero. Il controllo cammina la griglia della cadenza
-    // e cerca i posti in cui non c'e` nessun ciclo, nemmeno fallito.
+  it('ticks_missing_24h: il poller era in piedi e non ha scritto', async () => {
+    // Un buco non e` uno zero. Qui i tre slot spariscono in MEZZO alla storia,
+    // fra due cicli dello stesso run: il processo c'era, e quei tre giri non
+    // sono arrivati da nessuna parte.
     const before = await offendersOf('ticks_missing_24h');
     await sql.query(`
       DELETE FROM stats.poll_cycle
-       WHERE tick_at IN (SELECT tick_at FROM stats.poll_cycle ORDER BY tick_at DESC LIMIT 3)`);
+       WHERE tick_at IN (
+         SELECT tick_at FROM stats.poll_cycle
+          ORDER BY tick_at DESC OFFSET 100 LIMIT 3)`);
 
     expect(await offendersOf('ticks_missing_24h')).toBe(before + 3);
+  });
+
+  it('ticks_missing_24h: un RIAVVIO non e` una violazione, ma si conta lo stesso', async () => {
+    // Il difetto della prima versione: su una giornata con cinque rilasci
+    // segnava duecento slot e non poteva tornare a zero. Un allarme sempre
+    // acceso e` un allarme spento, e questo controllo esiste proprio per
+    // distinguere un buco da uno zero.
+    //
+    // Il buco a cavallo di due `run_id` e` il processo che non c'era, e chi
+    // guarda il processo lo sa gia`. Non e` una violazione — ma gli slot
+    // persi restano nella riga, perche` «zero violazioni» non deve leggersi
+    // come «non si e` perso niente».
+    await sql.query(`
+      DELETE FROM stats.poll_cycle
+       WHERE tick_at IN (
+         SELECT tick_at FROM stats.poll_cycle
+          ORDER BY tick_at DESC OFFSET 200 LIMIT 4)`);
+    // Tutto cio` che viene DOPO il buco appartiene a un processo nuovo.
+    await sql.query(`
+      UPDATE stats.poll_cycle SET run_id = '00000000-0000-4000-8000-0000000000bb'::uuid
+       WHERE tick_at > (SELECT max(tick_at) FROM stats.poll_cycle
+                         WHERE tick_at < (SELECT max(tick_at) - interval '100 minutes'
+                                            FROM stats.poll_cycle))`);
+
+    const results = await runSelfcheck(db);
+    const ticks = results.find((r) => r.name === 'ticks_missing_24h');
+
+    expect(ticks?.failures).toBe(0);
+    expect(JSON.stringify(ticks?.detail)).toContain('slot_mancanti_in_tutto');
+    const detail = ticks?.detail as { slot_mancanti_in_tutto?: string | number };
+    expect(Number(detail.slot_mancanti_in_tutto)).toBeGreaterThan(0);
   });
 
   it('uniques_bounds: unici di rete sommati dalle modalita`', async () => {

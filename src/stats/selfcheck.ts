@@ -50,6 +50,14 @@ type Check = {
   consequence: string;
   /** Deve produrre le righe COLPEVOLI: zero righe = invariante rispettata. */
   offenders: ReturnType<typeof sql>;
+  /**
+   * Una riga sola che finisce nella riga di esito ANCHE a zero violazioni.
+   *
+   * Serve quando «nessuna violazione» non e' tutta la storia. Un controllo
+   * che tace perche' i buchi erano tutti spiegati non deve far concludere che
+   * non si sia perso niente: il numero perso sta li' accanto, e non suona.
+   */
+  context?: ReturnType<typeof sql>;
 };
 
 /**
@@ -206,6 +214,27 @@ const CHECKS: Check[] = [
     // La tolleranza e' mezza cadenza: si cerca un ciclo VICINO allo slot, non
     // esattamente sopra, perche' `tick_at` e' l'istante in cui il giro e'
     // partito e non l'orario nominale dello slot.
+    //
+    // NON TUTTI I BUCHI SONO LO STESSO BUCO, e la prima versione di questo
+    // controllo li contava insieme. Su una giornata con cinque rilasci
+    // segnava 207 slot e non poteva far altro: il processo era fermo, e
+    // quegli slot mancano davvero. Ma un numero che non torna mai a zero
+    // smette di essere un allarme, e allora il controllo che serve a
+    // distinguere un buco da uno zero diventa lui la cosa che si impara a
+    // ignorare.
+    //
+    // LA DISTINZIONE E' GIA' NEI DATI. `run_id` cambia a ogni riavvio — la
+    // 011 lo dice nel commento della colonna, «individua i riavvii» — quindi
+    // un buco compreso fra due tick dello STESSO run e' il poller che era in
+    // piedi e non ha scritto, mentre un buco a cavallo di due run e' il
+    // processo che non c'era. Solo il primo e' una violazione: il secondo lo
+    // vede chi guarda il processo, e non ha bisogno che glielo dica una
+    // tabella di statistiche.
+    //
+    // `dopo IS NULL` conta come violazione: c'e' un run che ha smesso di
+    // scrivere e nessuno gli e' subentrato. Se questo giro sta girando, il
+    // processo e' vivo — quindi e' il POLLER a essersi fermato, che e'
+    // esattamente il guasto che non si vedrebbe da nessun'altra parte.
     offenders: sql`
       WITH cadenza AS (SELECT nominal_delta_s::int AS n FROM stats.ingest_state WHERE id = 1),
       slot AS (
@@ -219,15 +248,58 @@ const CHECKS: Check[] = [
                  to_timestamp(floor(extract(epoch FROM now()) / cadenza.n) * cadenza.n) - interval '1 second',
                  make_interval(secs => cadenza.n)
                ) g
+      ),
+      mancanti AS (
+        SELECT s.atteso
+          FROM slot s, cadenza
+         WHERE NOT EXISTS (
+           SELECT 1 FROM stats.poll_cycle c
+            WHERE c.tick_at >= s.atteso - make_interval(secs => cadenza.n / 2.0)
+              AND c.tick_at <  s.atteso + make_interval(secs => cadenza.n / 2.0)
+         )
+      ),
+      -- Il run che scriveva PRIMA del buco e quello che ha ripreso DOPO. Le
+      -- finestre tengono la ricerca dentro poche partizioni.
+      vicini AS (
+        SELECT m.atteso,
+               (SELECT c.run_id FROM stats.poll_cycle c
+                 WHERE c.tick_at < m.atteso AND c.tick_at > m.atteso - interval '48 hours'
+                 ORDER BY c.tick_at DESC LIMIT 1) AS prima,
+               (SELECT c.run_id FROM stats.poll_cycle c
+                 WHERE c.tick_at > m.atteso AND c.tick_at < m.atteso + interval '48 hours'
+                 ORDER BY c.tick_at LIMIT 1) AS dopo
+          FROM mancanti m
       )
-      SELECT s.atteso
+      SELECT atteso, prima AS run_id
+        FROM vicini
+       WHERE prima IS NOT NULL AND (dopo IS NULL OR dopo = prima)
+       ORDER BY atteso DESC
+    `,
+    // Quanto si e' perso comunque, riavvii compresi. Va nella riga anche a
+    // zero violazioni: «nessuna violazione» non deve leggersi come «nessuna
+    // osservazione persa», che sarebbe una bugia per omissione proprio nel
+    // caso normale.
+    context: sql`
+      WITH cadenza AS (SELECT nominal_delta_s::int AS n FROM stats.ingest_state WHERE id = 1),
+      slot AS (
+        SELECT g AS atteso
+          FROM cadenza,
+               generate_series(
+                 to_timestamp(floor(extract(epoch FROM now() - interval '24 hours') / cadenza.n) * cadenza.n),
+                 to_timestamp(floor(extract(epoch FROM now()) / cadenza.n) * cadenza.n) - interval '1 second',
+                 make_interval(secs => cadenza.n)
+               ) g
+      )
+      SELECT count(*) FILTER (
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM stats.poll_cycle c
+                  WHERE c.tick_at >= s.atteso - make_interval(secs => cadenza.n / 2.0)
+                    AND c.tick_at <  s.atteso + make_interval(secs => cadenza.n / 2.0)
+               )
+             ) AS slot_mancanti_in_tutto,
+             (SELECT count(DISTINCT run_id) FROM stats.poll_cycle
+               WHERE tick_at >= now() - interval '24 hours') AS run_nelle_24h
         FROM slot s, cadenza
-       WHERE NOT EXISTS (
-         SELECT 1 FROM stats.poll_cycle c
-          WHERE c.tick_at >= s.atteso - make_interval(secs => cadenza.n / 2.0)
-            AND c.tick_at <  s.atteso + make_interval(secs => cadenza.n / 2.0)
-       )
-       ORDER BY s.atteso DESC
     `,
   },
   {
@@ -354,7 +426,10 @@ export async function runSelfcheck(db: Database): Promise<CheckOutcome[]> {
 
       const row = res.rows[0];
       failures = Number(row?.failures ?? 0);
-      detail = row?.sample ?? null;
+      const extra = check.context
+        ? ((await sql<Record<string, unknown>>`${check.context}`.execute(db)).rows[0] ?? {})
+        : {};
+      detail = { colpevoli: row?.sample ?? [], ...extra };
     } catch (err) {
       // Un controllo che non si puo' ESEGUIRE non e' un controllo passato.
       // Si registra come violazione con la ragione dentro: il silenzio qui

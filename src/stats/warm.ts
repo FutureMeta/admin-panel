@@ -230,8 +230,15 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
       // Partire subito rifarebbe lo stesso identico lavoro.
       runImmediately: false,
       run: async () => {
+        const t0 = Date.now();
         const pronti: Range[] = [];
         const falliti: Range[] = [];
+        // IL COSTO PER RANGE, ogni giro. Consolidando i cinque job in uno
+        // avevo perso il `ms` che ciascuno stampava, e con esso l'unico modo
+        // di sapere quale range sta costando: il giro dura quanto la somma,
+        // e una somma non dice mai dove sta il peso. Cinque numeri per riga
+        // costano nulla e tolgono un'indagine ogni volta che serviranno.
+        const ms: Partial<Record<Range, number>> = {};
         let payloads = 0;
         let deferred = 0;
         for (const range of RANGES) {
@@ -239,6 +246,7 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
             const r = await warmRange(deps, range);
             payloads += r.payloads;
             deferred += r.deferred;
+            ms[range] = r.ms;
             pronti.push(range);
           } catch {
             // UN range rotto non ne ferma altri quattro: il 90g che va in
@@ -251,7 +259,7 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
         if (pronti.length === 0) {
           throw new Error(`nessun range ricostruito: ${falliti.join(', ')}`);
         }
-        return { pronti, falliti, payloads, deferred };
+        return { pronti, falliti, payloads, deferred, ms, totaleMs: Date.now() - t0 };
       },
       successMessage: 'payload statistiche ricostruiti',
       failureMessage: 'il pannello statistiche servira` numeri vecchi',
@@ -278,10 +286,14 @@ export async function warmOnBoot(deps: WarmDeps): Promise<void> {
   const t0 = Date.now();
   const done: Range[] = [];
   const failed: Range[] = [];
+  // Il costo per range anche qui: l'avvio e' il momento in cui la macchina e'
+  // piu' fredda, quindi e' anche la misura piu' pessimista che si abbia.
+  const ms: Partial<Record<Range, number>> = {};
 
   for (const range of RANGES) {
     try {
-      await warmRange(deps, range);
+      const r = await warmRange(deps, range);
+      ms[range] = r.ms;
       done.push(range);
     } catch (err) {
       failed.push(range);
@@ -296,7 +308,7 @@ export async function warmOnBoot(deps: WarmDeps): Promise<void> {
   // partito sono indistinguibili nel log, e il secondo si scopre solo quando
   // qualcuno apre la schermata e aspetta.
   deps.logger.info(
-    { job: 'stats-warm-boot', pronti: done, falliti: failed, ms: Date.now() - t0 },
+    { job: 'stats-warm-boot', pronti: done, falliti: failed, ms, totaleMs: Date.now() - t0 },
     failed.length === 0
       ? 'cache statistiche riempita: le schermate partono calde'
       : 'cache statistiche riempita solo in parte',

@@ -247,3 +247,41 @@ ricarica una volta per apertura di schermata invece che ogni minuto, il
 guadagno della richiesta condizionale diventa marginale e questa deroga si
 può **ritirare** — che è sempre preferibile a mantenerla. La rotta è già
 predisposta in `deploy/nginx.conf`.
+
+## D-11 — Sessione di 14 giorni, nessun timeout di inattività (contro SEC-05)
+
+**Da cosa devia.** SEC-05 prescrive due tetti insieme: assoluto di 8 ore su
+`absolute_expires_at`, mai prorogata, e inattività di 30 minuti applicata nel
+middleware su `session.updatedAt`. La riga «Timeout assoluto **e** di
+inattività» di `asvs.md` era spuntata su quella coppia.
+
+**Cosa facciamo.** `SESSION_ABSOLUTE_SECONDS = 1209600` (quattordici giorni) e
+`SESSION_IDLE_SECONDS = 0`, che nel middleware **spegne** il controllo invece
+di alzarlo. Resta un tetto solo, e resta invalicabile: `absolute_expires_at` si
+fissa al login e nessuna richiesta la sposta, quindi al quattordicesimo giorno
+si rientra con password e secondo fattore.
+
+**Perché.** I trenta minuti non misuravano l'inattività della persona ma quella
+del browser, e le due cose qui divergono. Il pannello vive aperto in una
+scheda; react-query non interroga il server quando la finestra non è a fuoco, e
+due sole schermate su cinque fanno polling. Il risultato è che la sessione
+cadeva a ogni pausa, a ogni riunione, a ogni sospensione del portatile — e il
+rientro costava password più TOTP, perché una sessione nuova nasce con
+`aal < 2`. Un controllo che scatta soprattutto quando l'utente è legittimo e
+presente non protegge: insegna a tenere aperta una seconda scheda, o a
+scegliere una password più corta da ridigitare.
+
+**Cosa perdiamo, detto per intero.** Un portatile sbloccato e incustodito
+adesso resta autenticato fino a quattordici giorni invece che trenta minuti:
+chi si siede a quella scrivania entra nel pannello con i permessi di chi c'era
+prima, e il registro attribuirà a lui ogni cosa fatta. È il rischio contro cui
+il timeout di inattività esiste, e da oggi contro quello non c'è più niente lato
+server. Restano il blocco schermo del sistema operativo — che è una politica
+della postazione, non nostra — e la revoca: `logout-all` invalida tutto
+immediatamente, `sessions_valid_from` taglia ogni sessione precedente, e la
+revoca puntuale di una singola sessione continua a funzionare. Sono rimedi che
+richiedono che qualcuno se ne accorga, mentre il timeout non lo richiedeva.
+
+Vale la pena rileggere questa voce se un giorno il pannello viene usato da
+postazioni condivise, o da fuori sede su macchine non gestite: sono i due
+scenari in cui il conto qui sopra cambia di segno.

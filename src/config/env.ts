@@ -63,14 +63,27 @@ const EnvSchema = z.object({
   MAIL_FROM: z.string().default('MetaMC Admin <no-reply@metamc.it>'),
 
   // --- sessione -------------------------------------------------------------
+  /**
+   * Il tetto della sessione: si fissa al login e NESSUNO lo proroga (SEC-05).
+   *
+   * Quattordici giorni, non otto ore. E' una scelta dell'esercente, presa
+   * sapendo cosa costa, ed e' scritta per intero in D-11 di
+   * `docs/security/deviations.md`.
+   */
   SESSION_ABSOLUTE_SECONDS: z.coerce
     .number()
     .int()
-    .default(8 * 60 * 60),
-  SESSION_IDLE_SECONDS: z.coerce
-    .number()
-    .int()
-    .default(30 * 60),
+    .default(14 * 24 * 60 * 60),
+  /**
+   * Inattivita' massima. **Zero = controllo spento.**
+   *
+   * Spento qui: il pannello vive aperto in una scheda, e react-query non
+   * interroga il server quando la finestra non e' a fuoco. Trenta minuti di
+   * inattivita' scattavano a ogni pausa, a ogni riunione, a ogni sospensione
+   * del portatile, e il rientro costava password piu' TOTP. Vedi D-11 per il
+   * conto completo di cosa si perde.
+   */
+  SESSION_IDLE_SECONDS: z.coerce.number().int().min(0).default(0),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
   // --- statistiche, fase 2 --------------------------------------------------

@@ -28,7 +28,7 @@ Legenda: ✅ implementato · ⚠️ deviazione documentata · ⏳ fase 1.5
 |---|---|---|
 | Token opaco, generato dal server | ✅ | better-auth, 32 byte da Web Crypto |
 | Rotazione a ogni cambio di privilegio | ✅ | SEC-06, test 8: token nuovo dopo il 2FA e dopo l'enrollment |
-| Timeout assoluto **e** di inattività | ✅ | SEC-05: 8h su `absolute_expires_at` (mai prorogata) + 30 min su `updatedAt` |
+| Timeout assoluto **e** di inattività | ⚠️ | Assoluto sì: 14 giorni su `absolute_expires_at`, mai prorogata. Inattività **spenta** (`SESSION_IDLE_SECONDS=0`), per decisione dell'esercente: vedi D-11 |
 | Revoca puntuale e globale | ✅ | `sessrev:{id}` in Redis + `sessions_valid_from` sulla riga utente |
 | Attributi del cookie | ✅ | SEC-04: `__Host-`, `Secure`, `HttpOnly`, `SameSite=Strict`, nessun `Domain`. Verificato dallo SPIKE-2 |
 | Nessuna copia dello stato nel token | ✅ | SEC-02: `aal`, scadenze e permessi si leggono da Postgres, non dal blob di sessione |

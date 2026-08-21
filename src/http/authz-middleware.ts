@@ -181,9 +181,17 @@ export class AuthzMiddleware {
     if (new Date(row.expiresAt) < now) {
       return { ok: false, reason: 'absolute_expiry', userId, sessionId };
     }
-    const idleMs = now.getTime() - new Date(row.updatedAt).getTime();
-    if (idleMs > idleSeconds * 1000) {
-      return { ok: false, reason: 'idle_timeout', userId, sessionId };
+    // ZERO SPEGNE IL CONTROLLO, e non e' un numero grande travestito.
+    //
+    // Con un tetto assoluto di quattordici giorni, «inattivita' massima
+    // quattordici giorni» sarebbe equivalente ma direbbe una bugia: chi legge
+    // fra sei mesi crederebbe che una politica di inattivita' ci sia, e che
+    // qualcuno abbia scelto quel valore. Non c'e'. Vedi D-11.
+    if (idleSeconds > 0) {
+      const idleMs = now.getTime() - new Date(row.updatedAt).getTime();
+      if (idleMs > idleSeconds * 1000) {
+        return { ok: false, reason: 'idle_timeout', userId, sessionId };
+      }
     }
     if (row.aal < 2) {
       return { ok: false, reason: 'second_factor_missing', userId, sessionId };

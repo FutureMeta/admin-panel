@@ -616,7 +616,7 @@ Revoca: `POST /api/invites/:id/revoke` → `revoked_at`, audit. Un invito revoca
 - Cookie: `__Host-metamc_session`, `Path=/`, `Secure`, `HttpOnly`, `SameSite=Strict`, **nessun `Domain`**, **nessun `Partitioned`**.
 - Nome impostato tramite `advanced.cookies.session_token.name` (better-auth compone `${prefix}.${name}` e la logica di prefisso confligge con `__Host-`).
 - **Verifica in DevTools dopo il deploy**: se viene emesso un `Domain`, il browser scarta il cookie in silenzio e il login "non funziona a caso".
-- Durata: `absolute_expires_at = now() + 8h` (mai prorogata, colonna nostra), idle 30 min applicato nel middleware su `session.updatedAt`, TTL Redis rinnovato a ogni richiesta.
+- Durata: `absolute_expires_at = now() + 14 giorni` (mai prorogata, colonna nostra), timeout di inattività **spento** (`SESSION_IDLE_SECONDS=0`, vedi D-11), TTL Redis rinnovato a ogni richiesta.
 - `session.cookieCache`: **disattivo**. Non attivare per nessun motivo.
 - Rotazione: token nuovo a ogni autenticazione, al completamento del 2FA, al cambio password. Mai riusare la sessione di onboarding.
 - Revoca per-sessione: `sessrev:{sessionId}` in Valkey con TTL pari al residuo + delete della riga in Postgres.
@@ -726,7 +726,7 @@ Nessuna libreria di cache. Nessun L1. Nessun bus di invalidazione. Un solo proce
    - authz.status != 'active'
    - sessrev:{sessionId} esiste
    - session.absolute_expires_at < now
-   - now - session.updatedAt > 30 min (idle)
+   - now - session.updatedAt > SESSION_IDLE_SECONDS (idle; il controllo si salta quando vale 0, vedi D-11)
    - session.aal < 2
 5. se session.permissions_version != authz.pv:
    - ricalcola i permessi effettivi da Postgres (1 query, ~160 righe)

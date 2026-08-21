@@ -909,3 +909,57 @@ export function NotYet({ title, sub, what }: { title: string; sub: string; what:
 }
 
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Il caricamento
+// ---------------------------------------------------------------------------
+
+/** Un riquadro vuoto della stessa forma di quello vero. */
+function Box({ height }: { height: number }) {
+  return (
+    <div
+      className="skeleton"
+      style={{ height, borderRadius: 'var(--r-lg)', border: '1px solid var(--bd-subtle)' }}
+      aria-hidden="true"
+    />
+  );
+}
+
+/**
+ * La pagina mentre arriva, con le stesse misure della pagina vera.
+ *
+ * PRIMA QUI NON C'ERA NIENTE: al cambio di modalità o di periodo la chiave
+ * della query cambia, react-query torna `undefined`, e la pagina rendeva un
+ * div vuoto. Il contenuto spariva tutto insieme e riappariva — con la barra
+ * laterale ferma, così sembrava che si fosse rotto qualcosa.
+ *
+ * Le altezze sono quelle dei riquadri veri (250 il grafico, 240 gli unici,
+ * 300 la mappa) e non un valore comodo: se differissero, all'arrivo dei dati
+ * la pagina salterebbe, e un salto è più fastidioso dell'attesa che nasconde.
+ */
+export function StatsSkeleton({ cards = 4 }: { cards?: number }) {
+  return (
+    <main
+      style={{ display: 'flex', flexDirection: 'column', gap: 24 }}
+      role="status"
+      aria-label="caricamento delle statistiche"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="skeleton" style={{ height: 26, width: 220, borderRadius: 'var(--r-xs)' }} />
+        <div className="skeleton" style={{ height: 14, width: 340, borderRadius: 'var(--r-xs)' }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cards}, 1fr)`, gap: 12 }}>
+        {Array.from({ length: cards }, (_, i) => `kpi-${i}`).map((id) => (
+          <Box key={id} height={116} />
+        ))}
+      </div>
+      <Box height={330} />
+      <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16 }}>
+        <Box height={300} />
+        <Box height={300} />
+      </div>
+      <Box height={320} />
+      <Box height={340} />
+    </main>
+  );
+}

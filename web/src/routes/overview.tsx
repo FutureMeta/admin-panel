@@ -40,6 +40,7 @@ import {
   numberFmt,
   OnlineChart,
   type Overview,
+  StatsSkeleton,
 } from '../components/stats-panels.tsx';
 import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
@@ -65,9 +66,20 @@ export function OverviewPage() {
     queryKey: ['stats-overview', range],
     queryFn: () => apiWithHeaders<Overview>(`/api/stats/overview?range=${range}`),
     refetchInterval: 60_000,
+    // I NUMERI DI PRIMA RESTANO FINCHE' ARRIVANO QUELLI DOPO.
+    //
+    // Senza, cambiando periodo la chiave cambia, react-query torna
+    // `undefined` e la pagina spariva per un istante — con la barra laterale
+    // ferma, il che la faceva sembrare rotta invece che occupata. Il soggetto
+    // qui e' sempre lo stesso (la rete), quindi tenere i numeri vecchi non
+    // puo' mai mostrarli sotto l'etichetta di qualcos'altro: cambia solo il
+    // periodo, e finche' non e' arrivato la pagina si smorza per dirlo.
+    placeholderData: (previous) => previous,
   });
 
   const data = q.data?.data;
+  /** Sta arrivando un periodo nuovo mentre si guardano i numeri di prima. */
+  const refreshing = q.isPlaceholderData && q.isFetching;
   const onlineNow = q.data?.headers.get('X-Online-Now');
   const onlineAt = q.data?.headers.get('X-Online-Now-At');
 
@@ -120,7 +132,7 @@ export function OverviewPage() {
       </div>
     );
   }
-  if (!data) return <div style={{ padding: 24 }} />;
+  if (!data) return <StatsSkeleton cards={4} />;
 
   // LE CINQUE DEL DESIGN, nello stesso ordine e con le stesse etichette.
   //
@@ -193,7 +205,18 @@ export function OverviewPage() {
   ];
 
   return (
-    <main style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <main
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 24,
+        // Si smorza, non sparisce: la posizione di ogni riquadro resta, quindi
+        // non c'e' nessun salto quando i numeri nuovi atterrano.
+        opacity: refreshing ? 0.5 : 1,
+        transition: 'opacity var(--dur) var(--ease)',
+      }}
+      aria-busy={refreshing}
+    >
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20 }}>
         <div>
           <h2

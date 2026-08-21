@@ -42,10 +42,12 @@ import {
   numberFmt,
   OnlineChart,
   type Overview,
+  StatsSkeleton,
 } from '../components/stats-panels.tsx';
 import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
 import { slicesOf } from '../lib/distribution.ts';
+import { keepIfSameSubject } from '../lib/keep.ts';
 import { labelOf, useRange } from '../lib/range.tsx';
 import { axisLabel } from '../lib/when.ts';
 
@@ -84,9 +86,21 @@ export function ModeDetailPage() {
     queryFn: () =>
       apiWithHeaders<ModeStats>(`/api/stats/mode?mode=${encodeURIComponent(key)}&range=${range}`),
     refetchInterval: 60_000,
+    // SI TENGONO I NUMERI DI PRIMA SOLO SE IL SOGGETTO E' LO STESSO.
+    //
+    // Cambiare PERIODO sulla stessa modalita': i grafici restano al loro
+    // posto e si smorzano, cosi' non c'e' salto ne' vuoto.
+    //
+    // Cambiare MODALITA': no. Mostrare le curve di Towny sotto il nome di
+    // Duels sarebbe la solita bugia plausibile, e la barra in alto
+    // evidenzierebbe la voce sbagliata. Li' si mostra la pagina che carica,
+    // che e' cio' che sta davvero succedendo.
+    placeholderData: (previous, previousQuery) => keepIfSameSubject(previous, previousQuery?.queryKey, key),
   });
 
   const data = q.data?.data;
+  /** Stesso soggetto, periodo nuovo in arrivo: si smorza invece di sparire. */
+  const refreshing = q.isPlaceholderData && q.isFetching;
 
   /** Gli estremi del periodo disegnato, per l'etichetta dell'asse. */
   const span = useMemo(() => {
@@ -129,7 +143,7 @@ export function ModeDetailPage() {
       </div>
     );
   }
-  if (!data) return <div style={{ padding: 24 }} />;
+  if (!data) return <StatsSkeleton cards={4} />;
 
   const label = data.labels[data.mode] ?? data.mode;
   const online = mix.slices.reduce((a, s) => a + s.value, 0);
@@ -178,7 +192,16 @@ export function ModeDetailPage() {
   ];
 
   return (
-    <main style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <main
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 24,
+        opacity: refreshing ? 0.5 : 1,
+        transition: 'opacity var(--dur) var(--ease)',
+      }}
+      aria-busy={refreshing}
+    >
       <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>

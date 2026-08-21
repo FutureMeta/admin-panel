@@ -159,10 +159,24 @@ describe('la serie non salta ne` ripete un bucket, nei due giorni in cui sarebbe
       const t = overview.online.t;
 
       // L'asse e` una griglia: il buco e` un valore, non un punto mancante.
+      // Quindi CRESCENTE E SENZA RIPETIZIONI — ma non a passo costante.
+      //
+      // L'asserzione era `differenza === bucketSec`, e quella e` proprio
+      // l'assunzione che questi due giorni smentiscono: l'asse segue
+      // l'OROLOGIO LOCALE, e il 26 ottobre le 02:00 esistono due volte, quindi
+      // due ore vere finiscono nello stesso bucket e il punto successivo dista
+      // due ore invece di una. Preteso il passo fisso, l'unico modo di
+      // soddisfarlo era costruire l'asse ignorando il fuso — cioe` un asse che
+      // non combacia piu` con i dati, che e` il difetto da cui si e` partiti.
       for (let i = 1; i < t.length; i += 1) {
-        expect((t[i] as number) - (t[i - 1] as number)).toBe(overview.bucketSec);
+        expect((t[i] as number) - (t[i - 1] as number)).toBeGreaterThan(0);
       }
       expect(new Set(t).size).toBe(t.length);
+
+      // E i punti restano quelli attesi per un periodo di sette giorni: se
+      // l'asse perdesse o inventasse ore, il conto non tornerebbe.
+      expect(t.length).toBeGreaterThanOrEqual(7 * 24 - 1);
+      expect(t.length).toBeLessThanOrEqual(7 * 24);
 
       // Nessuna copertura sopra il 100%: e` il sintomo di uno slot ripetuto o
       // di un denominatore nominale sbagliato.

@@ -146,34 +146,47 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
     const hours = plan.hoursPerBucket as number;
     const res = await sql<SeriesRow>`
       WITH src AS (
-        -- date_trunc a TRE argomenti, mai date_bin: date_bin ha un'origine
-        -- assoluta e non e' consapevole del cambio ora.
-        SELECT date_trunc('day', bucket, ${ROME})
-                 + make_interval(hours =>
-                     (extract(hour FROM bucket AT TIME ZONE ${ROME})::int / ${hours}) * ${hours}) AS t,
-               mode_key, player_seconds, covered_s, samples, players_max, players_max_at
+        -- IL BLOCCO E' UNA COPPIA (giorno locale, ora locale di inizio), non
+        -- un istante calcolato.
+        --
+        -- Prima la chiave era una mezzanotte locale piu' n ore ASSOLUTE.
+        -- Coincide con l'orologio finche' i giorni durano 24 ore. Il 29 marzo
+        -- ne dura 23: mezzanotte piu' 23 ore assolute E' gia' la mezzanotte
+        -- del giorno dopo, quindi le 23:00 di domenica e le 00:00 di lunedi'
+        -- finivano nello stesso bucket, e un'ora di traffico veniva
+        -- attribuita al giorno sbagliato.
+        --
+        -- Riportare la coppia a un istante con AT TIME ZONE non basta: il 26
+        -- ottobre le 02:00 locali esistono DUE volte, e chiedere al fuso
+        -- quale sia quell'ora ha due risposte ugualmente vere. Si prende
+        -- invece il PRIMO bucket osservato del blocco (min(bucket), sotto):
+        -- e' un istante misurato, non dedotto, e l'asse lo puo' ricostruire
+        -- camminando sulle stesse ore invece di ricalcolarlo.
+        SELECT date_trunc('day', bucket AT TIME ZONE ${ROME}) AS d,
+               (extract(hour FROM bucket AT TIME ZONE ${ROME})::int / ${hours}) * ${hours} AS b,
+               bucket, mode_key, player_seconds, covered_s, samples, players_max, players_max_at
           FROM stats.v_online_1h
          WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo}
       ),
       -- IL DENOMINATORE VIENE DALLA RIGA DI RETE. Sommarlo per modalita'
       -- darebbe il tempo in cui quella modalita' era aperta.
       cov AS (
-        SELECT t, sum(covered_s)::int AS covered_s, sum(samples)::int AS samples
-          FROM src WHERE mode_key = '__network__' GROUP BY 1
+        SELECT d, b, min(bucket) AS t,
+               sum(covered_s)::int AS covered_s, sum(samples)::int AS samples
+          FROM src WHERE mode_key = '__network__' GROUP BY 1, 2
       )
-      SELECT extract(epoch FROM s.t)::bigint::text AS t, s.mode_key,
+      SELECT extract(epoch FROM c.t)::bigint::text AS t, s.mode_key,
              sum(s.player_seconds)::bigint::text AS player_seconds,
              max(s.players_max) AS players_max,
              (array_agg(s.players_max_at ORDER BY s.players_max DESC NULLS LAST))[1] AS players_max_at,
              c.covered_s, c.samples
         FROM src s
-        JOIN cov c ON c.t = s.t
-       GROUP BY 1, 2, c.covered_s, c.samples
+        JOIN cov c ON c.d = s.d AND c.b = s.b
+       GROUP BY c.t, s.mode_key, c.covered_s, c.samples
        ORDER BY 1
     `.execute(db);
     return res.rows;
   }
-
   const res = await sql<SeriesRow>`
     WITH src AS (
       SELECT day, mode_key, player_seconds, covered_s, samples, players_max, players_max_at
@@ -662,6 +675,68 @@ function grid(from: Date, to: Date, bucketSec: number): number[] {
   return out;
 }
 
+/**
+ * L'asse dei tempi, ANCORATO ALLE MEZZANOTTI CIVILI.
+ *
+ * IL DIFETTO CHE QUESTA FUNZIONE ESISTE PER TOGLIERE. L'asse si costruiva a
+ * passi fissi di `bucketSec` secondi dall'inizio della finestra, mentre le
+ * chiavi che tornano da SQL sono ancorate alla mezzanotte civile di Roma
+ * (`date_trunc('day', bucket, 'Europe/Rome')`). Le due cose coincidono finche'
+ * i giorni durano tutti 86400 secondi. L'ultima domenica di ottobre ne dura
+ * 90000: da li' in poi la griglia e' sfasata di un'ora rispetto ai dati,
+ * `byT.get(t)` non trova piu' niente, e ogni serie diventa `null`.
+ *
+ * NON E' UN BUCO NEI DATI, ed e' questo che lo rendeva cattivo: le righe
+ * c'erano tutte e venivano scartate nell'ultimo passaggio in JS. Con copertura
+ * piena seminata su un anno, i punti che trovavano il loro dato erano 88 su
+ * 365. Si vedeva come un range lungo vuoto mentre i corti funzionavano — cioe'
+ * come un problema di raccolta, che manda a guardare dalla parte sbagliata.
+ *
+ * Il 24h non passa di qui: la sua finestra e' assoluta e allineata al bucket
+ * da cinque minuti, e le sue chiavi sono istanti assoluti. Li' il passo fisso
+ * e' la regola giusta, non una semplificazione.
+ *
+ * Per gli altri, ogni giorno civile porta `24 / hoursPerBucket` punti, a
+ * scarti ASSOLUTI dalla sua mezzanotte — che e' esattamente come SQL li
+ * costruisce. Il conto per giorno non cambia nei giorni storti: in quello di
+ * 25 ore due ore locali finiscono nello stesso punto, in quello di 23 un
+ * punto resta senza dato, ed e' giusto che si veda vuoto perche' quell'ora
+ * non e' esistita.
+ */
+function axisOf(range: Range, w: Window): number[] {
+  const plan = PLAN[range];
+  if (plan.source === '5m') return grid(w.curFrom, w.curTo, plan.bucketSec);
+
+  const out: number[] = [];
+  if (plan.source === '1d') {
+    for (let day = w.curFrom; day.getTime() < w.curTo.getTime(); day = shiftDays(day, 1)) {
+      out.push(Math.floor(day.getTime() / 1_000));
+    }
+    return out;
+  }
+
+  // SI CAMMINA SULLE ORE VERE E SI PRENDE LA PRIMA DI OGNI BLOCCO LOCALE.
+  //
+  // Non «mezzanotte piu' k volte il passo»: quel conto assume che il giorno
+  // abbia 24 ore. Camminando invece sulle ore realmente esistenti e cambiando
+  // punto quando cambia il blocco locale, il giorno di 23 ore ne produce uno
+  // in meno e quello di 25 uno di piu' dove l'ora si ripete — che e'
+  // esattamente cio' che la query raggruppa, e per la stessa ragione.
+  const hours = plan.hoursPerBucket as number;
+  let block = -1;
+  let day = -1;
+  for (let t = w.curFrom.getTime(); t < w.curTo.getTime(); t += 3_600_000) {
+    const p = romeParts(new Date(t));
+    const b = Math.floor(p.hour / hours) * hours;
+    if (b !== block || p.day !== day) {
+      out.push(Math.floor(t / 1_000));
+      block = b;
+      day = p.day;
+    }
+  }
+  return out;
+}
+
 /** Le componenti dell'ora locale, forzate a 00-23: `hour12: false` da' «24» a mezzanotte. */
 const ROME_PARTS = new Intl.DateTimeFormat('en-CA', {
   timeZone: ROME,
@@ -671,6 +746,15 @@ const ROME_PARTS = new Intl.DateTimeFormat('en-CA', {
   hour: '2-digit',
   hourCycle: 'h23',
 });
+
+/** Giorno e ora LOCALI di un istante. Serve a camminare sull'orologio di Roma. */
+function romeParts(at: Date): { day: number; hour: number } {
+  const p = Object.fromEntries(ROME_PARTS.formatToParts(at).map((x) => [x.type, x.value])) as Record<
+    string,
+    string
+  >;
+  return { day: Number(p['day']), hour: Number(p['hour']) };
+}
 
 /** La cella 7x24 di un istante: `(isodow - 1) * 24 + ora`, come in SQL. */
 function cellOf(epochSec: number): number {
@@ -875,7 +959,7 @@ export async function buildAll(
       return oa === ob ? a.localeCompare(b) : oa - ob;
     });
 
-  const axis = grid(w.curFrom, w.curTo, plan.bucketSec);
+  const axis = axisOf(range, w);
   const byT = new Map(cur.map((b) => [b.t, b]));
 
   const series: Record<string, (number | null)[]> = {};

@@ -265,21 +265,46 @@ async function rollup1h(db: Database, from: Date, to: Date): Promise<number> {
  */
 async function rollup1d(db: Database, from: Date, to: Date): Promise<number> {
   const res = await sql`
-    WITH cov AS (
-      SELECT stats.civil_day(bucket) AS day,
+    -- LA FINESTRA DICE QUALI GIORNI RIFARE, NON QUANTO DI OGNI GIORNO.
+    --
+    -- Il livello giornaliero consuma bucket ORARI: il suo watermark cammina di
+    -- un'ora e la finestra e' [watermark - 2h, ora chiusa). L'unita' che
+    -- scrive pero' e' il GIORNO, che e' piu' grande della finestra — e
+    -- l'upsert qui sotto ASSEGNA. Aggregando dentro la finestra, la riga del
+    -- giorno finiva per contenere solo le ore dell'ultima passata che lo
+    -- sfiorava: due o tre, quelle di sera.
+    --
+    -- Non si vedeva perche' la media giornaliera e' player_seconds diviso
+    -- covered_s, e la finestra stringe numeratore e denominatore INSIEME: il
+    -- risultato era la media serale, un numero plausibile e piu' alto del
+    -- vero. Poi la chiusura giornaliera alzava final e lo congelava.
+    --
+    -- Gli altri due livelli non hanno il problema: la loro unita' sta dentro
+    -- la finestra. Solo questo ha un'unita' piu' grande del proprio passo.
+    WITH giorni AS (
+      SELECT DISTINCT stats.civil_day(bucket) AS day
+        FROM stats.rollup_1h
+       WHERE bucket >= ${from} AND bucket < ${to}
+    ),
+    ore AS (
+      SELECT r.*, stats.civil_day(r.bucket) AS day
+        FROM stats.rollup_1h r
+        JOIN giorni g ON g.day = stats.civil_day(r.bucket)
+    ),
+    cov AS (
+      SELECT day,
              sum(covered_s)::int AS covered_s,
              sum(samples)::int   AS samples
-        FROM stats.rollup_1h
-       WHERE bucket >= ${from} AND bucket < ${to} AND server_id = 0
+        FROM ore
+       WHERE server_id = 0
        GROUP BY 1
     ),
     agg AS (
-      SELECT stats.civil_day(bucket) AS day, server_id,
+      SELECT day, server_id,
              sum(player_seconds) AS player_seconds,
              max(players_max)    AS players_max,
              (array_agg(players_max_at ORDER BY players_max DESC, bucket))[1] AS players_max_at
-        FROM stats.rollup_1h
-       WHERE bucket >= ${from} AND bucket < ${to}
+        FROM ore
        GROUP BY 1, 2
     )
     INSERT INTO stats.rollup_1d

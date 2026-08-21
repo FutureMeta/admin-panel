@@ -159,6 +159,15 @@ const RULES: Rule[] = [
     multiline: true,
   },
   {
+    id: 'stats/date-column-never-against-a-bare-param',
+    why: "una colonna `date` confrontata con un parametro nudo fa inferire il parametro come date, e il driver serializza la Date di JavaScript nel fuso del PROCESSO: in un container a UTC la mezzanotte romana diventa il giorno prima e la finestra perde l'ultimo giorno. Il difetto e` invisibile su una macchina italiana e presente solo in produzione, che e` il modo peggiore in cui un difetto possa esistere. Si passa da `stats.civil_day`, che decide il giorno nel fuso giusto e non in quello di chi esegue.",
+    // Un parametro seguito da `::date` non e` in discussione: li' il valore
+    // e` gia` una stringa di data e il fuso non entra nella conversione. Il
+    // caso pericoloso e` la `Date` di JavaScript lasciata decidere al driver.
+    pattern: /\b\w*\.?day\s*(?:>=|<=|<>|<|>|=)\s*\$\{[^}]*\}(?!::date)/,
+    exempt: (rel) => !rel.startsWith(STATS_DIR + sep),
+  },
+  {
     id: 'stats/per-mode-behind-the-gate',
     why: 'le tre query per modalita` sono la parte cara del giro — `heatmapModeRows` misura 1,7 s sul 90g contro i 25 ms della gemella di rete — e la panoramica non ne legge una riga. Fuori dal cancello `anyMode` si pagano anche quando nessuno ha aperto una modalita`, e il range lungo torna troppo caro per essere riscaldato come gli altri: e` da li` che nasceva il 24h fresco e il 90g fermo a un quarto d`ora prima.',
     // La chiamata deve stare sul ramo vero di `anyMode ? ... : []`. Una riga

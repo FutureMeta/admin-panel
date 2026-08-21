@@ -191,7 +191,21 @@ async function seriesRows(db: Database, range: Range, w: Window): Promise<Series
     WITH src AS (
       SELECT day, mode_key, player_seconds, covered_s, samples, players_max, players_max_at
         FROM stats.v_online_1d
-       WHERE day >= ${w.curFrom} AND day < ${w.curTo}
+      -- stats.civil_day, MAI il parametro nudo, ed e' l'unico punto in cui
+      -- questo file lo sbagliava.
+      --
+      -- La colonna day e' una DATE. Scrivendo day >= $1, PostgreSQL inferisce
+      -- $1 come date, e il driver serializza la Date di JavaScript nel fuso
+      -- del PROCESSO. Con il pannello in un container a UTC, la mezzanotte
+      -- romana del 21 viaggia come 2026-08-20T22:00Z e come data diventa il
+      -- 20: la finestra scivola indietro di un giorno e taglia via l'ultimo,
+      -- che su un pannello acceso da poco e' l'unico giorno che esista.
+      --
+      -- Il difetto e' INVISIBILE dove il processo sta a Roma — quindi in ogni
+      -- test scritto sulla macchina di chi lo ha scritto — e presente solo in
+      -- produzione. Le altre sette query su colonne date passano tutte da
+      -- civil_day: questa era l'unica rimasta indietro.
+       WHERE day >= stats.civil_day(${w.curFrom}) AND day < stats.civil_day(${w.curTo})
     ),
     cov AS (SELECT day, covered_s, samples FROM src WHERE mode_key = '__network__')
     SELECT

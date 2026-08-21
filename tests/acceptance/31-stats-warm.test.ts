@@ -295,6 +295,17 @@ describe('le due rotte', () => {
     expect(payload.modes).toEqual(['arena']);
     expect(Object.keys(payload.online.series)).toEqual(['arena']);
 
+    // Il campo della ripartizione per server C'E', ed e` `null`: questo
+    // fixture semina solo bucket orari, quindi non esiste un «adesso» da cui
+    // ricavarla. Nullo e vuoto non sono la stessa cosa e la schermata li
+    // distingue — i numeri veri stanno in `45-mode-server-mix`.
+    //
+    // Che la rotta costruisca il payload della SOLA modalita` chiesta lo prova
+    // gia` il 200 qui sopra: se quell'argomento si perdesse, `perMode`
+    // tornerebbe vuota e la rotta risponderebbe 500.
+    expect(payload).toHaveProperty('serverMix');
+    expect(payload.serverMix).toBeNull();
+
     // IL PICCO NON C'E', e non e` una funzione mancante: `players_max` e`
     // memorizzato per server e il massimo di una somma non si ricostruisce da
     // massimi presi separatamente. Un limite inferiore chiamato «picco»

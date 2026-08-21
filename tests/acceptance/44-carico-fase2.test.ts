@@ -224,7 +224,7 @@ describe('§9.3 — poller, rollup, warm e venti login tutti insieme', () => {
     expect(row.cycles).toBeGreaterThan(0);
     // Lo slot nominale e' 30 s. Un ciclo che lo sfora accavalla il successivo,
     // e da li' in poi il ritardo non si riassorbe piu' da solo.
-    expect(row.worst_ms ?? 0, `ciclo piu` + '` lungo ' + `${row.worst_ms} ms`).toBeLessThan(30_000);
+    expect(row.worst_ms ?? 0, `ciclo piu\` lungo ${row.worst_ms} ms`).toBeLessThan(30_000);
   }, 300_000);
 
   it('una sola compressione per volta, anche con venti login addosso', async () => {

@@ -15,7 +15,7 @@
 import { describe, expect, it } from 'vitest';
 import { slicesOf } from '#web/lib/distribution.ts';
 
-const NOW = { at: 1_787_000_000, byMode: { arena: 220, duels: 90, eventi: 12 } };
+const NOW = { arena: 220, duels: 90, eventi: 12 };
 
 describe('le fette vengono da `current`, non dal range', () => {
   it('con la serie del range vuota le fette ci sono lo stesso', () => {
@@ -32,7 +32,7 @@ describe('le fette vengono da `current`, non dal range', () => {
   it('una modalita` a zero non e` una fetta', () => {
     // Ampiezza nulla: una voce in legenda senza niente da indicare, e una
     // percentuale che si legge come «0,0%» invece che come «non c'e' nessuno».
-    const withEmpty = { at: 1, byMode: { arena: 10, deserta: 0 } };
+    const withEmpty = { arena: 10, deserta: 0 };
     expect(slicesOf(withEmpty).slices.map((s) => s.key)).toEqual(['arena']);
   });
 
@@ -66,7 +66,7 @@ describe('chi e` fuori dalla ripartizione non sparisce: si dichiara', () => {
   it('e una modalita` esclusa ma a zero non conta come esclusa', () => {
     // Zero giocatori non sono giocatori nascosti: annunciarli sarebbe una
     // riga che allarma su niente.
-    const withEmpty = { at: 1, byMode: { arena: 10, deserta: 0 } };
+    const withEmpty = { arena: 10, deserta: 0 };
     expect(slicesOf(withEmpty, ['deserta']).excluded).toBe(0);
   });
 });

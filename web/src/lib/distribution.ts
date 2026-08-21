@@ -33,11 +33,16 @@ export type Distribution = {
 };
 
 /**
- * Le modalità presenti ADESSO, meno quelle che l'operatore ha escluso.
+ * Le fette di una ripartizione, meno quelle escluse.
  *
- * `current` nullo significa che il campionamento non ha ancora chiuso un
+ * NON SA COSA SIANO LE CHIAVI. La panoramica le passa le modalità di adesso,
+ * il dettaglio i server di una modalità: è la stessa domanda a due livelli, e
+ * una funzione che nominasse le modalità costringerebbe la seconda schermata
+ * a scriversene una propria — cioè due copie della stessa regola.
+ *
+ * `counts` nullo significa che il campionamento non ha ancora chiuso un
  * bucket: lista vuota, che è diverso da «zero giocatori» e il riquadro lo
- * scrive. Le modalità a zero non entrano — una fetta di ampiezza nulla è una
+ * scrive. Le voci a zero non entrano — una fetta di ampiezza nulla è una
  * voce di legenda senza disegno.
  *
  * `outOfBreakdown` viene dal dizionario (`stats.mode.in_breakdown`), quindi
@@ -45,14 +50,14 @@ export type Distribution = {
  * modalità, non sul periodo in cui la si guarda.
  */
 export function slicesOf(
-  current: { byMode: Record<string, number> } | null | undefined,
+  counts: Record<string, number> | null | undefined,
   outOfBreakdown: readonly string[] = [],
 ): Distribution {
   const excludedKeys = new Set(outOfBreakdown);
   const slices: Slice[] = [];
   let excluded = 0;
 
-  for (const [key, value] of Object.entries(current?.byMode ?? {})) {
+  for (const [key, value] of Object.entries(counts ?? {})) {
     if (value <= 0) continue;
     if (excludedKeys.has(key)) excluded += value;
     else slices.push({ key, value });

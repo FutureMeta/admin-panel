@@ -85,7 +85,7 @@ export function OverviewPage() {
 
   /** Le fette di ADESSO. Il selettore in alto non le tocca: vedi `slicesOf`. */
   const mix = useMemo(
-    () => slicesOf(data?.current, data?.outOfBreakdown),
+    () => slicesOf(data?.current?.byMode, data?.outOfBreakdown),
     [data?.current, data?.outOfBreakdown],
   );
 

@@ -14,6 +14,7 @@
 // seconda copia della logica di risoluzione che possa divergere da quella vera.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useState } from 'react';
 import { PageHeader, Panel, PanelBar, SelectField } from '../components/page.tsx';
 import { Banner, Button, EmptyState, Field, SkeletonRows } from '../components/ui.tsx';
@@ -839,6 +840,22 @@ export function ModesPage({ me }: { me: Me }) {
             <span className="mono" style={{ marginLeft: 'auto', fontSize: 11.5, color: 'var(--tx-muted)' }}>
               {current.servers.length === 0 ? 'nessun server' : `${current.servers.length} server`}
             </span>
+            {/*
+              LA VIA D'INGRESSO al dettaglio, e sta qui perché è qui che si
+              guarda una modalità alla volta. Solo se ha almeno un server:
+              senza, la rotta risponde 404 di proposito — «esiste ma non ha
+              osservazioni» — e un collegamento che porta a un errore è peggio
+              di un collegamento assente.
+            */}
+            {current.servers.length > 0 ? (
+              <Link
+                to="/modalita/$key"
+                params={{ key: current.modeKey }}
+                style={{ fontSize: 12, color: 'var(--ac-text)', textDecoration: 'none' }}
+              >
+                Vedi le statistiche →
+              </Link>
+            ) : null}
           </PanelBar>
           <ModeRules mode={current} available={allServers} canManage={canManage} />
         </Panel>

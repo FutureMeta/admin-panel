@@ -73,6 +73,39 @@ const SOURCE_STRIDE_MS: Record<RollupLevel, number> = {
  */
 const LOOKBACK_BUCKETS = 2;
 
+/**
+ * Quanto si aspetta prima di considerare COMPLETO un bucket della sorgente.
+ *
+ * NASCE DA UN NUMERO VISTO IN PRODUZIONE. L'invariante `rollup_vs_raw` ha
+ * trovato l'ora delle 16:00 con 2 823 090 secondi-giocatore memorizzati contro
+ * 3 077 490 ricalcolati dal grezzo: la differenza era 254 400, cioe' con
+ * ottocentocinquanta giocatori a tick da trenta secondi ESATTAMENTE un bucket
+ * da cinque minuti. Undici su dodici.
+ *
+ * IL MECCANISMO. I due livelli hanno watermark indipendenti e cadenze diverse
+ * — 5m ogni minuto, 1h ogni cinque. Se il giro orario arriva alle 17:00:0x
+ * prima che quello dei cinque minuti abbia scritto il bucket delle 16:55,
+ * l'ora nasce corta. E resta corta: da li' a fine ora ogni giro orario esce
+ * da `idle` (`to <= watermark`) e non tocca niente. Si ripara alle 18:00,
+ * quando la finestra avanza e il lookback riscrive l'ora precedente.
+ *
+ * PERCHE' NON BASTA CHE SI RIPARI. Per un'ora intera i grafici a 7, 30 e 90
+ * giorni leggono l'ultima ora chiusa circa l'8% piu' bassa del vero, e poi il
+ * numero cambia da solo senza che niente lo dica. E' la cosa che questo schema
+ * rifiuta ovunque: un valore letto e annotato non puo' cambiare in silenzio.
+ *
+ * Cinque minuti bastano con margine: il giro dei 5m esclude il bucket in corso
+ * e passa ogni sessanta secondi, quindi il bucket delle 16:55 e' scritto entro
+ * le 17:01. Il livello giornaliero ha la stessa grazia per la stessa ragione,
+ * un gradino piu' su. Il livello 5m no: la sua sorgente e' il grezzo, che il
+ * ciclo scrive nella stessa transazione del tick.
+ */
+const SETTLE_MS: Record<RollupLevel, number> = {
+  '5m': 0,
+  '1h': 300_000,
+  '1d': 300_000,
+};
+
 type StateRow = { watermark: Date; max_buckets: number };
 
 async function lockState(db: Database, level: StateLevel): Promise<StateRow> {
@@ -102,8 +135,9 @@ function windowOf(state: StateRow, level: RollupLevel, now: number): { from: Dat
   const stride = SOURCE_STRIDE_MS[level];
   const lo = state.watermark.getTime();
   // Il bucket in corso si esclude: sta ancora riempiendosi, e rientrera' al
-  // giro successivo attraverso il lookback.
-  const closed = Math.floor(now / stride) * stride;
+  // giro successivo attraverso il lookback. La grazia toglie anche quello
+  // appena chiuso ma non ancora COMPLETO nella sorgente.
+  const closed = Math.floor((now - SETTLE_MS[level]) / stride) * stride;
   const to = Math.min(closed, lo + state.max_buckets * stride);
   return {
     from: new Date(Math.min(lo, to) - LOOKBACK_BUCKETS * stride),

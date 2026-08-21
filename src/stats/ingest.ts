@@ -139,7 +139,7 @@ export async function writeCycle(db: Database, cycle: CycleRow, samples: ServerC
 
 async function insertCycle(db: Database, c: CycleRow, samples: ServerCount[]): Promise<void> {
   await db.transaction().execute(async (tx) => {
-    await sql`
+    const cycleInsert = await sql<{ tick_at: Date }>`
       INSERT INTO stats.poll_cycle (
         tick_at, run_id, status, delta_s, duration_ms, players,
         keys_read, keys_skipped, servers_seen, scan_iterations, scan_truncated,
@@ -152,9 +152,31 @@ async function insertCycle(db: Database, c: CycleRow, samples: ServerCount[]): P
       -- Due cicli sullo stesso istante li respinge il database, non una if:
       -- succede riversando l'anello dei cicli non scritti dopo un guasto.
       ON CONFLICT (tick_at) DO NOTHING
+      RETURNING tick_at
     `.execute(tx);
 
-    if (samples.length > 0) {
+    // LO SLOT E' DI UN ALTRO CICLO: non si scrive niente sotto di lui.
+    //
+    // Il caso arriva a ogni RIAVVIO. Il processo nuovo esegue subito un giro,
+    // `tick_at` si allinea allo slot da trenta secondi che il processo
+    // vecchio aveva gia' scritto, e `deltaOf` calcola zero secondi trascorsi
+    // che il clamp porta a 1.
+    //
+    // Prima anche le righe per server avevano `ON CONFLICT DO NOTHING`, il
+    // che sembrava simmetrico e non lo era: la riga di ciclo restava quella
+    // del PRIMO giro, mentre le righe per server diventavano l'UNIONE dei
+    // due. Ne uscivano due bugie plausibili — la somma per server superava il
+    // totale di rete di uno o due giocatori, e `delta_s` valeva 30 sul ciclo
+    // e 1 sulle righe nuove — che e' esattamente cio' che l'invariante
+    // `network_equals_servers` ha trovato in produzione al primo giro.
+    //
+    // Se il primo ciclo era `failed`, le sue righe per server non esistono e
+    // queste non le sostituiscono: giusto cosi', perche' il rollup legge solo
+    // i campioni dei cicli `ok` e quelle righe sarebbero comunque ignorate.
+    // Il tempo di quello slot resta SCOPERTO, che e' cio' che era.
+    const slotIsOurs = cycleInsert.rows.length > 0;
+
+    if (slotIsOurs && samples.length > 0) {
       await sql`
         INSERT INTO stats.sample_server (tick_at, server_id, delta_s, players)
         SELECT ${c.tickAt}, s.server_id, ${c.deltaS}, s.players

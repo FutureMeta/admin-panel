@@ -215,6 +215,10 @@ export class SessionTracker {
     // gli unici della modalita' di destinazione perderebbero chi ci e'
     // arrivato da un'altra.
     if (moved.length > 0) await this.#persistMoved(db, tickAt, moved);
+    // SEMPRE, non solo quando qualcosa si e' mosso: il caso che chiude e'
+    // esattamente quello in cui NIENTE si muove — nessuna apertura, nessun
+    // trasferimento — e il giorno civile cambia sotto una sessione ferma.
+    await this.#carryPresenceOverMidnight(db, tickAt);
     if (this.#cycles % FLUSH_EVERY === 0) await this.#flush(db);
 
     return { opened: opening.length, closed: closing.length };
@@ -316,6 +320,42 @@ export class SessionTracker {
         sessions.map((s) => ({ playerId: s.playerId, serverId: s.serverIdLast })),
       );
     });
+  }
+
+  /**
+   * Chi era gia' online quando il giorno civile e' cambiato.
+   *
+   * IL BUCO CHE CHIUDE. `player_day_server` si scriveva in due soli momenti:
+   * all'APERTURA di una sessione e al CAMBIO di server. Chi resta collegato
+   * oltre la mezzanotte senza cambiare server non fa nessuna delle due cose,
+   * quindi per il giorno nuovo non esisteva nessuna riga di presenza — mentre
+   * `player_day` la riga ce l'ha, perche' la chiusura affetta i secondi sui
+   * giorni attraversati.
+   *
+   * Sullo schermo: quei giocatori entravano negli unici di RETE e in nessuna
+   * modalita'. Nessun numero assurdo, nessun grafico rotto — la somma per
+   * modalita' restava sopra il totale di rete, quindi nemmeno `uniques_bounds`
+   * lo vedeva. L'ha trovato `geo_sum_equals_uniques` confrontando le due
+   * fonti: 4 655 giocatori in `player_day` contro 4 646 in
+   * `player_day_server`, su sette giorni.
+   *
+   * NON SI SCRIVE A OGNI TICK, che sarebbero ottocento righe ogni trenta
+   * secondi: lo schema evita di proposito le scritture per ciclo. La
+   * condizione le limita ai soli tick in cui una sessione aperta porta ancora
+   * la data di ieri, cioe' ai primi minuti dopo la mezzanotte — `last_seen_at`
+   * si flusha ogni dieci minuti, e appena flushato la condizione si spegne da
+   * sola. Niente stato in memoria e nessuna seconda definizione di «giorno»:
+   * il confronto lo fa `stats.civil_day`, la stessa che decide i giorni
+   * ovunque.
+   */
+  async #carryPresenceOverMidnight(db: Database, tickAt: Date): Promise<void> {
+    await sql`
+      INSERT INTO stats.player_day_server (day, server_id, player_id)
+      SELECT stats.civil_day(${tickAt}), o.server_id_last, o.player_id
+        FROM stats.session_open o
+       WHERE stats.civil_day(o.last_seen_at) <> stats.civil_day(${tickAt})
+      ON CONFLICT DO NOTHING
+    `.execute(db);
   }
 
   /**

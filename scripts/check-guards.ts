@@ -188,7 +188,7 @@ const RULES: Rule[] = [
     // ha nessun cancello davanti — una guardia che grida sulla definizione
     // della cosa che protegge si disattiva da sola alla prima occhiata.
     pattern:
-      /^(?!.*anyMode \?).*\b(heatmapModeRows|uniquesByModeRows|distinctPlayersByMode|serverMix)\(db[,)]/,
+      /^(?!.*anyMode \?).*\b(heatmapModeRows|uniquesByModeRows|distinctPlayersByMode|serverMix|serverSeriesRows)\(db[,)]/,
     exempt: (rel) => rel !== join('src', 'stats', 'read.ts'),
   },
 ];

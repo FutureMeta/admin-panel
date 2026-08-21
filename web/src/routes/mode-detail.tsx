@@ -28,7 +28,7 @@
 // dei dati fa dubitare ogni volta che manchi qualcosa.
 
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { type Dictionary, EditModeDialog, NewModeDialog } from '../components/mode-editor.tsx';
@@ -58,7 +58,11 @@ import { axisLabel } from '../lib/when.ts';
 type ModeStats = Overview & {
   mode: string;
   serverMix: { at: number; byServer: Record<string, number> } | null;
+  byServer: { keys: string[]; series: Record<string, (number | null)[]> } | null;
 };
+
+/** Un solo server: si disegna il totale e basta. Vedi `ModePayload.byServer`. */
+const NO_PARTS = { keys: [], series: {} };
 
 /**
  * Un colore stabile per un SERVER.
@@ -149,8 +153,11 @@ function useSettled(flag: boolean, ms: number): boolean {
 export function ModeDetailPage({ me }: { me: Me }) {
   const { range } = useRange();
   const { key } = useParams({ from: '/shell/dettaglio-modalita/$key' });
+  const navigate = useNavigate();
   const [editing, setEditing] = useState(false);
   const [creating, setCreating] = useState(false);
+  /** I server spenti dalla legenda. Locale: è una preferenza di lettura. */
+  const [hiddenServers, setHiddenServers] = useState<Set<string>>(new Set());
   const canManage = (me.permissions.statistiche ?? 0) >= 3;
 
   // IL DIZIONARIO SI SCARICA SOLO A CHI PUO' USARLO. Serve ai due dialoghi —
@@ -207,9 +214,22 @@ export function ModeDetailPage({ me }: { me: Me }) {
 
   /** Le fette per server, di adesso. Il selettore in alto non le governa. */
   const mix = useMemo(() => slicesOf(data?.serverMix?.byServer), [data?.serverMix]);
+
+  /**
+   * UNA SOLA TAVOLOZZA PER I SERVER, dall'unione dei due riquadri.
+   *
+   * La torta guarda adesso, il grafico guarda il periodo: un server spento
+   * ieri sta solo nel secondo, uno acceso da un'ora quasi solo nel primo.
+   * Costruendo due tavolozze separate, ognuna sui propri nomi, lo stesso
+   * server prenderebbe due colori diversi in due riquadri affiancati — e il
+   * colore smetterebbe di identificare qualcosa proprio dove serve di più.
+   */
   const colorOfServer = useMemo(
-    () => serverPalette(Object.keys(data?.serverMix?.byServer ?? {})),
-    [data?.serverMix],
+    () =>
+      serverPalette([
+        ...new Set([...(data?.byServer?.keys ?? []), ...Object.keys(data?.serverMix?.byServer ?? {})]),
+      ]),
+    [data?.byServer, data?.serverMix],
   );
 
   /** Il colore della modalità: dal dizionario, come sulla panoramica. */
@@ -251,6 +271,13 @@ export function ModeDetailPage({ me }: { me: Me }) {
       {editing && record ? (
         <EditModeDialog
           mode={record}
+          onDeleted={() => {
+            setEditing(false);
+            // All'ingresso, non alla panoramica: risolve di nuovo la più
+            // popolata fra quelle rimaste. `replace` perché la modalità appena
+            // eliminata non deve restare nella cronologia.
+            void navigate({ to: '/dettaglio-modalita', replace: true });
+          }}
           available={allServers}
           canManage={canManage}
           onClose={() => setEditing(false)}
@@ -403,11 +430,67 @@ export function ModeDetailPage({ me }: { me: Me }) {
           </div>
         </div>
         {/*
-          Nessuna legenda: la serie è una sola, e una legenda con una voce
-          sola è una riga che occupa spazio per non dire niente. `hidden`
-          vuoto perché non c'è niente da spegnere.
+          LA LEGENDA COMPARE SOLO SE C'È QUALCOSA DA DISTINGUERE. Con un
+          server solo la riga è una — il totale — e una legenda con una voce
+          sola occupa spazio per non dire niente.
         */}
-        <OnlineChart data={data} hidden={new Set()} colorOf={colorOfMode} />
+        {data.byServer ? (
+          <div
+            style={{
+              display: 'flex',
+              gap: 16,
+              padding: '0 20px 6px',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 600 }}>
+              <span style={{ width: 18, height: 3, borderRadius: 2, background: 'var(--ac)' }} />
+              Totale {label}
+            </div>
+            {data.byServer.keys.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() =>
+                  setHiddenServers((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(s)) next.delete(s);
+                    else next.add(s);
+                    return next;
+                  })
+                }
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  border: 'none',
+                  background: 'none',
+                  padding: 0,
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  color: 'var(--tx-secondary)',
+                  opacity: hiddenServers.has(s) ? 0.35 : 1,
+                }}
+              >
+                <span style={{ width: 18, height: 3, borderRadius: 2, background: colorOfServer(s) }} />
+                {s}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {/*
+          Il totale resta la riga della MODALITÀ: spegnere un server dalla
+          legenda toglie la sua riga, non lo sottrae dal totale. Il totale è
+          misurato, non sommato — è la stessa regola della riga di rete sulla
+          panoramica, un gradino più giù.
+        */}
+        <OnlineChart
+          data={data}
+          hidden={hiddenServers}
+          colorOf={colorOfServer}
+          parts={data.byServer ?? NO_PARTS}
+        />
       </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16 }}>

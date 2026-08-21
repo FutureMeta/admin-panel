@@ -871,17 +871,20 @@ export function EditModeDialog({
   available,
   canManage,
   onClose,
+  onDeleted,
 }: {
   mode: Mode;
   available: string[];
   canManage: boolean;
   onClose: () => void;
+  onDeleted: () => void;
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState(mode.displayName);
   const [color, setColor] = useState(mode.color ?? (PALETTE[0] as string));
   const [hidden, setHidden] = useState(mode.hidden);
   const [inBreakdown, setInBreakdown] = useState(mode.inBreakdown);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   const trimmed = name.trim();
@@ -907,6 +910,23 @@ export function EditModeDialog({
     onError: () => setError('Modifica non salvata. Riprova.'),
   });
 
+  const remove = useMutation({
+    mutationFn: () => api(`/api/stats/modes/${mode.modeKey}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['stats-modes'] });
+      void qc.invalidateQueries({ queryKey: ['stats-mode'] });
+      void qc.invalidateQueries({ queryKey: ['stats-overview'] });
+      // La schermata sotto guarda una modalità che non esiste più: chi chiude
+      // il dialogo decide dove andare, perché è lui a sapere di stare su una
+      // rotta e non su una finestra.
+      onDeleted();
+    },
+    onError: () => {
+      setConfirming(false);
+      setError('Non eliminata. Riprova.');
+    },
+  });
+
   return (
     <Dialog
       title={`Modifica «${mode.displayName}»`}
@@ -915,6 +935,22 @@ export function EditModeDialog({
       onClose={onClose}
       footer={
         <>
+          {/*
+            L'ELIMINAZIONE STA A SINISTRA, staccata dalle altre due: il pollice
+            che torna su «Salva» non deve poterla incontrare per un pixel di
+            troppo. E chiede conferma sul posto invece di aprire una seconda
+            finestra sopra la prima — due dialoghi impilati sono un modo di
+            perdere il filo di cosa si sta confermando.
+          */}
+          <Button
+            size="sm"
+            variant="danger"
+            disabled={!canManage || remove.isPending}
+            style={{ marginRight: 'auto' }}
+            onClick={() => (confirming ? remove.mutate() : setConfirming(true))}
+          >
+            {confirming ? 'Confermi? Elimina' : 'Elimina'}
+          </Button>
           <Button size="sm" onClick={onClose}>
             Annulla
           </Button>
@@ -929,6 +965,15 @@ export function EditModeDialog({
         </>
       }
     >
+      {confirming ? (
+        <Banner
+          tone="warn"
+          title={`Elimino «${mode.displayName}»?`}
+          description={`Le sue regole cadono con lei e i suoi ${
+            mode.servers.length === 1 ? 'server torna' : 'server tornano'
+          } in «Non classificata»: restano nei totali, cambiano etichetta. Lo storico non si tocca — la modalità si risolve in lettura, quindi ricreandola con le stesse regole i grafici tornano come prima.`}
+        />
+      ) : null}
       {error ? <Banner tone="err" title={error} /> : null}
 
       <NameField

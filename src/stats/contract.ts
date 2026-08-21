@@ -246,6 +246,26 @@ export type ModePayload = Omit<OverviewPayload, 'modes'> & {
    * minuti: e' diverso da «nessun giocatore», e la schermata lo scrive.
    */
   serverMix: { at: number; byServer: Record<string, number> } | null;
+
+  /**
+   * L'andamento nel tempo spezzato per SERVER, allineato a `online.t`.
+   *
+   * Stessa relazione che la panoramica ha con la rete: li' la riga del totale
+   * piu' una per ogni modalita', qui la riga della modalita' (`online.total`)
+   * piu' una per ogni suo server. Un gradino nella curva di duels puo' voler
+   * dire che e' calata la modalita' o che si e' spento un server, e da una
+   * riga sola le due cose non si distinguono.
+   *
+   * LE PARTI SOMMANO IL TOTALE perche' il denominatore e' lo stesso — la
+   * copertura di rete del bucket, come ovunque. Con un denominatore per
+   * server, righe e totale non tornerebbero e non ci sarebbe modo di sapere
+   * quale delle due misure e' quella giusta.
+   *
+   * `null` quando la modalita' ha UN SOLO server: quella riga sarebbe identica
+   * al totale e disegnata sopra di esso, cioe' uno spessore invece di una
+   * scomposizione, con una legenda che promette una divisione che non c'e'.
+   */
+  byServer: { keys: string[]; series: Record<string, (number | null)[]> } | null;
 };
 
 export class PayloadInvalid extends Error {
@@ -287,6 +307,22 @@ export function assertPayload(p: OverviewPayload | ModePayload): void {
   if (p.geo && p.geo.cc.length !== p.geo.v.length) bad.push('geo disallineata');
   for (const m of p.modes) {
     if (!(m in p.online.series)) bad.push(`la modalita\` ${m} e\` nell'ordine ma non nei dati`);
+  }
+
+  // Le righe per server: stesso asse, e l'ordine di disegno deve trovare i
+  // dati. E' lo stesso controllo di sopra un gradino piu' giu', e serve per
+  // la stessa ragione: un array corto disegna, non lancia.
+  const byServer = 'byServer' in p ? p.byServer : null;
+  if (byServer) {
+    if (byServer.keys.length < 2) {
+      bad.push(`byServer ha ${byServer.keys.length} server: sotto due non si scompone niente`);
+    }
+    for (const [k, a] of Object.entries(byServer.series)) {
+      if (a.length !== n) bad.push(`byServer.${k} ha ${a.length} valori invece di ${n}`);
+    }
+    for (const k of byServer.keys) {
+      if (!(k in byServer.series)) bad.push(`il server ${k} e\` nell'ordine ma non nei dati`);
+    }
   }
 
   // I1 — il breakdown chiude sul totale. La tolleranza copre gli

@@ -253,11 +253,22 @@ export function OnlineChart({
   data,
   hidden,
   colorOf,
+  parts,
 }: {
   data: Overview;
   hidden: Set<string>;
   colorOf: (m: string) => string;
+  /**
+   * Cosa disegnare SOTTO il totale, quando non sono le modalità.
+   *
+   * La panoramica scompone la rete per modalità e non passa niente; il
+   * dettaglio scompone una modalità per server e passa le sue righe. È la
+   * stessa figura a due livelli — un totale e le sue parti — quindi è lo
+   * stesso disegno, e il grafico non ha bisogno di sapere di cosa si tratti.
+   */
+  parts?: { keys: string[]; series: Record<string, (number | null)[]> } | undefined;
 }) {
+  const lines = parts ?? { keys: data.modes, series: data.online.series };
   const values = data.online.total;
   const n = Math.max(1, values.length);
   const observed = Math.max(
@@ -349,10 +360,10 @@ export function OnlineChart({
         />
       ))}
 
-      {data.modes
+      {lines.keys
         .filter((m) => !hidden.has(m))
         .flatMap((m) =>
-          segments(data.online.series[m] ?? [], x, y).map((d) => (
+          segments(lines.series[m] ?? [], x, y).map((d) => (
             <path
               key={`${m}-${d.slice(0, 20)}`}
               d={d}

@@ -684,6 +684,97 @@ async function serverMix(
   return out;
 }
 
+type ServerSeriesRow = { t: string; mode_key: string; server_key: string; player_seconds: string };
+
+/**
+ * L'andamento nel tempo SPEZZATO PER SERVER, dentro le modalita' chieste.
+ *
+ * E' `seriesRows` un gradino piu' giu', ed e' la stessa relazione che la
+ * panoramica ha con la rete: li' una riga per il totale e una per ogni
+ * modalita', qui una per la modalita' e una per ogni suo server. Chi apre il
+ * dettaglio di duels e vede un gradino nella curva vuole sapere se e' calata
+ * la modalita' o si e' spento un server, e da una riga sola non si distingue.
+ *
+ * DIETRO IL CANCELLO, come ogni query per modalita': la panoramica non
+ * disegna queste righe e non deve pagarle. Su questa rete sarebbero venti
+ * server per ogni bucket del periodo — sull'anno, centinaia di migliaia di
+ * righe raggruppate per niente.
+ *
+ * NESSUN DENOMINATORE QUI DENTRO. La copertura e' quella di RETE, gia' letta
+ * da `seriesRows` per lo stesso bucket: rileggerla vorrebbe dire un secondo
+ * join per la stessa colonna, e prenderla dal server darebbe il tempo in cui
+ * quel server era acceso — un server aperto cinque minuti scavalcherebbe uno
+ * aperto sempre. La divisione la fa chi assembla, con l'unico denominatore
+ * che esiste.
+ *
+ * L'ASSE E' QUELLO DELLA RETE anche qui. Sul ramo orario la chiave del blocco
+ * e' `min(bucket)` preso dalle righe di rete, non da quelle del server:
+ * prendendolo dal server, uno acceso a meta' blocco produrrebbe un `t` che
+ * sull'asse non esiste, e la sua riga sparirebbe senza dirlo.
+ */
+async function serverSeriesRows(
+  db: Database,
+  range: Range,
+  w: Window,
+  only: ModeFilter,
+): Promise<ServerSeriesRow[]> {
+  const plan = PLAN[range];
+
+  if (plan.source === '5m') {
+    const res = await sql<ServerSeriesRow>`
+      SELECT extract(epoch FROM bucket)::bigint::text AS t, mode_key, server_key,
+             sum(player_seconds)::bigint::text AS player_seconds
+        FROM stats.v_online_5m
+       WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo}
+         AND server_id <> 0
+         AND (${sql.lit(only.all)} OR mode_key = ANY(${only.keys}::text[]))
+       GROUP BY 1, 2, 3
+       ORDER BY 1
+    `.execute(db);
+    return res.rows;
+  }
+
+  if (plan.source === '1h') {
+    const hours = plan.hoursPerBucket as number;
+    const res = await sql<ServerSeriesRow>`
+      WITH src AS (
+        SELECT date_trunc('day', bucket AT TIME ZONE ${ROME}) AS d,
+               (extract(hour FROM bucket AT TIME ZONE ${ROME})::int / ${hours}) * ${hours} AS b,
+               bucket, mode_key, server_key, server_id, player_seconds
+          FROM stats.v_online_1h
+         WHERE bucket >= ${w.curFrom} AND bucket < ${w.curTo}
+      ),
+      cov AS (
+        SELECT d, b, min(bucket) AS t FROM src WHERE mode_key = '__network__' GROUP BY 1, 2
+      )
+      SELECT extract(epoch FROM c.t)::bigint::text AS t, s.mode_key, s.server_key,
+             sum(s.player_seconds)::bigint::text AS player_seconds
+        FROM src s
+        JOIN cov c ON c.d = s.d AND c.b = s.b
+       WHERE s.server_id <> 0
+         AND (${sql.lit(only.all)} OR s.mode_key = ANY(${only.keys}::text[]))
+       GROUP BY 1, 2, 3
+       ORDER BY 1
+    `.execute(db);
+    return res.rows;
+  }
+
+  const res = await sql<ServerSeriesRow>`
+    SELECT extract(epoch FROM (day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
+           mode_key, server_key,
+           sum(player_seconds)::bigint::text AS player_seconds
+      FROM stats.v_online_1d
+     -- stats.civil_day, MAI il parametro nudo: la colonna e' una DATE, e una
+     -- Date di JavaScript ci arriverebbe nel fuso del processo.
+     WHERE day >= stats.civil_day(${w.curFrom}) AND day < stats.civil_day(${w.curTo})
+       AND server_id <> 0
+       AND (${sql.lit(only.all)} OR mode_key = ANY(${only.keys}::text[]))
+     GROUP BY 1, 2, 3
+     ORDER BY 1
+  `.execute(db);
+  return res.rows;
+}
+
 /**
  * Gli unici del giorno IN CORSO, presi da `player_day` invece che dai rollup.
  *
@@ -1167,6 +1258,7 @@ export async function buildAll(
     current,
     liveUniques,
     perServer,
+    perServerSeries,
   ] = await Promise.all([
     timed('seriesRows', seriesRows(db, range, w)),
     timed('heatmap', heatmapRows(db, w.curFrom, now)),
@@ -1190,6 +1282,9 @@ export async function buildAll(
       'serverMix',
       anyMode ? serverMix(db) : new Map<string, { at: number; byServer: Record<string, number> }>(),
     ),
+    // Idem: le righe per server dell'andamento sono un disegno del solo
+    // dettaglio, e sono la query piu' voluminosa delle due.
+    timed('serverSeries', anyMode ? serverSeriesRows(db, range, w, only) : []),
   ]);
   const queryMs = Date.now() - t0;
   // Le tre piu' care, e basta: l'elenco intero sarebbe rumore in ogni riga di
@@ -1394,6 +1489,53 @@ export async function buildAll(
     byDay.set(Number(d.day), { uniques: d.uniques, final: d.final });
   }
 
+  // L'andamento per server, indicizzato modalita' -> server -> istante.
+  const serverSecondsByMode = new Map<string, Map<string, Map<number, number>>>();
+  for (const r of perServerSeries) {
+    let byServer = serverSecondsByMode.get(r.mode_key);
+    if (!byServer) {
+      byServer = new Map();
+      serverSecondsByMode.set(r.mode_key, byServer);
+    }
+    let line = byServer.get(r.server_key);
+    if (!line) {
+      line = new Map();
+      byServer.set(r.server_key, line);
+    }
+    line.set(Number(r.t), Number(r.player_seconds));
+  }
+
+  /**
+   * La riga di un server sull'asse, o `null` se la modalita' ne ha uno solo.
+   *
+   * STESSA DIVISIONE DELLA RIGA DELLA MODALITA': secondi giocatore diviso la
+   * copertura DI RETE dello stesso bucket. E' l'unico modo perche' le righe
+   * sotto sommino esattamente la riga sopra — con denominatori diversi il
+   * grafico mostrerebbe delle parti che non fanno il loro totale, e sarebbe
+   * impossibile capire quale delle due misure e' quella giusta.
+   *
+   * UN SERVER SOLO NON PRODUCE NIENTE. La sua riga sarebbe identica al totale,
+   * disegnata sopra di esso: due tratti coincidenti che si leggono come uno
+   * spessore, e una legenda che promette una scomposizione che non c'e'.
+   */
+  const serverLinesOf = (m: string): { keys: string[]; series: Record<string, (number | null)[]> } | null => {
+    const byServer = serverSecondsByMode.get(m);
+    if (!byServer || byServer.size < 2) return null;
+    const keys = [...byServer.keys()].sort();
+    const out: Record<string, (number | null)[]> = {};
+    for (const k of keys) {
+      const line = byServer.get(k);
+      out[k] = axis.map((t) => {
+        const b = byT.get(t);
+        const covered = b?.coveredS ?? 0;
+        // Il buco resta un buco: se il bucket non e' stato rilevato non si
+        // scrive zero, che vorrebbe dire «nessuno c'era».
+        return b && covered > 0 ? round1((line?.get(t) ?? 0) / covered) : null;
+      });
+    }
+    return { keys, series: out };
+  };
+
   const perMode = new Map<string, ModePayload>();
   for (const m of modes) {
     if (want && !want.has(m)) continue;
@@ -1431,6 +1573,7 @@ export async function buildAll(
       // Quella per SERVER invece e' propria del dettaglio, ed e' il livello
       // sotto: la stessa domanda, un gradino piu' giu'.
       serverMix: perServer.get(m) ?? null,
+      byServer: serverLinesOf(m),
       geo: geoOf(m),
       geoEnabled: facts.geoEnabled,
       // Il record e' della RETE, non della modalita': per una modalita' il

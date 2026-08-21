@@ -730,9 +730,20 @@ function DailyUniques({ data, label }: { data: Overview; label: string }) {
         </div>
       </div>
 
-      {v.length === 0 ? (
+      {/*
+        VUOTO SIGNIFICA NESSUN VALORE, non nessuna casella.
+
+        La condizione era `v.length === 0`, e `v` non è mai vuoto: l'asse dei
+        giorni è una griglia costruita dal periodo, quindi ha sempre una
+        casella per giorno anche quando sono tutte nulle. Il ramo era morto, e
+        un periodo senza dati mostrava assi e nessuna barra — senza una riga
+        che lo dicesse. È il caso peggiore fra quelli possibili: sembra un
+        grafico caricato a cui manca solo il disegno.
+      */}
+      {v.every((n) => n === null) ? (
         <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', padding: '24px 0' }}>
-          Nessun giorno chiuso ancora: il primo punto compare domani.
+          Nessun giorno con dati in questo periodo. Gli unici si chiudono a fine giornata: il primo punto
+          compare il giorno dopo il primo giorno raccolto.
         </div>
       ) : (
         <div ref={hover.boxRef} onPointerLeave={hover.clear} style={{ position: 'relative' }}>
@@ -1128,7 +1139,11 @@ export function OverviewPage() {
           sub={`Giocatori unici · ${labelOf(range)} · scala per quantili, non lineare`}
           what={
             data.geoEnabled
-              ? 'nessun giocatore ancora registrato con un paese, oggi'
+              ? // «oggi» era rimasto da quando la mappa era ferma al giorno
+                // corrente. Ora la geografia segue il selettore come tutto il
+                // resto, e il riquadro si contraddiceva da solo: sotto un
+                // sottotitolo che diceva «1y» spiegava un'assenza «di oggi».
+                `nessun giocatore registrato con un paese in questo periodo (${labelOf(range)})`
               : 'geolocalizzazione non attiva'
           }
         />

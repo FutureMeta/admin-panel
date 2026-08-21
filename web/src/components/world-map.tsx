@@ -135,10 +135,19 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
     };
   }, [geo]);
 
-  /** Il colore dice la POSIZIONE in classifica, non il valore. */
+  /**
+   * Il colore dice la POSIZIONE in classifica, non il valore.
+   *
+   * Con un paese solo non c'è classifica, e il ripiego era `1` — cioè il
+   * colore di massima intensità, quello che altrove significa «il paese con
+   * più giocatori di tutti». Su una mappa con un solo paese acceso non c'è
+   * niente con cui confrontarlo, quindi quel rosso pieno non riporta un
+   * primato: lo suggerisce e basta. Il centro scala è neutro: dice «unico»
+   * invece di «massimo».
+   */
   const rankOf = useMemo(() => {
     const asc = [...rows].sort((a, b) => a.v - b.v);
-    return new Map(asc.map((x, i) => [x.cc, asc.length > 1 ? i / (asc.length - 1) : 1]));
+    return new Map(asc.map((x, i) => [x.cc, asc.length > 1 ? i / (asc.length - 1) : 0.5]));
   }, [rows]);
 
   const byNumeric = useMemo(() => {

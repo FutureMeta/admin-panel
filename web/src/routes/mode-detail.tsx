@@ -29,6 +29,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import {
   type Card,
@@ -42,13 +43,13 @@ import {
   numberFmt,
   OnlineChart,
   type Overview,
+  StatsPanelsSkeleton,
   StatsSkeleton,
 } from '../components/stats-panels.tsx';
 import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
 import { slicesOf } from '../lib/distribution.ts';
-import { keepIfSameSubject } from '../lib/keep.ts';
-import { labelOf, useRange } from '../lib/range.tsx';
+import { labelOf, type Range, useRange } from '../lib/range.tsx';
 import { axisLabel } from '../lib/when.ts';
 
 type ModeStats = Overview & {
@@ -74,6 +75,98 @@ function serverPalette(keys: string[]): (key: string) => string {
   };
 }
 
+/**
+ * Nome, colore e schede: la parte che si sa SEMPRE.
+ *
+ * Sta in un componente a parte perché la disegnano due rami — la pagina piena e
+ * quella che sta caricando una modalità nuova — e devono essere identici, senza
+ * uno scarto di un pixel al momento del cambio. Tutto quello che le serve viene
+ * da `key` e dal dizionario, che ogni payload porta intero e che non dipende né
+ * dal periodo né dalla modalità: quindi è corretto anche mentre l'unico payload
+ * in mano parla ancora della modalità di prima.
+ */
+function ModeHeader({
+  mode,
+  labels,
+  colorOf,
+  range,
+  when,
+}: {
+  mode: string;
+  labels: Record<string, string>;
+  colorOf: (m: string) => string;
+  range: Range;
+  when: ReactNode;
+}) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20 }}>
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+          <span style={{ width: 11, height: 11, borderRadius: 3, background: colorOf(mode), flex: 'none' }} />
+          <h2
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: 22,
+              lineHeight: '30px',
+              fontWeight: 700,
+              letterSpacing: '-.01em',
+              margin: 0,
+            }}
+          >
+            {labels[mode] ?? mode}
+          </h2>
+        </div>
+        <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
+          {labelOf(range)} · fuso Europe/Rome · {when}
+        </div>
+      </div>
+
+      {/*
+        Le altre modalità, dal DIZIONARIO del payload — non da una seconda
+        chiamata. Ogni payload porta l'elenco completo da quando nomi e colori
+        hanno smesso di dipendere dal range, quindi la barra è identica su ogni
+        modalità e non cambia mentre si naviga.
+      */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 2,
+          padding: 3,
+          background: 'var(--s-inset)',
+          border: '1px solid var(--bd-subtle)',
+          borderRadius: 'var(--r-sm)',
+          flexWrap: 'wrap',
+        }}
+      >
+        {Object.keys(labels)
+          .filter((m) => !m.startsWith('__'))
+          .map((m) => (
+            <Link
+              key={m}
+              to="/modalita/$key"
+              params={{ key: m }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 7,
+                borderRadius: 'var(--r-xs)',
+                background: m === mode ? 'var(--s-elevated)' : 'transparent',
+                color: m === mode ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+                fontSize: 12.5,
+                fontWeight: 600,
+                padding: '6px 11px',
+                textDecoration: 'none',
+              }}
+            >
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: colorOf(m), flex: 'none' }} />
+              {labels[m] ?? m}
+            </Link>
+          ))}
+      </div>
+    </div>
+  );
+}
+
 export function ModeDetailPage() {
   const { range } = useRange();
   const { key } = useParams({ from: '/shell/modalita/$key' });
@@ -86,21 +179,22 @@ export function ModeDetailPage() {
     queryFn: () =>
       apiWithHeaders<ModeStats>(`/api/stats/mode?mode=${encodeURIComponent(key)}&range=${range}`),
     refetchInterval: 60_000,
-    // SI TENGONO I NUMERI DI PRIMA SOLO SE IL SOGGETTO E' LO STESSO.
-    //
-    // Cambiare PERIODO sulla stessa modalita': i grafici restano al loro
-    // posto e si smorzano, cosi' non c'e' salto ne' vuoto.
-    //
-    // Cambiare MODALITA': no. Mostrare le curve di Towny sotto il nome di
-    // Duels sarebbe la solita bugia plausibile, e la barra in alto
-    // evidenzierebbe la voce sbagliata. Li' si mostra la pagina che carica,
-    // che e' cio' che sta davvero succedendo.
-    placeholderData: (previous, previousQuery) => keepIfSameSubject(previous, previousQuery?.queryKey, key),
+    // IL PAYLOAD DI PRIMA SI TIENE SEMPRE, anche di un'altra modalità: porta
+    // il dizionario, che è completo e non dipende né dal periodo né dalla
+    // modalità, e quindi sa già come si chiama e di che colore è quella
+    // appena chiesta. Senza, l'intestazione non avrebbe niente da disegnare e
+    // la barra delle modalità sparirebbe sotto il dito che l'ha appena
+    // toccata. Cosa si può disegnare oltre all'intestazione lo decide
+    // `stale`, non questa riga: i NUMERI di prima non si mostrano mai sotto
+    // il nome di un'altra modalità.
+    placeholderData: (previous) => previous,
   });
 
   const data = q.data?.data;
-  /** Stesso soggetto, periodo nuovo in arrivo: si smorza invece di sparire. */
-  const refreshing = q.isPlaceholderData && q.isFetching;
+  /** Il payload in mano parla di un'altra modalità: intestazione sì, numeri no. */
+  const stale = data !== undefined && data.mode !== key;
+  /** Stessa modalità, periodo nuovo in arrivo: si smorza invece di sparire. */
+  const refreshing = q.isPlaceholderData && q.isFetching && !stale;
 
   /** Gli estremi del periodo disegnato, per l'etichetta dell'asse. */
   const span = useMemo(() => {
@@ -143,9 +237,29 @@ export function ModeDetailPage() {
       </div>
     );
   }
+  // Primo ingresso: non si sa ancora niente, nemmeno il dizionario.
   if (!data) return <StatsSkeleton cards={4} />;
 
-  const label = data.labels[data.mode] ?? data.mode;
+  // Modalità appena cambiata. L'intestazione è già quella giusta — nome,
+  // colore e scheda evidenziata vengono da `key` e dal dizionario, non dai
+  // numeri — e sotto caricano i riquadri. Restare sui numeri di prima sarebbe
+  // la solita risposta giusta alla domanda sbagliata.
+  if (stale) {
+    return (
+      <main style={{ display: 'flex', flexDirection: 'column', gap: 24 }} aria-busy>
+        <ModeHeader
+          mode={key}
+          labels={data.labels}
+          colorOf={colorOfMode}
+          range={range}
+          when={<span style={{ color: 'var(--tx-muted)' }}>caricamento…</span>}
+        />
+        <StatsPanelsSkeleton cards={4} />
+      </main>
+    );
+  }
+
+  const label = data.labels[key] ?? key;
   const online = mix.slices.reduce((a, s) => a + s.value, 0);
   const today = data.uniques.v.length > 0 ? (data.uniques.v[data.uniques.v.length - 1] ?? null) : null;
 
@@ -202,82 +316,13 @@ export function ModeDetailPage() {
       }}
       aria-busy={refreshing}
     >
-      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20 }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-            <span
-              style={{
-                width: 11,
-                height: 11,
-                borderRadius: 3,
-                background: colorOfMode(data.mode),
-                flex: 'none',
-              }}
-            />
-            <h2
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 22,
-                lineHeight: '30px',
-                fontWeight: 700,
-                letterSpacing: '-.01em',
-                margin: 0,
-              }}
-            >
-              {label}
-            </h2>
-          </div>
-          <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
-            {labelOf(range)} · fuso Europe/Rome · aggiornato{' '}
-            <span className="mono">{hhmm(data.generatedAt)}</span>
-          </div>
-        </div>
-
-        {/*
-          Le altre modalità, dal DIZIONARIO del payload — non da una seconda
-          chiamata. Ogni payload porta l'elenco completo da quando nomi e
-          colori hanno smesso di dipendere dal range, quindi la barra è
-          identica su ogni modalità e non cambia mentre si naviga.
-        */}
-        <div
-          style={{
-            display: 'flex',
-            gap: 2,
-            padding: 3,
-            background: 'var(--s-inset)',
-            border: '1px solid var(--bd-subtle)',
-            borderRadius: 'var(--r-sm)',
-            flexWrap: 'wrap',
-          }}
-        >
-          {Object.keys(data.labels)
-            .filter((m) => !m.startsWith('__'))
-            .map((m) => (
-              <Link
-                key={m}
-                to="/modalita/$key"
-                params={{ key: m }}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 7,
-                  borderRadius: 'var(--r-xs)',
-                  background: m === data.mode ? 'var(--s-elevated)' : 'transparent',
-                  color: m === data.mode ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                  fontSize: 12.5,
-                  fontWeight: 600,
-                  padding: '6px 11px',
-                  textDecoration: 'none',
-                }}
-              >
-                <span
-                  style={{ width: 8, height: 8, borderRadius: 2, background: colorOfMode(m), flex: 'none' }}
-                />
-                {data.labels[m] ?? m}
-              </Link>
-            ))}
-        </div>
-      </div>
+      <ModeHeader
+        mode={key}
+        labels={data.labels}
+        colorOf={colorOfMode}
+        range={range}
+        when={<span className="mono">aggiornato {hhmm(data.generatedAt)}</span>}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cards.length}, 1fr)`, gap: 12 }}>
         {cards.map((c) => (

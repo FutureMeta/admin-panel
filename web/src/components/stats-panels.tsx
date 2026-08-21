@@ -937,17 +937,19 @@ function Box({ height }: { height: number }) {
  * 300 la mappa) e non un valore comodo: se differissero, all'arrivo dei dati
  * la pagina salterebbe, e un salto è più fastidioso dell'attesa che nasconde.
  */
-export function StatsSkeleton({ cards = 4 }: { cards?: number }) {
+/**
+ * I riquadri che caricano, senza intestazione e senza `main`.
+ *
+ * Si usa quando l'intestazione la sa già chi chiama. Cambiando modalità nome,
+ * colore e schede si conoscono subito — stanno nel dizionario, che ogni payload
+ * porta intero e che non dipende né dal periodo né dalla modalità — quindi
+ * coprirli di grigio farebbe sparire sotto il dito la scheda appena cliccata.
+ * Era questo, e non l'animazione, a rendere sgradevole il cambio di modalità
+ * mentre quello di periodo andava bene.
+ */
+export function StatsPanelsSkeleton({ cards = 4 }: { cards?: number }) {
   return (
-    <main
-      style={{ display: 'flex', flexDirection: 'column', gap: 24 }}
-      role="status"
-      aria-label="caricamento delle statistiche"
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="skeleton" style={{ height: 26, width: 220, borderRadius: 'var(--r-xs)' }} />
-        <div className="skeleton" style={{ height: 14, width: 340, borderRadius: 'var(--r-xs)' }} />
-      </div>
+    <>
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cards}, 1fr)`, gap: 12 }}>
         {Array.from({ length: cards }, (_, i) => `kpi-${i}`).map((id) => (
           <Box key={id} height={116} />
@@ -960,6 +962,23 @@ export function StatsSkeleton({ cards = 4 }: { cards?: number }) {
       </div>
       <Box height={320} />
       <Box height={340} />
+    </>
+  );
+}
+
+/** La pagina intera che carica: al primo ingresso non si sa ancora nulla. */
+export function StatsSkeleton({ cards = 4 }: { cards?: number }) {
+  return (
+    <main
+      style={{ display: 'flex', flexDirection: 'column', gap: 24 }}
+      role="status"
+      aria-label="caricamento delle statistiche"
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="skeleton" style={{ height: 26, width: 220, borderRadius: 'var(--r-xs)' }} />
+        <div className="skeleton" style={{ height: 14, width: 340, borderRadius: 'var(--r-xs)' }} />
+      </div>
+      <StatsPanelsSkeleton cards={cards} />
     </main>
   );
 }

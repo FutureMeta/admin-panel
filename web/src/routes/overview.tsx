@@ -61,6 +61,10 @@ type Overview = {
   labels: Record<string, string>;
   /** I colori decisi dall'operatore. Assente = ripiego, su ordine stabile. */
   colors: Record<string, string>;
+  /** Serie da non accendere all'apertura. Nessun totale cambia. */
+  hidden: string[];
+  /** Modalità che non sono una fetta della ripartizione. */
+  outOfBreakdown: string[];
   online: Series;
   kpi: Kpi;
   heatmap: { v: number[]; w: number[]; n: number[] };
@@ -424,7 +428,7 @@ function Distribution({
   // scegliendo un altro periodo — e su un anno quell'ultimo punto è la media di
   // un giorno intero, presentata come popolazione corrente. Il perché le
   // chiavi contino quanto i valori sta in `slicesOf`.
-  const slices = slicesOf(data.current);
+  const { slices, excluded } = slicesOf(data.current, data.outOfBreakdown);
   const total = slices.reduce((a, s) => a + s.value, 0);
 
   let angle = -Math.PI / 2;
@@ -543,6 +547,22 @@ function Distribution({
               </div>
             ))
           )}
+          {/*
+            CHI NON HA UNA FETTA VA DICHIARATO.
+
+            L'operatore può togliere una modalità dalla ripartizione, e le
+            percentuali qui sopra si calcolano sul totale di quelle rimaste.
+            Senza questa riga, escludere una modalità alzerebbe in silenzio la
+            percentuale di tutte le altre: un numero plausibile, diverso dal
+            vero, e senza niente su cui dubitare. È la stessa regola della
+            mappa con i paesi non attribuiti.
+          */}
+          {excluded > 0 ? (
+            <span style={{ fontSize: 11, color: 'var(--tx-muted)', marginTop: 2 }}>
+              {numero.format(Math.round(excluded))} giocatori in modalità escluse dalla ripartizione: le
+              percentuali qui sopra non li contano.
+            </span>
+          ) : null}
         </div>
       </div>
     </section>
@@ -884,7 +904,14 @@ function NotYet({ title, sub, what }: { title: string; sub: string; what: React.
 
 export function OverviewPage() {
   const { range } = useRange();
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
+  // `null` = l'operatore non ha ancora toccato la legenda in questa sessione.
+  //
+  // IL DIZIONARIO SEMINA, NON COMANDA. `stats.mode.hidden` dice quali serie
+  // NON accendere all'apertura; da quel momento in poi decidono i click. Con
+  // un `useEffect` che risincronizza a ogni payload, il refetch ogni minuto
+  // riaccenderebbe cio' che era stato appena spento — e sembrerebbe un difetto
+  // del grafico, non una regola.
+  const [hidden, setHidden] = useState<Set<string> | null>(null);
 
   const q = useQuery({
     // La chiave PORTA il periodo: senza, cambiando selettore react-query
@@ -918,6 +945,9 @@ export function OverviewPage() {
     const to = t[t.length - 1] as number;
     return { from, to, sec: to - from };
   }, [data?.online.t]);
+
+  /** Cosa è spento adesso: i click se ci sono stati, altrimenti il dizionario. */
+  const spente = useMemo(() => hidden ?? new Set(data?.hidden ?? []), [hidden, data?.hidden]);
 
   const colorOf = useMemo(() => {
     const dictionary = Object.keys(data?.labels ?? {});
@@ -1090,7 +1120,7 @@ export function OverviewPage() {
               type="button"
               onClick={() =>
                 setHidden((prev) => {
-                  const next = new Set(prev);
+                  const next = new Set(prev ?? data.hidden);
                   if (next.has(m)) next.delete(m);
                   else next.add(m);
                   return next;
@@ -1106,7 +1136,7 @@ export function OverviewPage() {
                 cursor: 'pointer',
                 fontSize: 12,
                 color: 'var(--tx-secondary)',
-                opacity: hidden.has(m) ? 0.35 : 1,
+                opacity: spente.has(m) ? 0.35 : 1,
               }}
             >
               <span style={{ width: 18, height: 3, borderRadius: 2, background: colorOf(m) }} />
@@ -1114,7 +1144,7 @@ export function OverviewPage() {
             </button>
           ))}
         </div>
-        <OnlineChart data={data} hidden={hidden} colorOf={colorOf} />
+        <OnlineChart data={data} hidden={spente} colorOf={colorOf} />
       </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: '420px 1fr', gap: 16 }}>

@@ -128,6 +128,26 @@ export type OverviewPayload = {
    */
   colors: Record<string, string>;
 
+  /**
+   * Le modalita' che l'operatore ha marcato come da NON disegnare.
+   *
+   * Restano in `modes`, in `series` e nella distribuzione: cambia solo cosa la
+   * schermata accende all'apertura, e la legenda le elenca comunque perche'
+   * altrimenti non ci sarebbe modo di riaccenderle. NESSUN TOTALE CAMBIA — la
+   * riga di rete e' misurata, non sommata dalle modalita'.
+   */
+  hidden: string[];
+
+  /**
+   * Le modalita' che non sono una FETTA della distribuzione.
+   *
+   * La torta deve chiudere sul totale: togliere una fetta senza dirlo sposta
+   * ogni percentuale delle altre, in silenzio e in modo plausibile. Quindi il
+   * riquadro le esclude e ne dichiara la somma sotto, come gia' fa la mappa
+   * con i paesi non attribuiti.
+   */
+  outOfBreakdown: string[];
+
   online: Series;
   kpi: Kpi;
 

@@ -559,3 +559,63 @@ describe('nomi e colori non dipendono dal periodo scelto', () => {
     expect(payload.labels.eventi).toBe('Eventi');
   });
 });
+
+describe('i due interruttori del dizionario hanno un effetto, e nessuno tocca un totale', () => {
+  beforeEach(async () => {
+    await dictionary();
+    await seedHours(10);
+  });
+
+  it('prima: nessuno dei due e` acceso, quindi gli elenchi sono vuoti', async () => {
+    const { payload } = await buildOverview(db, '7d');
+    expect(payload.hidden).toEqual([]);
+    expect(payload.outOfBreakdown).toEqual([]);
+  });
+
+  it('`hidden` arriva alla schermata', async () => {
+    await sql.query("UPDATE stats.mode SET hidden = true WHERE mode_key = 'eventi'");
+    const { payload } = await buildOverview(db, '7d');
+    expect(payload.hidden).toEqual(['eventi']);
+  });
+
+  it('`in_breakdown = false` arriva alla schermata', async () => {
+    await sql.query("UPDATE stats.mode SET in_breakdown = false WHERE mode_key = 'eventi'");
+    const { payload } = await buildOverview(db, '7d');
+    expect(payload.outOfBreakdown).toEqual(['eventi']);
+  });
+
+  it('IL VINCOLO: spegnere una modalita` non sposta un solo numero', async () => {
+    // Nascondere una serie non deve MAI cambiare un totale, o «nascondi»
+    // diventa un altro nome per «falsifica» — e chi guarda non avrebbe modo
+    // di accorgersene. La riga di rete e` misurata, non sommata dalle
+    // modalita`, quindi il vincolo si puo` davvero rispettare.
+    const prima = await buildOverview(db, '7d', FISSO);
+    await sql.query("UPDATE stats.mode SET hidden = true, in_breakdown = false WHERE mode_key = 'eventi'");
+    const dopo = await buildOverview(db, '7d', FISSO);
+
+    expect(dopo.payload.kpi).toEqual(prima.payload.kpi);
+    expect(dopo.payload.online.total).toEqual(prima.payload.online.total);
+    expect(dopo.payload.online.series).toEqual(prima.payload.online.series);
+    expect(dopo.payload.modes).toEqual(prima.payload.modes);
+    expect(dopo.payload.heatmap).toEqual(prima.payload.heatmap);
+    // Cambia SOLO cio` che la schermata deve sapere per disegnare.
+    expect(dopo.payload.hidden).toEqual(['eventi']);
+    expect(dopo.payload.outOfBreakdown).toEqual(['eventi']);
+  });
+
+  it('il totale di rete non e` una modalita`, quindi non compare in nessuno dei due', async () => {
+    // OGGI E` VERO PER COSTRUZIONE, non per il filtro: `v_server_mode` da` a
+    // `__network__` il nome da un CASE e i due interruttori dal `coalesce`
+    // sul LEFT JOIN, che per la riga di rete non trova niente — quindi
+    // `hidden = false` e `in_breakdown = true`. Il filtro esplicito in
+    // `dictionaryFlags` e` difensivo e questo test non lo esercita.
+    //
+    // Serve lo stesso: se un giorno la vista cambiasse e la riga di rete
+    // comparisse fra le escluse, i suoi giocatori verrebbero annunciati come
+    // «fuori dalla ripartizione» — cioe` il totale contato una seconda volta
+    // come se fosse nascosto. Questo test lo intercetta li'.
+    const { payload } = await buildOverview(db, '7d');
+    expect(payload.outOfBreakdown).not.toContain('__network__');
+    expect(payload.hidden).not.toContain('__network__');
+  });
+});

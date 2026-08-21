@@ -14,6 +14,7 @@
 
 import type React from 'react';
 import type { Slice } from '../lib/distribution.ts';
+import { arc } from '../lib/donut.ts';
 import { axisLabel } from '../lib/when.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
@@ -399,16 +400,6 @@ export function OnlineChart({
 // ---------------------------------------------------------------------------
 // 4a — distribuzione per modalità
 // ---------------------------------------------------------------------------
-
-export function arc(cx: number, cy: number, r: number, inner: number, from: number, to: number): string {
-  const p = (radius: number, a: number) => [cx + radius * Math.cos(a), cy + radius * Math.sin(a)];
-  const [x1, y1] = p(r, from);
-  const [x2, y2] = p(r, to);
-  const [x3, y3] = p(inner, to);
-  const [x4, y4] = p(inner, from);
-  const large = to - from > Math.PI ? 1 : 0;
-  return `M${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} L${x3},${y3} A${inner},${inner} 0 ${large} 0 ${x4},${y4} Z`;
-}
 
 /**
  * La ciambella, e non sa di cosa.

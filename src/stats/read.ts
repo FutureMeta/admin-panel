@@ -319,6 +319,7 @@ async function heatmapModeRows(
   db: Database,
   from: Date,
   to: Date,
+  only: ModeFilter,
 ): Promise<Array<{ cell: number; mode_key: string; v: string }>> {
   const res = await sql<{ cell: number; mode_key: string; v: string }>`
     SELECT (extract(isodow FROM bucket AT TIME ZONE ${ROME})::int - 1) * 24
@@ -327,6 +328,7 @@ async function heatmapModeRows(
            sum(player_seconds)::bigint::text AS v
       FROM stats.v_online_1h
      WHERE bucket >= ${from} AND bucket < ${to} AND server_id <> 0
+       AND (${sql.lit(only.all)} OR mode_key = ANY(${only.keys}::text[]))
      GROUP BY cell, mode_key
   `.execute(db);
   return res.rows;
@@ -345,6 +347,7 @@ async function uniquesByModeRows(
   db: Database,
   to: Date,
   days: number,
+  only: ModeFilter,
 ): Promise<Array<{ day: string; mode_key: string; uniques: number; final: boolean }>> {
   const res = await sql<{ t: string; mode_key: string; uniques: number; final: boolean }>`
     SELECT extract(epoch FROM (u.day::timestamp AT TIME ZONE ${ROME}))::bigint::text AS t,
@@ -353,6 +356,7 @@ async function uniquesByModeRows(
       JOIN stats.mode m USING (mode_id)
      WHERE u.day >= (stats.civil_day(${to}) - ${days}::int)
        AND u.day <= stats.civil_day(${to})
+       AND (${sql.lit(only.all)} OR m.mode_key = ANY(${only.keys}::text[]))
      ORDER BY u.day
   `.execute(db);
   return res.rows.map((r) => ({
@@ -370,12 +374,18 @@ async function uniquesByModeRows(
  * nel totale di rete: e' per questo che il totale non e' la somma di queste
  * righe, e non deve mai essere presentato come se lo fosse.
  */
-async function distinctPlayersByMode(db: Database, from: Date, to: Date): Promise<Map<string, number>> {
+async function distinctPlayersByMode(
+  db: Database,
+  from: Date,
+  to: Date,
+  only: ModeFilter,
+): Promise<Map<string, number>> {
   const res = await sql<{ mode_key: string; n: string }>`
     SELECT sm.mode_key, count(DISTINCT pds.player_id)::bigint::text AS n
       FROM stats.player_day_server pds
       JOIN stats.v_server_mode sm USING (server_id)
      WHERE pds.day >= stats.civil_day(${from}) AND pds.day < stats.civil_day(${to})
+       AND (${sql.lit(only.all)} OR sm.mode_key = ANY(${only.keys}::text[]))
      GROUP BY sm.mode_key
   `.execute(db);
   return new Map(res.rows.map((r) => [r.mode_key, Number(r.n)]));
@@ -497,7 +507,7 @@ async function geoRows(
   db: Database,
   from: Date,
   now: Date,
-  perMode: boolean,
+  only: ModeFilter,
 ): Promise<Array<{ mode_key: string; cc: string | null; uniques: number }>> {
   const res = await sql<{ mode_key: string; cc: string | null; uniques: string }>`
     WITH ranged AS (
@@ -515,7 +525,8 @@ async function geoRows(
       SELECT DISTINCT sm.mode_key, pds.player_id
         FROM stats.player_day_server pds
         JOIN stats.v_server_mode sm USING (server_id)
-       WHERE ${sql.lit(perMode)}
+       WHERE ${sql.lit(only.wanted)}
+         AND (${sql.lit(only.all)} OR sm.mode_key = ANY(${only.keys}::text[]))
          AND pds.day >= stats.civil_day(${from}) AND pds.day <= stats.civil_day(${now})
     )
     SELECT '__network__' AS mode_key, t.cc, count(*)::bigint::text AS uniques
@@ -729,6 +740,29 @@ async function modeLabels(db: Database): Promise<ModeDictionary> {
     ]),
   );
 }
+
+/**
+ * Quali modalita' devono davvero entrare nelle query per modalita'.
+ *
+ * NON BASTA UN BOOLEANO, e questo lo abbiamo imparato in produzione. Il
+ * cancello `anyMode` toglieva il lavoro quando nessuno guardava una
+ * modalita'; appena la schermata di dettaglio e' esistita, l'hot-set ha smesso
+ * di essere vuoto e le query sono tornate tutte — a calcolare UNDICI modalita'
+ * per servirne una. Il giro di warm e' risalito da 846 ms a 8 secondi e la
+ * rotta del dettaglio rispondeva in 1,2-2,9 s.
+ *
+ * `all` e' un literal SQL, non un parametro: cosi' la condizione e' costante
+ * al momento del piano e PostgreSQL pota il confronto invece di valutarlo per
+ * riga.
+ */
+type ModeFilter = {
+  /** Serve almeno una modalita'? Se no, l'intero ramo non si esegue. */
+  wanted: boolean;
+  /** Tutte quelle che esistono, senza elenco. */
+  all: boolean;
+  /** L'elenco, quando non sono tutte. */
+  keys: string[];
+};
 
 type ModeDictionary = Map<
   string,
@@ -1094,6 +1128,7 @@ export async function buildAll(
   // `undefined` significa «tutte», che e' il comportamento di prima.
   const want = wanted ? new Set(wanted) : null;
   const anyMode = want === null || want.size > 0;
+  const only: ModeFilter = { wanted: anyMode, all: want === null, keys: want ? [...want] : [] };
 
   const t0 = Date.now();
 
@@ -1135,17 +1170,17 @@ export async function buildAll(
   ] = await Promise.all([
     timed('seriesRows', seriesRows(db, range, w)),
     timed('heatmap', heatmapRows(db, w.curFrom, now)),
-    timed('heatmapMode', anyMode ? heatmapModeRows(db, w.curFrom, now) : []),
+    timed('heatmapMode', anyMode ? heatmapModeRows(db, w.curFrom, now, only) : []),
     timed('deltas', deltasIn(db, w)),
     timed('labels', modeLabels(db)),
     timed('uniques', uniquesRows(db, now, daysOf(range))),
-    timed('uniquesMode', anyMode ? uniquesByModeRows(db, now, daysOf(range)) : []),
+    timed('uniquesMode', anyMode ? uniquesByModeRows(db, now, daysOf(range), only) : []),
     timed('distinct', distinctPlayers(db, w.curFrom, w.curTo)),
     timed(
       'distinctMode',
-      anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo) : new Map<string, number>(),
+      anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo, only) : new Map<string, number>(),
     ),
-    timed('geo', geoRows(db, w.curFrom, now, anyMode)),
+    timed('geo', geoRows(db, w.curFrom, now, only)),
     timed('facts', networkFacts(db)),
     timed('current', currentMix(db)),
     timed('liveUniques', liveDayUniques(db, now)),

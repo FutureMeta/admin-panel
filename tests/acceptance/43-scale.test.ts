@@ -144,3 +144,30 @@ describe('la provenienza per modalita` ha il suo cancello, come le altre', () =>
     expect(con.perMode.get('duels')?.geo).not.toBeNull();
   }, 600_000);
 });
+
+describe('chiedere UNA modalita` non cambia cosa dice il suo payload', () => {
+  it('duels e` identica chiesta da sola o insieme alle altre', async () => {
+    // LA CONDIZIONE DI SICUREZZA DEL RESTRINGIMENTO.
+    //
+    // Le query per modalita' ora filtrano sull'elenco richiesto invece di
+    // calcolarle tutte: in produzione ne servivano UNDICI per servirne una,
+    // e il giro di warm era risalito da 846 ms a 8 secondi appena qualcuno
+    // apriva un dettaglio. Il guadagno non si vede a questa scala — due
+    // modalita` e ventimila righe — e non lo si finge qui.
+    //
+    // Quello che si prova e` che il filtro non tocchi il risultato: se lo
+    // toccasse, la stessa modalita` direbbe due cose a seconda di chi altro
+    // e` stato guardato di recente, che e` la peggiore forma di dipendenza
+    // possibile fra due schermate.
+    const sola = await buildAll(db, '30d', FIXED_NOW, ['duels']);
+    const tutte = await buildAll(db, '30d', FIXED_NOW);
+
+    expect(sola.perMode.get('duels')).toEqual(tutte.perMode.get('duels'));
+  }, 600_000);
+
+  it('e la panoramica non cambia in nessuno dei due casi', async () => {
+    const sola = await buildAll(db, '30d', FIXED_NOW, ['duels']);
+    const nessuna = await buildAll(db, '30d', FIXED_NOW, []);
+    expect(sola.overview).toEqual(nessuna.overview);
+  }, 600_000);
+});

@@ -26,6 +26,7 @@ import { AuditPage_ } from './routes/audit.tsx';
 import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { ModeDetailPage } from './routes/mode-detail.tsx';
+import { ModeEntryPage } from './routes/mode-entry.tsx';
 import { ModesPage } from './routes/modes.tsx';
 import { OverviewPage } from './routes/overview.tsx';
 import { ForgotPasswordPage, ResetPasswordPage } from './routes/password.tsx';
@@ -233,6 +234,13 @@ function ModeDetailRoute() {
   return <ModeDetailPage />;
 }
 
+function ModeEntryRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
+  return <ModeEntryPage />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -273,8 +281,18 @@ const modesRoute = createRoute({
 });
 const modeDetailRoute = createRoute({
   getParentRoute: () => shellRoute,
-  path: '/modalita/$key',
+  path: '/dettaglio-modalita/$key',
   component: ModeDetailRoute,
+});
+// L'ingresso al dettaglio senza una modalità scelta: risolve la più popolata e
+// rimanda. Il percorso porta un TRATTINO, che le chiavi di modalità non possono
+// contenere (`^[a-z0-9_]{1,32}$`): così non c'è modo che collida con una
+// modalità vera, né oggi né il giorno in cui qualcuno ne crea una di nome
+// «dettaglio».
+const modeEntryRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/dettaglio-modalita',
+  component: ModeEntryRoute,
 });
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
@@ -287,7 +305,15 @@ const routeTree = rootRoute.addChildren([
   acceptRoute,
   forgotRoute,
   resetRoute,
-  shellRoute.addChildren([homeRoute, usersRoute, overviewRoute, modesRoute, modeDetailRoute, auditRoute]),
+  shellRoute.addChildren([
+    homeRoute,
+    usersRoute,
+    overviewRoute,
+    modesRoute,
+    modeEntryRoute,
+    modeDetailRoute,
+    auditRoute,
+  ]),
 ]);
 
 const router = createRouter({ routeTree, defaultPreload: false });

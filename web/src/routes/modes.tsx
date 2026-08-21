@@ -775,7 +775,7 @@ export function ModesPage({ me }: { me: Me }) {
   return (
     <>
       <PageHeader
-        title="Dettaglio modalità"
+        title="Modalità e server"
         sub="Come i server della rete si raggruppano nei grafici. Cambiare una regola cambia i numeri per modalità dal giro successivo e non tocca lo storico: si può cambiare idea."
         action={
           canManage ? (
@@ -849,7 +849,7 @@ export function ModesPage({ me }: { me: Me }) {
             */}
             {current.servers.length > 0 ? (
               <Link
-                to="/modalita/$key"
+                to="/dettaglio-modalita/$key"
                 params={{ key: current.modeKey }}
                 style={{ fontSize: 12, color: 'var(--ac-text)', textDecoration: 'none' }}
               >

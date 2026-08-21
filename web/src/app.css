@@ -244,6 +244,33 @@ body {
     box-shadow: var(--e3);
   }
 
+  /* Voce di un menù a tendina. Sta qui e non fra gli stili in linea del
+   * componente perché `:hover` in linea non esiste, e un menù che non risponde
+   * al passaggio del mouse sembra un elenco di testo. L'ordine delle due
+   * regole è la regola: il passaggio del mouse vince sulla voce corrente,
+   * altrimenti proprio quella su cui si torna più spesso resterebbe muta. */
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 8px 10px;
+    border-radius: var(--r-xs);
+    color: var(--tx-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background var(--dur) var(--ease);
+  }
+  .menu-item[data-active='true'] {
+    background: var(--s-inset);
+    color: var(--tx-primary);
+    font-weight: 600;
+  }
+  .menu-item:hover {
+    background: var(--s-elevated);
+    color: var(--tx-primary);
+  }
+
   /* --- bottoni ------------------------------------------------------------ */
   .btn {
     display: inline-flex;

@@ -31,6 +31,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import { ModePicker } from '../components/mode-picker.tsx';
 import {
   type Card,
   DailyUniques,
@@ -76,7 +77,7 @@ function serverPalette(keys: string[]): (key: string) => string {
 }
 
 /**
- * Nome, colore e schede: la parte che si sa SEMPRE.
+ * Nome, colore e selettore: la parte che si sa SEMPRE.
  *
  * Sta in un componente a parte perché la disegnano due rami — la pagina piena e
  * quella che sta caricando una modalità nuova — e devono essere identici, senza
@@ -99,69 +100,16 @@ function ModeHeader({
   when: ReactNode;
 }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 20 }}>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <span style={{ width: 11, height: 11, borderRadius: 3, background: colorOf(mode), flex: 'none' }} />
-          <h2
-            style={{
-              fontFamily: 'var(--font-display)',
-              fontSize: 22,
-              lineHeight: '30px',
-              fontWeight: 700,
-              letterSpacing: '-.01em',
-              margin: 0,
-            }}
-          >
-            {labels[mode] ?? mode}
-          </h2>
-        </div>
-        <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
-          {labelOf(range)} · fuso Europe/Rome · {when}
-        </div>
-      </div>
-
+    <div>
       {/*
-        Le altre modalità, dal DIZIONARIO del payload — non da una seconda
-        chiamata. Ogni payload porta l'elenco completo da quando nomi e colori
-        hanno smesso di dipendere dal range, quindi la barra è identica su ogni
-        modalità e non cambia mentre si naviga.
+        Il selettore È il titolo, e l'elenco viene dal DIZIONARIO del payload —
+        non da una seconda chiamata. Ogni payload lo porta intero da quando
+        nomi e colori hanno smesso di dipendere dal range, quindi il menù è
+        identico su ogni modalità e non cambia mentre si naviga.
       */}
-      <div
-        style={{
-          display: 'flex',
-          gap: 2,
-          padding: 3,
-          background: 'var(--s-inset)',
-          border: '1px solid var(--bd-subtle)',
-          borderRadius: 'var(--r-sm)',
-          flexWrap: 'wrap',
-        }}
-      >
-        {Object.keys(labels)
-          .filter((m) => !m.startsWith('__'))
-          .map((m) => (
-            <Link
-              key={m}
-              to="/modalita/$key"
-              params={{ key: m }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 7,
-                borderRadius: 'var(--r-xs)',
-                background: m === mode ? 'var(--s-elevated)' : 'transparent',
-                color: m === mode ? 'var(--tx-primary)' : 'var(--tx-secondary)',
-                fontSize: 12.5,
-                fontWeight: 600,
-                padding: '6px 11px',
-                textDecoration: 'none',
-              }}
-            >
-              <span style={{ width: 8, height: 8, borderRadius: 2, background: colorOf(m), flex: 'none' }} />
-              {labels[m] ?? m}
-            </Link>
-          ))}
+      <ModePicker mode={mode} labels={labels} colorOf={colorOf} />
+      <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 6 }}>
+        {labelOf(range)} · fuso Europe/Rome · {when}
       </div>
     </div>
   );
@@ -193,7 +141,7 @@ function useSettled(flag: boolean, ms: number): boolean {
 
 export function ModeDetailPage() {
   const { range } = useRange();
-  const { key } = useParams({ from: '/shell/modalita/$key' });
+  const { key } = useParams({ from: '/shell/dettaglio-modalita/$key' });
 
   const q = useQuery({
     // La chiave porta modalità E periodo: senza, passando da una modalità

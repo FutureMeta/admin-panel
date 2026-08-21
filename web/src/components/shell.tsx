@@ -54,9 +54,23 @@ const NAV: NavItem[] = [
     icon: ICONS.log,
     prefetch: () => void loadWorld().catch(() => undefined),
   },
+  // Porta all'INGRESSO, non a una modalità fissata: la rotta risolve la più
+  // popolata in questo momento e rimanda lì. Una chiave scritta qui sarebbe
+  // quella giusta il primo giorno e quella sbagliata tutti gli altri.
+  //
+  // Il percorso del dettaglio sta SOTTO questo, non sotto `/modalita`: lo
+  // stato attivo della barra è un `startsWith`, e con `/modalita` e
+  // `/modalita/duels` le due voci qui sotto si accendevano insieme.
   {
     modules: ['statistiche'],
     label: 'Dettaglio modalità',
+    to: '/dettaglio-modalita',
+    area: 'Analisi',
+    icon: ICONS.log,
+  },
+  {
+    modules: ['statistiche'],
+    label: 'Modalità e server',
     to: '/modalita',
     area: 'Analisi',
     icon: ICONS.log,

@@ -87,9 +87,22 @@ export const K = {
  * bisognava sapere a memoria questa tabella. Un selettore di intervallo
  * cambia COSA si guarda, non quanto e' vecchio.
  *
- * Il costo che giustificava lo scaglionamento non c'e' piu': saltando i
- * payload per modalita` quando nessuno li ha chiesti (vedi `buildAll`), il
- * giro completo dei cinque range misura ~1,1 s, sotto il 2% di un minuto.
+ * Il costo che giustificava lo scaglionamento e' sceso — saltando i payload
+ * per modalita` quando nessuno li ha chiesti, vedi `buildAll` — ma NON e'
+ * trascurabile, e questo commento diceva il falso.
+ *
+ * ~1,1 s era misurato su una macchina di sviluppo con tre server. In
+ * produzione, con diciannove server e due giorni di storico, il giro completo
+ * misura ~7,9 s: i giri distano 68 secondi invece di 60, perche' il timer
+ * riparte alla FINE del giro. E' il 12% del tempo, non il 2%.
+ *
+ * Non e' un guasto — la cache resta fresca, `fresh` e' 90 s e il periodo vero
+ * e' 68 — ma il margine e' 22 secondi, e si assottiglia da solo man mano che
+ * lo storico cresce. Quando il giro superasse i 30 s, il periodo passerebbe i
+ * 90 e ogni richiesta troverebbe una chiave obsoleta: il ramo `stale`
+ * reggerebbe, ma silenziosamente, servendo numeri vecchi come se fossero
+ * freschi. La riga di log porta ora `ms` per range apposta: e' li' che si
+ * vedra' quale range cresce, prima che il margine finisca.
  */
 export const WARM_MS = 60 * S;
 

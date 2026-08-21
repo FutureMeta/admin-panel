@@ -2010,7 +2010,7 @@ Il costo che giustificava lo scaglionamento è stato tolto, non accettato: `buil
 | 90g | 816 ms | 605 ms |
 | 1y | 394 ms | 205 ms |
 
-Giro completo ~1,1 s al minuto, sotto il 2%. `buildOverview` passa `[]`; il worker legge l'hot-set **prima** di costruire, non dopo — chiederlo dopo significava costruire il payload di ogni modalità per poi scoprire quali servivano, e a hot-set vuoto era lavoro interamente buttato.
+Giro completo ~1,1 s **su macchina di sviluppo, tre server**. In produzione, con diciannove server e due giorni di storico, il giro misura **~7,9 s**: i giri distano 68 secondi invece di 60, perché il timer riparte alla fine del giro. È il 12% del tempo, non il 2%. `fresh` è 90 s e il periodo vero 68, quindi il margine è di 22 secondi e si assottiglia da solo mentre lo storico cresce — la riga di log porta `ms` per range proprio per vedere quale cresce prima che il margine finisca. `buildOverview` passa `[]`; il worker legge l'hot-set **prima** di costruire, non dopo — chiederlo dopo significava costruire il payload di ogni modalità per poi scoprire quali servivano, e a hot-set vuoto era lavoro interamente buttato.
 
 `fresh = 1,5 × warm`. Se fossero uguali, ogni warm arriverebbe un capello in ritardo e ogni richiesta vedrebbe una chiave tecnicamente obsoleta, innescando rivalidazioni all'infinito.
 

@@ -6,23 +6,27 @@
 // vengono, chi sono, da dove.
 //
 //   1. intestazione: titolo e periodo
-//   2. cinque KPI in riga
+//   2. i KPI in riga
 //   3. andamento online nel tempo, con la legenda delle modalità
 //   4. distribuzione per modalità (420px) accanto alla heatmap
 //   5. giocatori unici giornalieri
 //   6. provenienza geografica
 //
-// COSA NON HA ANCORA DATI, e perché non lo si finge. «Nuovi giocatori» e
-// «Record storico» richiedono l anagrafica dei giocatori; la geografia arriva
-// col passo 7. Quei riquadri ci sono e dicono che il dato non è ancora
-// raccolto, invece di mostrare uno zero: uno zero al posto di un dato mancante
-// è la stessa bugia che il resto di questo lavoro esiste per impedire.
+// COSA NON HA ANCORA DATI, e perché non lo si finge. Dove il dato manca, il
+// riquadro lo dice invece di mostrare uno zero: uno zero al posto di un dato
+// mancante è la stessa bugia che il resto di questo lavoro esiste per impedire.
+//
+// «Nuovi giocatori oggi» non c'è più. Richiedeva l'anagrafica dei giocatori,
+// che il poller non raccoglie: restava un riquadro permanentemente vuoto, e un
+// posto vuoto che non si riempirà occupa attenzione senza restituire niente.
+// Dire «non lo so» ha senso finché è una notizia; ripeterlo per sempre no.
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { HoverTip, useHoverTip } from '../components/hover-tip.tsx';
 import { WorldMap } from '../components/world-map.tsx';
 import { apiWithHeaders } from '../lib/api.ts';
+import { slicesOf } from '../lib/distribution.ts';
 import { labelOf, useRange } from '../lib/range.tsx';
 
 type Series = {
@@ -116,7 +120,7 @@ function hhmm(epochSec: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// 2 — i cinque KPI
+// 2 — i KPI
 // ---------------------------------------------------------------------------
 
 type Card = {
@@ -409,16 +413,14 @@ function Distribution({
   onlineNow: number | null;
   colorOf: (m: string) => string;
 }) {
-  // DAL DATO SUO, non dalla serie del range.
+  // DAL DATO SUO, non dalla serie del range: chiavi e valori insieme.
   //
   // Questo riquadro è l'unico che il selettore in alto non governa: risponde a
   // «chi c'è adesso». Prendendo l'ultimo punto della serie selezionata cambiava
   // scegliendo un altro periodo — e su un anno quell'ultimo punto è la media di
-  // un giorno intero, presentata come popolazione corrente.
-  const slices = data.modes
-    .map((m) => ({ key: m, value: data.current?.byMode[m] ?? 0 }))
-    .filter((s) => s.value > 0)
-    .sort((a, b) => b.value - a.value);
+  // un giorno intero, presentata come popolazione corrente. Il perché le
+  // chiavi contino quanto i valori sta in `slicesOf`.
+  const slices = slicesOf(data.current);
   const total = slices.reduce((a, s) => a + s.value, 0);
 
   let angle = -Math.PI / 2;
@@ -883,12 +885,18 @@ export function OverviewPage() {
   const onlineAt = q.data?.headers.get('X-Online-Now-At');
 
   const colorOf = useMemo(() => {
+    // Le modalità del range PIÙ quelle di adesso. La distribuzione risponde a
+    // «chi c'è ora» e non passa dal selettore: una modalità aperta oggi ma
+    // assente dalla serie scelta ha comunque la sua fetta, e senza questa
+    // unione le toccherebbe il grigio di ripiego — cioè lo stesso colore di
+    // tutte le altre nella sua condizione, che è come non averne.
     const assigned = new Map<string, string>();
-    (data?.modes ?? []).forEach((m, i) => {
+    const presenti = [...new Set([...(data?.modes ?? []), ...Object.keys(data?.current?.byMode ?? {})])];
+    presenti.forEach((m, i) => {
       assigned.set(m, FALLBACK[i % FALLBACK.length] as string);
     });
     return (m: string) => assigned.get(m) ?? 'var(--tx-muted)';
-  }, [data?.modes]);
+  }, [data?.modes, data?.current]);
 
   if (q.isError) {
     return (
@@ -928,7 +936,18 @@ export function OverviewPage() {
       // Il massimo non viaggia mai da solo: senza il suo istante e la
       // copertura del bucket in cui e' avvenuto non e' verificabile.
       delta: '',
-      note: data.kpi.peakAt ? `alle ${hhmm(data.kpi.peakAt)}` : 'nessun bucket chiuso',
+      // DUE ASSENZE DIVERSE, e chiamarle allo stesso modo manda a cercare la
+      // cosa sbagliata. «Nessun bucket chiuso» vuol dire che il periodo c'è
+      // ma il campionamento non ha ancora chiuso niente — si aspetta. Un
+      // periodo interamente vuoto vuol dire che per quel range non esiste
+      // storico: sull'1y i punti sono i rollup giornalieri, e finché non ce
+      // n'è nemmeno uno non c'è niente da aspettare, c'è un livello di
+      // aggregazione che non ha ancora girato.
+      note: data.kpi.peakAt
+        ? `alle ${hhmm(data.kpi.peakAt)}`
+        : data.online.total.every((v) => v === null)
+          ? 'nessun dato in questo periodo'
+          : 'nessun bucket chiuso',
       tone: 'muted',
       ready: data.kpi.peak !== null,
     },
@@ -942,15 +961,6 @@ export function OverviewPage() {
       note: oggi === null ? 'nessun giorno con dati' : 'giorno in corso',
       tone: 'muted',
       ready: oggi !== null,
-    },
-    {
-      label: 'Nuovi giocatori oggi',
-      value: '—',
-      unit: 'gioc.',
-      delta: '',
-      note: 'anagrafica non ancora raccolta',
-      tone: 'muted',
-      ready: false,
     },
     {
       label: 'Record storico',
@@ -992,7 +1002,12 @@ export function OverviewPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+      {/*
+        Le colonne le conta l'array, non io. Erano cinque scritte a mano:
+        togliendo una carta restava una colonna vuota a destra, cioè un
+        buco che sembra un riquadro non caricato.
+      */}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cards.length}, 1fr)`, gap: 12 }}>
         {cards.map((c) => (
           <KpiCard key={c.label} card={c} />
         ))}

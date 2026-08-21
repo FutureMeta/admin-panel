@@ -398,3 +398,36 @@ describe('nessun range e` piu` fresco di un altro', () => {
     expect(new Set(finestre.values()).size, [...finestre].join(' ')).toBe(1);
   });
 });
+
+describe('il tetto vale per la parte modalita`, non per il giro intero', () => {
+  /** Due modalita` calde, cosi` il ciclo ha davvero qualcosa da fare. */
+  async function heatBoth(): Promise<void> {
+    for (const mode of ['arena', 'eventi']) {
+      await t.ctx.cacheRedis.zadd(K.hot('7d'), Date.now(), mode);
+    }
+  }
+
+  it('una costruzione piu` lunga del tetto non fa rimandare TUTTO', async () => {
+    await heatBoth();
+
+    // Cinque millisecondi: la costruzione del payload ne dura sicuramente di
+    // piu`. Misurando dall'inizio del giro il tetto sarebbe gia` esaurito e
+    // NESSUNA modalita` verrebbe scaldata; misurando dal ciclo, la prima
+    // passa comunque — l'orologio riparte da li`.
+    //
+    // E` il difetto che in produzione teneva `deferred` fisso a 14 con i
+    // range a 200-400 ms: il tetto era sempre finito prima di cominciare, e
+    // ogni payload per modalita` si costruiva sulla richiesta di qualcuno.
+    const r = await warmRange({ ...deps(), budgetMs: 5 }, '7d');
+
+    expect(r.payloads).toBeGreaterThan(1);
+  });
+
+  it('e con tetto largo non rimanda niente', async () => {
+    await heatBoth();
+    const r = await warmRange({ ...deps(), budgetMs: 60_000 }, '7d');
+
+    expect(r.deferred).toBe(0);
+    expect(r.payloads).toBe(3); // la panoramica piu` le due modalita`
+  });
+});

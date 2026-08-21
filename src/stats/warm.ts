@@ -171,6 +171,16 @@ export type WarmDeps = {
   /** Il Redis della cache: ci vivono anche gli hot-set. */
   redis: Redis;
   logger: Logger;
+  /**
+   * Il tetto della parte «modalita'», se diverso da `WARM_BUDGET_MS`.
+   *
+   * Esiste per poter VERIFICARE che il tetto si applichi al ciclo e non al
+   * giro intero. La differenza fra le due letture si vede solo quando la
+   * costruzione dura piu' del tetto, e senza poterlo abbassare quella
+   * condizione non si riproduce in un test: resterebbe una correzione
+   * argomentata e non provata.
+   */
+  budgetMs?: number;
 };
 
 export type WarmResult = {
@@ -212,12 +222,27 @@ export async function warmRange(deps: WarmDeps, range: Range): Promise<WarmResul
   // (~60 letture per build), quindi i 34 ms di compressione si ammortizzano.
   await deps.cache.warmEnvelope(K.ov(range), async () => serialize(built.overview), ttl, 11);
 
+  // IL BUDGET PARTE DA QUI, non dall'inizio del giro.
+  //
+  // Misurato da `t0` comprendeva l'hot-set, la costruzione e la compressione
+  // della panoramica: in produzione un range costa 200-400 ms, quindi i 250 ms
+  // erano finiti PRIMA che questo ciclo cominciasse e ogni modalita' veniva
+  // rimandata. Il log lo diceva da solo — `deferred: 14` fisso, tornata dopo
+  // tornata — e il commento sulla costante diceva gia' la cosa giusta:
+  // «quanto puo' durare la parte modalita' di un giro».
+  //
+  // La conseguenza non era teorica: rimandare significa costruire il payload
+  // sulla RICHIESTA di qualcuno, ed e' da li' che uscivano i 300 ms sparsi in
+  // mezzo ai 55.
+  const modesFrom = Date.now();
+  const budget = deps.budgetMs ?? WARM_BUDGET_MS;
+
   let payloads = 1;
   let deferred = 0;
   for (const mode of hot) {
     const payload = built.perMode.get(mode);
     if (!payload) continue;
-    if (Date.now() - t0 > WARM_BUDGET_MS || deps.cache.underPressure) {
+    if (Date.now() - modesFrom > budget || deps.cache.underPressure) {
       deferred += 1;
       continue;
     }

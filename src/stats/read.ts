@@ -939,6 +939,8 @@ export type AllBuild = {
   overview: OverviewPayload;
   perMode: Map<string, ModePayload>;
   queryMs: number;
+  /** Le tre query piu' care di questo giro, per nome. Vanno nel log. */
+  slowest: Record<string, number>;
 };
 
 /**
@@ -979,6 +981,27 @@ export async function buildAll(
   const anyMode = want === null || want.size > 0;
 
   const t0 = Date.now();
+
+  // QUALE query costa, non solo quanto costa il giro.
+  //
+  // Tredici query in parallelo dietro un solo numero: quando il totale sale,
+  // il numero non dice dove guardare, e l'unico modo di scoprirlo e'
+  // strumentare a mano e rimettere in produzione. E' successo, ed e' costato
+  // un giro di rilascio per una domanda a cui il codice poteva rispondere da
+  // solo. Tredici coppie di `Date.now()` non si misurano nemmeno.
+  const timings: Array<[string, number]> = [];
+  // `PromiseLike<T> | T` e non `Promise<T>`: i rami saltati passano di qui
+  // gia' risolti (un array vuoto, una Map vuota), e vanno cronometrati come
+  // gli altri — costano zero, ed e' proprio quello che si vuole leggere.
+  const timed = async <T>(name: string, p: T | PromiseLike<T>): Promise<T> => {
+    const at = Date.now();
+    try {
+      return await p;
+    } finally {
+      timings.push([name, Date.now() - at]);
+    }
+  };
+
   const [
     rows,
     heat,
@@ -994,21 +1017,27 @@ export async function buildAll(
     current,
     liveUniques,
   ] = await Promise.all([
-    seriesRows(db, range, w),
-    heatmapRows(db, w.curFrom, now),
-    anyMode ? heatmapModeRows(db, w.curFrom, now) : [],
-    deltasIn(db, w),
-    modeLabels(db),
-    uniquesRows(db, now, daysOf(range)),
-    anyMode ? uniquesByModeRows(db, now, daysOf(range)) : [],
-    distinctPlayers(db, w.curFrom, w.curTo),
-    anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo) : new Map<string, number>(),
-    geoRows(db, w.curFrom, now),
-    networkFacts(db),
-    currentMix(db),
-    liveDayUniques(db, now),
+    timed('seriesRows', seriesRows(db, range, w)),
+    timed('heatmap', heatmapRows(db, w.curFrom, now)),
+    timed('heatmapMode', anyMode ? heatmapModeRows(db, w.curFrom, now) : []),
+    timed('deltas', deltasIn(db, w)),
+    timed('labels', modeLabels(db)),
+    timed('uniques', uniquesRows(db, now, daysOf(range))),
+    timed('uniquesMode', anyMode ? uniquesByModeRows(db, now, daysOf(range)) : []),
+    timed('distinct', distinctPlayers(db, w.curFrom, w.curTo)),
+    timed(
+      'distinctMode',
+      anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo) : new Map<string, number>(),
+    ),
+    timed('geo', geoRows(db, w.curFrom, now)),
+    timed('facts', networkFacts(db)),
+    timed('current', currentMix(db)),
+    timed('liveUniques', liveDayUniques(db, now)),
   ]);
   const queryMs = Date.now() - t0;
+  // Le tre piu' care, e basta: l'elenco intero sarebbe rumore in ogni riga di
+  // log scritta quando tutto va bene.
+  const slowest = Object.fromEntries(timings.sort(([, a], [, b]) => b - a).slice(0, 3));
 
   const cur = collect(rows);
 
@@ -1249,5 +1278,5 @@ export async function buildAll(
     });
   }
 
-  return { overview: payload, perMode, queryMs };
+  return { overview: payload, perMode, queryMs, slowest };
 }

@@ -172,6 +172,8 @@ export type WarmResult = {
   deferred: number;
   rows: number;
   ms: number;
+  /** Le tre query piu' care di questo giro. Servono quando `ms` sale. */
+  slowest: Record<string, number>;
 };
 
 /**
@@ -220,7 +222,13 @@ export async function warmRange(deps: WarmDeps, range: Range): Promise<WarmResul
     payloads += 1;
   }
 
-  return { payloads, deferred, rows: built.overview.online.t.length, ms: Date.now() - t0 };
+  return {
+    payloads,
+    deferred,
+    rows: built.overview.online.t.length,
+    ms: Date.now() - t0,
+    slowest: built.slowest,
+  };
 }
 
 export type StatsWorker = { stop: () => void };
@@ -252,6 +260,11 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
         // e una somma non dice mai dove sta il peso. Cinque numeri per riga
         // costano nulla e tolgono un'indagine ogni volta che serviranno.
         const ms: Partial<Record<Range, number>> = {};
+        // LA RIPARTIZIONE DEL SOLO RANGE PIU' LENTO. Tredici numeri per
+        // cinque range sarebbero sessantacinque per riga, ogni minuto, e una
+        // riga che nessuno legge non e' osservabilita': e' rumore che nasconde
+        // le righe che contano. Il peggiore basta a sapere dove guardare.
+        let peggiore: { range: Range; ms: number; slowest: Record<string, number> } | null = null;
         let payloads = 0;
         let deferred = 0;
         for (const range of RANGES) {
@@ -260,6 +273,7 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
             payloads += r.payloads;
             deferred += r.deferred;
             ms[range] = r.ms;
+            if (!peggiore || r.ms > peggiore.ms) peggiore = { range, ms: r.ms, slowest: r.slowest };
             pronti.push(range);
           } catch {
             // UN range rotto non ne ferma altri quattro: il 90g che va in
@@ -272,7 +286,15 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
         if (pronti.length === 0) {
           throw new Error(`nessun range ricostruito: ${falliti.join(', ')}`);
         }
-        return { pronti, falliti, payloads, deferred, ms, totaleMs: Date.now() - t0 };
+        return {
+          pronti,
+          falliti,
+          payloads,
+          deferred,
+          ms,
+          totaleMs: Date.now() - t0,
+          piuLento: peggiore ? { range: peggiore.range, query: peggiore.slowest } : null,
+        };
       },
       successMessage: 'payload statistiche ricostruiti',
       failureMessage: 'il pannello statistiche servira` numeri vecchi',

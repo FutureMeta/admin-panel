@@ -87,22 +87,28 @@ export const K = {
  * bisognava sapere a memoria questa tabella. Un selettore di intervallo
  * cambia COSA si guarda, non quanto e' vecchio.
  *
- * Il costo che giustificava lo scaglionamento e' sceso — saltando i payload
- * per modalita` quando nessuno li ha chiesti, vedi `buildAll` — ma NON e'
- * trascurabile, e questo commento diceva il falso.
+ * Il costo che giustificava lo scaglionamento non c'e' piu': saltando i
+ * payload per modalita` quando nessuno li ha chiesti (vedi `buildAll` e il
+ * cancello dentro `geoRows`), il giro completo dei cinque range misura
+ * **754 ms IN PRODUZIONE**, con diciannove server — 24h 360, 7g 69, 30g 84,
+ * 90g 107, 1y 133.
  *
- * ~1,1 s era misurato su una macchina di sviluppo con tre server. In
- * produzione, con diciannove server e due giorni di storico, il giro completo
- * misura ~7,9 s: i giri distano 68 secondi invece di 60, perche' il timer
- * riparte alla FINE del giro. E' il 12% del tempo, non il 2%.
+ * IL NUMERO E' MISURATO LI', e la storia vale piu' del numero. Prima diceva
+ * «~1,1 s, sotto il 2%», misurato su una macchina di sviluppo con tre server:
+ * in produzione erano 7,9 s, cioe' il 12% del tempo, e i giri distavano 68
+ * secondi invece di 60 perche' il timer riparte alla fine del giro. Un numero
+ * piccolo affermato senza dire dove era stato preso e' peggio di nessun
+ * numero: dice a chi legge che la cosa era stata verificata.
  *
- * Non e' un guasto — la cache resta fresca, `fresh` e' 90 s e il periodo vero
- * e' 68 — ma il margine e' 22 secondi, e si assottiglia da solo man mano che
- * lo storico cresce. Quando il giro superasse i 30 s, il periodo passerebbe i
- * 90 e ogni richiesta troverebbe una chiave obsoleta: il ramo `stale`
- * reggerebbe, ma silenziosamente, servendo numeri vecchi come se fossero
- * freschi. La riga di log porta ora `ms` per range apposta: e' li' che si
- * vedra' quale range cresce, prima che il margine finisca.
+ * Gli 8 secondi erano UNA query: la meta' «per modalita'» di `geoRows`,
+ * calcolata a ogni giro e buttata via perche' nessuno aveva aperto il
+ * dettaglio di una modalita'. Chiuso quel cancello, i tre range lunghi sono
+ * passati da ~2500 ms a meno di 140.
+ *
+ * `fresh` e' 90 s e il periodo vero e' 61: il margine e' tornato ampio. La
+ * riga di log porta `ms` per range e il nome della query piu' cara del range
+ * peggiore — e' li' che si vedra' il prossimo che cresce, prima che diventi
+ * un'indagine.
  */
 export const WARM_MS = 60 * S;
 

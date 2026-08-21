@@ -2010,7 +2010,13 @@ Il costo che giustificava lo scaglionamento è stato tolto, non accettato: `buil
 | 90g | 816 ms | 605 ms |
 | 1y | 394 ms | 205 ms |
 
-Giro completo ~1,1 s **su macchina di sviluppo, tre server**. In produzione, con diciannove server e due giorni di storico, il giro misura **~7,9 s**: i giri distano 68 secondi invece di 60, perché il timer riparte alla fine del giro. È il 12% del tempo, non il 2%. `fresh` è 90 s e il periodo vero 68, quindi il margine è di 22 secondi e si assottiglia da solo mentre lo storico cresce — la riga di log porta `ms` per range proprio per vedere quale cresce prima che il margine finisca. `buildOverview` passa `[]`; il worker legge l'hot-set **prima** di costruire, non dopo — chiederlo dopo significava costruire il payload di ogni modalità per poi scoprire quali servivano, e a hot-set vuoto era lavoro interamente buttato.
+Giro completo **754 ms misurati in produzione**, con diciannove server: 24h 360, 7g 69, 30g 84, 90g 107, 1y 133. Poco più dell’1% di un minuto.
+
+La storia vale più del numero. Questa riga ha detto due cose sbagliate prima di dirne una giusta. La prima: «~1,1 s, sotto il 2%», misurato su una macchina di sviluppo con tre server e affermato come se valesse ovunque. In produzione erano **7,9 s** — il 12% del tempo, con i giri a 68 secondi invece di 60 perché il timer riparte alla fine del giro.
+
+Quegli 8 secondi erano **una query**: la metà «per modalità» di `geoRows`, calcolata a ogni giro e buttata via perché nessuno aveva aperto il dettaglio di una modalità — lo stesso difetto già corretto per le altre tre query per modalità, sfuggito perché qui la metà per modalità sta dentro la stessa query invece che in una funzione a parte. Chiuso il cancello, i tre range lunghi sono passati da ~2500 ms a meno di 140.
+
+Per arrivarci sono serviti due giri di rilascio, perché il log dava un totale e non una ripartizione. Ora `buildAll` cronometra tutte e tredici le query e il giro stampa `ms` per range più il nome della query più cara del range peggiore: tredici coppie di `Date.now()` che non si misurano, contro due indagini.
 
 `fresh = 1,5 × warm`. Se fossero uguali, ogni warm arriverebbe un capello in ritardo e ogni richiesta vedrebbe una chiave tecnicamente obsoleta, innescando rivalidazioni all'infinito.
 

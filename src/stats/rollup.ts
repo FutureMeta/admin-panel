@@ -112,6 +112,32 @@ function windowOf(state: StateRow, level: RollupLevel, now: number): { from: Dat
 }
 
 /** Un giro su un livello. Idempotente: rieseguirlo non cambia niente. */
+/**
+ * L'ultimo watermark scritto per livello, in millisecondi. Per la metrica.
+ *
+ * SERVE PERCHE' «IN PARI» NON E' UNA PROVA. `behind_buckets` si calcola da
+ * `to`, e `to` non puo' mai stare dietro al watermark: se il watermark finisce
+ * nel futuro — un orologio corretto all'indietro, uno snapshot ripristinato —
+ * la finestra si chiude su se' stessa, il giro dichiara `caughtUp: true`,
+ * `rows_written` conserva l'ultimo valore utile e `updated_at` continua a
+ * rinfrescarsi. Il livello e' fermo per sempre e ogni segnale disponibile dice
+ * che sta bene.
+ *
+ * Il watermark nudo invece non mente: fermo o avanti rispetto a `now` sono
+ * entrambe cose che si vedono da fuori, e sono le due sole forme dello stallo.
+ *
+ * Sta in memoria e non si legge dal database perche' il ruolo di sola lettura
+ * del pannello non ha accesso a `stats.rollup_state`, e allargarglielo
+ * vorrebbe dire una migration per una metrica. Un livello che non compare e'
+ * un livello che in questo processo non ha mai girato — che e' esattamente
+ * l'altra cosa che si vuole sapere.
+ */
+const LAST_WATERMARK = new Map<string, number>();
+
+export function rollupWatermarks(): Array<[string, number]> {
+  return [...LAST_WATERMARK.entries()].sort(([a], [b]) => a.localeCompare(b));
+}
+
 export async function runRollup(db: Database, level: RollupLevel, now = Date.now()): Promise<RollupResult> {
   return db.transaction().execute(async (tx) => {
     const state = await lockState(tx, level);
@@ -141,6 +167,7 @@ export async function runRollup(db: Database, level: RollupLevel, now = Date.now
        WHERE level = ${level}
     `.execute(tx);
 
+    LAST_WATERMARK.set(level, to.getTime());
     return { level, from, to, rowsWritten, behindBuckets, caughtUp: behindBuckets === 0 };
   });
 }
@@ -364,8 +391,18 @@ export async function dailyClose(db: Database, now = new Date()): Promise<{ days
   return db.transaction().execute(async (tx) => {
     const state = await lockState(tx, 'daily_close');
 
-    const days = await sql<{ day: string; is_today: boolean }>`
-      SELECT g::date::text AS day, (g::date = stats.civil_day(${now})) AS is_today
+    const days = await sql<{ day: string; is_today: boolean; rolled_up: boolean }>`
+      SELECT g::date::text AS day, (g::date = stats.civil_day(${now})) AS is_today,
+             -- IL ROLLUP ORARIO HA GIA' SUPERATO QUESTO GIORNO?
+             --
+             -- Senza questa domanda, subito dopo mezzanotte questa chiusura
+             -- marcava «definitivo» ieri mentre il livello '1d' doveva ancora
+             -- consumarne le 22 e le 23 — che il livello '1h' scrive verso le
+             -- 00:05. Chi arrivava primo decideva, e da quel momento il
+             -- rollup non poteva piu' toccare la riga: un giorno amputato,
+             -- congelato per sempre e non riparabile nemmeno riavvolgendo.
+             (SELECT s.watermark >= (g::date + 1)::timestamp AT TIME ZONE 'Europe/Rome'
+                FROM stats.rollup_state s WHERE s.level = '1d') AS rolled_up
         FROM generate_series(
                LEAST(stats.civil_day(${state.watermark}), stats.civil_day(${now}))::timestamp,
                stats.civil_day(${now})::timestamp,
@@ -376,10 +413,16 @@ export async function dailyClose(db: Database, now = new Date()): Promise<{ days
        LIMIT 31
     `.execute(tx);
 
-    for (const { day, is_today } of days.rows) {
+    for (const { day, is_today, rolled_up } of days.rows) {
       // Solo i giorni CHIUSI diventano definitivi. Il giorno in corso si
       // riscrive a ogni giro, ed e' giusto: sta ancora succedendo.
-      const final = !is_today;
+      //
+      // E solo quelli che il rollup ha finito di aggregare: «definitivo» vuol
+      // dire «non cambiera' piu'», e dirlo di un giorno ancora in lavorazione
+      // lo blocca a meta'. Se il livello '1d' e' fermo, i giorni restano
+      // riscrivibili — che e' un ritardo, mentre l'alternativa e' un numero
+      // sbagliato dichiarato definitivo.
+      const final = !is_today && rolled_up === true;
 
       await sql`
         UPDATE stats.rollup_1d d SET
@@ -429,6 +472,7 @@ export async function dailyClose(db: Database, now = new Date()): Promise<{ days
                rows_written = ${days.rows.length}
          WHERE level = 'daily_close'
       `.execute(tx);
+      LAST_WATERMARK.set('daily_close', new Date(`${last.day}T00:00:00Z`).getTime());
     }
 
     return { days: days.rows.length };

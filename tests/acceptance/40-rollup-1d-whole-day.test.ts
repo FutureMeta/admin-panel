@@ -20,7 +20,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
-import { runRollup } from '#src/stats/rollup.ts';
+import { dailyClose, rollupWatermarks, runRollup } from '#src/stats/rollup.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 let testDb: TestDatabase;
@@ -110,5 +110,65 @@ describe('il giorno vale ventiquattro ore, non le ultime della finestra', () => 
     await runRollup(db, '1d', ULTIMA_ORA.getTime() + 3_600_000);
     await runRollup(db, '1d', ULTIMA_ORA.getTime() + 7_200_000);
     expect(await rigaDiRete()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+  });
+});
+
+describe('«definitivo» si dice quando il rollup ha finito, non a mezzanotte', () => {
+  /** `final` della riga di rete per il giorno seminato. */
+  async function definitivo(): Promise<boolean | null> {
+    const r = await sql.query(`SELECT final FROM stats.rollup_1d WHERE server_id = 0 AND day = $1::date`, [
+      GIORNO,
+    ]);
+    return (r.rows[0] as { final: boolean } | undefined)?.final ?? null;
+  }
+
+  it('un giorno che il rollup non ha ancora superato resta riscrivibile', async () => {
+    // Mezzogiorno: il rollup ha aggregato meta` giornata e basta.
+    await runRollup(db, '1d', new Date('2026-02-10T11:00:00Z').getTime());
+    await sql.query(
+      `UPDATE stats.rollup_state SET watermark = timestamptz '2026-02-09 00:00Z' WHERE level = 'daily_close'`,
+    );
+
+    // La chiusura gira col giorno gia` passato per il calendario.
+    await dailyClose(db, new Date('2026-02-11T00:01:00Z'));
+
+    // IL DIFETTO: qui usciva `true`, e da quel momento il rollup non poteva
+    // piu` toccare la riga. Le ore mancanti erano perse per sempre, con la
+    // media serale congelata al posto della giornaliera.
+    expect(await definitivo()).toBe(false);
+  });
+
+  it('e diventa definitivo appena il rollup lo ha superato', async () => {
+    await runRollup(db, '1d', new Date('2026-02-11T00:00:00Z').getTime());
+    await sql.query(
+      `UPDATE stats.rollup_state SET watermark = timestamptz '2026-02-09 00:00Z' WHERE level = 'daily_close'`,
+    );
+
+    await dailyClose(db, new Date('2026-02-11T00:01:00Z'));
+
+    expect(await definitivo()).toBe(true);
+    // E il giorno che si congela e` quello INTERO, non la sua coda.
+    expect(await rigaDiRete()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+  });
+});
+
+describe('un livello fermo si vede dal watermark, non dal fatto che dice «in pari»', () => {
+  it('il watermark nel futuro produce un giro che si dichiara in pari e non scrive', async () => {
+    await sql.query(
+      `UPDATE stats.rollup_state SET watermark = timestamptz '2026-03-01 00:00Z' WHERE level = '1d'`,
+    );
+
+    const r = await runRollup(db, '1d', new Date('2026-02-11T00:00:00Z').getTime());
+
+    // ECCO LA FORMA DELLO STALLO: nessuna riga scritta, zero bucket di
+    // ritardo, e un giro che si annuncia riuscito. Ogni segnale disponibile
+    // dice che il livello sta bene, e intanto e` fermo per sempre.
+    expect(r.rowsWritten).toBe(0);
+    expect(r.caughtUp).toBe(true);
+
+    // L'unico segnale che non mente: il watermark e` AVANTI rispetto ad
+    // adesso, cosa che un livello sano non puo` essere.
+    const marks = new Map(rollupWatermarks());
+    expect(marks.get('1d')).toBeGreaterThan(new Date('2026-02-11T00:00:00Z').getTime());
   });
 });

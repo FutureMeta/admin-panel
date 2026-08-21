@@ -8,6 +8,7 @@ import { sql } from 'kysely';
 import type { AppContext } from '#src/app-context.ts';
 import { verifyRecent } from '#src/audit/integrity.ts';
 import { eventLoopDelayP99 } from '#src/observability/event-loop.ts';
+import { rollupWatermarks } from '#src/stats/rollup.ts';
 
 const PROBE_TIMEOUT_MS = 1_000;
 
@@ -141,6 +142,26 @@ export async function registerHealthRoutes(app: FastifyInstance, ctx: AppContext
         '# HELP metamc_job_successes_total giri riusciti dall`avvio',
         '# TYPE metamc_job_successes_total counter',
         ...jobs.map(([name, s]) => `metamc_job_successes_total{job="${name}"} ${s.successes}`),
+      );
+    }
+
+    // IL WATERMARK NUDO, perche' «in pari» non e' una prova.
+    //
+    // Un livello di rollup il cui watermark finisce nel futuro chiude la
+    // finestra su se' stessa: dichiara `caughtUp`, conserva `rows_written`,
+    // rinfresca `updated_at` e non scrive mai piu' una riga. Tutti i segnali
+    // sopra continuano a dire che sta bene, e intanto i range lunghi si
+    // svuotano. Il watermark invece si vede fermo, o avanti rispetto a
+    // adesso, che sono le due sole forme dello stallo.
+    //
+    // Un livello che manca da qui e' un livello che questo processo non ha
+    // mai eseguito, ed e' l'altra cosa che si vuole sapere.
+    const marks = rollupWatermarks();
+    if (marks.length > 0) {
+      lines.push(
+        '# HELP metamc_rollup_watermark_timestamp epoch del watermark, per livello',
+        '# TYPE metamc_rollup_watermark_timestamp gauge',
+        ...marks.map(([level, at]) => `metamc_rollup_watermark_timestamp{level="${level}"} ${at / 1000}`),
       );
     }
     // -----------------------------------------------------------------------

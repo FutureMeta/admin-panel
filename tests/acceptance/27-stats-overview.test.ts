@@ -489,3 +489,55 @@ describe('la panoramica non paga i payload per modalita` che nessuno ha chiesto'
     expect(nessuna.overview).toEqual(tutte.overview);
   });
 });
+
+describe('nomi e colori non dipendono dal periodo scelto', () => {
+  beforeEach(async () => {
+    await dictionary();
+    await sql.query("UPDATE stats.mode SET color = '#112233' WHERE mode_key = 'arena'");
+    // STORICO ORARIO MA NESSUN ROLLUP GIORNALIERO: e` la situazione di una
+    // rete accesa da pochi giorni, dove il range 1y non ha nemmeno un punto.
+    await sql.query(
+      `INSERT INTO stats.rollup_1h
+         (bucket, server_id, samples, covered_s, player_seconds, players_max, players_max_at)
+       SELECT g, v.server_id, 120, 3600, 150 * 3600, 150, g
+         FROM generate_series(date_trunc('hour', now()) - interval '3 days',
+                              date_trunc('hour', now()) - interval '1 hour', interval '1 hour') g
+         CROSS JOIN stats.server v
+        WHERE v.server_id = 0 OR v.server_key IN ($1, $2)`,
+      [ARENA, EVENTO],
+    );
+  });
+
+  it('un range senza storico porta comunque il dizionario intero', async () => {
+    const giorno = await buildOverview(db, '24h');
+    const anno = await buildOverview(db, '1y');
+
+    // La premessa del test: sul 1y non c`e` nessuna serie.
+    expect(anno.payload.modes).toEqual([]);
+
+    // IL DIFETTO CHE QUESTO TEST FERMA: i nomi venivano ritagliati su
+    // `modes`, quindi sul 1y erano vuoti e la schermata ripiegava sulla
+    // chiave grezza — «arena» minuscolo dove ovunque altrove c`e` «Arena».
+    expect(anno.payload.labels).toEqual(giorno.payload.labels);
+    expect(anno.payload.labels.arena).toBe('Arena');
+  });
+
+  it('il colore viene dal dizionario, non da una posizione', async () => {
+    const giorno = await buildOverview(db, '24h');
+    const anno = await buildOverview(db, '1y');
+
+    expect(giorno.payload.colors.arena).toBe('#112233');
+    // Lo stesso colore su un range che non conosce quella modalita`: un
+    // colore assegnato per indice sulla lista del range qui cambierebbe, e
+    // la stessa modalita` avrebbe due colori in due schermate affiancate.
+    expect(anno.payload.colors).toEqual(giorno.payload.colors);
+  });
+
+  it('una modalita` senza colore non ne riceve uno inventato', async () => {
+    const { payload } = await buildOverview(db, '24h');
+    // Riempire il buco qui farebbe sembrare deciso cio` che non lo e`, e
+    // nessuno andrebbe piu` a impostarlo davvero.
+    expect(payload.colors.eventi).toBeUndefined();
+    expect(payload.labels.eventi).toBe('Eventi');
+  });
+});

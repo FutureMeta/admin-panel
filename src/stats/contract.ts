@@ -100,7 +100,33 @@ export type OverviewPayload = {
   deltas: number[];
   /** Ordine di disegno. NON fidarsi dell'ordine delle chiavi di `series`. */
   modes: string[];
+
+  /**
+   * I nomi di TUTTE le modalita' conosciute, non solo di quelle in `modes`.
+   *
+   * `modes` e' l'elenco delle modalita' presenti nella serie di QUESTO range:
+   * cambia col selettore, ed e' vuoto su un range il cui storico non esiste
+   * ancora. Ritagliare i nomi su quell'elenco faceva ripiegare la schermata
+   * sulla chiave grezza — «arena» minuscolo al posto di «Arena» — e solo su
+   * certi periodi, cioe' nel modo piu' difficile da attribuire a una causa.
+   *
+   * Il dizionario e' piccolo (una riga per modalita') e non dipende dal
+   * range: mandarlo intero costa niente e toglie una classe di difetti.
+   */
   labels: Record<string, string>;
+
+  /**
+   * Il colore scelto dall'operatore per ogni modalita', da `stats.mode`.
+   *
+   * VIENE DAL DIZIONARIO, non da una posizione in un array. Assegnarlo per
+   * indice sull'elenco del range significa che la stessa modalita' cambia
+   * colore cambiando periodo, e che entrare una modalita' nuova ricolora
+   * tutte quelle dopo di lei: il colore smette di identificare qualcosa.
+   *
+   * Assente per le modalita' a cui nessuno ne ha ancora dato uno: li' la
+   * schermata ripiega, ma su un ordine stabile.
+   */
+  colors: Record<string, string>;
 
   online: Series;
   kpi: Kpi;

@@ -57,7 +57,10 @@ type Overview = {
   liveTail: boolean;
   deltas: number[];
   modes: string[];
+  /** TUTTE le modalità conosciute, non solo quelle presenti in `modes`. */
   labels: Record<string, string>;
+  /** I colori decisi dall'operatore. Assente = ripiego, su ordine stabile. */
+  colors: Record<string, string>;
   online: Series;
   kpi: Kpi;
   heatmap: { v: number[]; w: number[]; n: number[] };
@@ -885,19 +888,27 @@ export function OverviewPage() {
   const onlineNow = q.data?.headers.get('X-Online-Now');
   const onlineAt = q.data?.headers.get('X-Online-Now-At');
 
+  // IL COLORE IDENTIFICA UNA MODALITÀ, quindi non può dipendere dal periodo.
+  //
+  // Prima si assegnava per indice sull'elenco delle modalità presenti nella
+  // serie del range: la stessa modalità cambiava colore cambiando periodo, e
+  // bastava che una entrasse o uscisse dallo storico per ricolorare tutte
+  // quelle dopo di lei. Un colore che cambia non identifica più niente — e
+  // peggio, invita a leggere due grafici affiancati come se lo facesse.
+  //
+  // Ora viene dal dizionario (`stats.mode.color`, scelto dall'operatore), che
+  // non sa cosa sia un range. Chi non ha ancora un colore proprio ripiega
+  // sulla sua POSIZIONE nel dizionario, che è comunque stabile.
   const colorOf = useMemo(() => {
-    // Le modalità del range PIÙ quelle di adesso. La distribuzione risponde a
-    // «chi c'è ora» e non passa dal selettore: una modalità aperta oggi ma
-    // assente dalla serie scelta ha comunque la sua fetta, e senza questa
-    // unione le toccherebbe il grigio di ripiego — cioè lo stesso colore di
-    // tutte le altre nella sua condizione, che è come non averne.
-    const assigned = new Map<string, string>();
-    const presenti = [...new Set([...(data?.modes ?? []), ...Object.keys(data?.current?.byMode ?? {})])];
-    presenti.forEach((m, i) => {
-      assigned.set(m, FALLBACK[i % FALLBACK.length] as string);
-    });
-    return (m: string) => assigned.get(m) ?? 'var(--tx-muted)';
-  }, [data?.modes, data?.current]);
+    const dictionary = Object.keys(data?.labels ?? {});
+    const chosen = data?.colors ?? {};
+    return (m: string) => {
+      const own = chosen[m];
+      if (own) return own;
+      const i = dictionary.indexOf(m);
+      return i < 0 ? 'var(--tx-muted)' : (FALLBACK[i % FALLBACK.length] as string);
+    };
+  }, [data?.labels, data?.colors]);
 
   if (q.isError) {
     return (

@@ -550,11 +550,57 @@ async function liveDayUniques(db: Database, now: Date): Promise<number | null> {
   return n === undefined ? null : Number(n);
 }
 
-async function modeLabels(db: Database): Promise<Map<string, { label: string; order: number }>> {
-  const res = await sql<{ mode_key: string; display_name: string; sort_order: number }>`
-    SELECT DISTINCT mode_key, display_name, sort_order FROM stats.v_server_mode
+async function modeLabels(
+  db: Database,
+): Promise<Map<string, { label: string; order: number; color: string | null }>> {
+  const res = await sql<{
+    mode_key: string;
+    display_name: string;
+    sort_order: number;
+    color: string | null;
+  }>`
+    -- L'ORDINE E' PARTE DEL DATO, non una comodita'. Le modalita' senza
+    -- colore proprio lo prendono dalla loro POSIZIONE in questo elenco: senza
+    -- ORDER BY, PostgreSQL non promette nulla sull'ordine di un DISTINCT, e
+    -- due esecuzioni identiche potrebbero ricolorare la schermata.
+    SELECT DISTINCT mode_key, display_name, sort_order, color FROM stats.v_server_mode
+     ORDER BY sort_order, mode_key
   `.execute(db);
-  return new Map(res.rows.map((r) => [r.mode_key, { label: r.display_name, order: Number(r.sort_order) }]));
+  return new Map(
+    res.rows.map((r) => [r.mode_key, { label: r.display_name, order: Number(r.sort_order), color: r.color }]),
+  );
+}
+
+type ModeDictionary = Map<string, { label: string; order: number; color: string | null }>;
+
+/**
+ * I nomi di TUTTE le modalita' conosciute, non solo di quelle nel range.
+ *
+ * Il ritaglio sul range e' il difetto: su un periodo il cui storico non esiste
+ * ancora l'elenco e' vuoto, la schermata ripiega sulla chiave grezza, e si
+ * legge «arena» minuscolo dove ovunque altrove c'e' «Arena». Sembra un
+ * problema di dati e invece e' una proiezione fatta nel posto sbagliato.
+ *
+ * Le chiavi di servizio restano fuori: `__transit__` e `__unknown__` hanno gia'
+ * un nome deciso altrove, e `__network__` non e' una modalita'.
+ */
+function dictionaryLabels(dict: ModeDictionary): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, v] of dict) out[key] = v.label;
+  return out;
+}
+
+/**
+ * I colori scelti dall'operatore, per chiave.
+ *
+ * Solo quelli davvero impostati: una modalita' senza colore non entra, e la
+ * schermata ripiega. Riempire qui i buchi con un colore inventato farebbe
+ * sembrare deciso cio' che non lo e', e nessuno andrebbe piu' a impostarlo.
+ */
+function dictionaryColors(dict: ModeDictionary): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [key, v] of dict) if (v.color) out[key] = v.color;
+  return out;
 }
 
 type Bucket = {
@@ -968,7 +1014,8 @@ export async function buildAll(
     liveTail: false,
     deltas,
     modes,
-    labels: Object.fromEntries(modes.map((m) => [m, labels.get(m)?.label ?? m])),
+    labels: dictionaryLabels(labels),
+    colors: dictionaryColors(labels),
     online: { t: axis, total, peak: peakLine, series, coverage },
     kpi,
     heatmap: { v, w: wArr, n: nArr },
@@ -1022,7 +1069,8 @@ export async function buildAll(
       ...payload,
       mode: m,
       modes: [m],
-      labels: { [m]: labels.get(m)?.label ?? m },
+      labels: dictionaryLabels(labels),
+      colors: dictionaryColors(labels),
       // `total` E' la riga della modalita', non quella di rete: in questo
       // payload la domanda e' «quanti su duels», e mostrare il totale di rete
       // sotto l'etichetta di una modalita' sarebbe il disallineamento che il

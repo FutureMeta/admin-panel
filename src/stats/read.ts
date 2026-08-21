@@ -619,6 +619,61 @@ async function currentMix(db: Database): Promise<{ at: number; byMode: Record<st
 }
 
 /**
+ * La stessa fotografia, ma spezzata per SERVER dentro ogni modalita'.
+ *
+ * Serve alla schermata di dettaglio: quasi tutte le modalita' girano su piu'
+ * di un server, e «duels ha 286 giocatori» non dice se sono tutti su uno o
+ * sparsi su sei. Con un server solo la torta resta comunque — una fetta sola
+ * e' un'informazione («questa modalita' sta tutta su `duels_1`»), mentre un
+ * riquadro che appare e scompare a seconda dei dati costringe chi guarda a
+ * chiedersi se manchi qualcosa.
+ *
+ * DENOMINATORE DI RETE, come ovunque. Preso dal server darebbe il tempo in cui
+ * quel server era acceso, e un server aperto cinque minuti al giorno con 200
+ * giocatori scavalcherebbe uno aperto sempre con 150.
+ *
+ * `server_id <> 0` e non `> 1`: `__transit__` e' un server sentinella, e se
+ * qualcuno apre il dettaglio di quella modalita' deve vedere la sua riga
+ * invece di una torta vuota.
+ */
+async function serverMix(
+  db: Database,
+): Promise<Map<string, { at: number; byServer: Record<string, number> }>> {
+  const res = await sql<{ mode_key: string; server_key: string; players: number | null; at: string }>`
+    WITH latest AS (
+      SELECT max(bucket) AS b FROM stats.v_online_5m
+    ),
+    src AS (
+      SELECT v.mode_key, v.server_key, v.player_seconds
+        FROM stats.v_online_5m v, latest l
+       WHERE v.bucket = l.b AND v.server_id <> 0
+    ),
+    cov AS (
+      SELECT v.covered_s
+        FROM stats.v_online_5m v, latest l
+       WHERE v.bucket = l.b AND v.mode_key = '__network__'
+       LIMIT 1
+    )
+    SELECT s.mode_key, s.server_key,
+           (s.player_seconds::float8 / nullif((SELECT covered_s FROM cov), 0)) AS players,
+           extract(epoch FROM (SELECT b FROM latest))::bigint::text AS at
+      FROM src s
+  `.execute(db);
+
+  const out = new Map<string, { at: number; byServer: Record<string, number> }>();
+  for (const r of res.rows) {
+    if (r.at === null || r.players === null) continue;
+    let entry = out.get(r.mode_key);
+    if (!entry) {
+      entry = { at: Number(r.at), byServer: {} };
+      out.set(r.mode_key, entry);
+    }
+    entry.byServer[r.server_key] = round1(Number(r.players));
+  }
+  return out;
+}
+
+/**
  * Gli unici del giorno IN CORSO, presi da `player_day` invece che dai rollup.
  *
  * PERCHE' NON DAL ROLLUP. `rollup_1d` nasce da `rollup_1h`, che scrive un
@@ -1076,6 +1131,7 @@ export async function buildAll(
     facts,
     current,
     liveUniques,
+    perServer,
   ] = await Promise.all([
     timed('seriesRows', seriesRows(db, range, w)),
     timed('heatmap', heatmapRows(db, w.curFrom, now)),
@@ -1093,6 +1149,12 @@ export async function buildAll(
     timed('facts', networkFacts(db)),
     timed('current', currentMix(db)),
     timed('liveUniques', liveDayUniques(db, now)),
+    // Solo se qualcuno ha chiesto una modalita': e` la torta della schermata
+    // di dettaglio, e la panoramica non la disegna.
+    timed(
+      'serverMix',
+      anyMode ? serverMix(db) : new Map<string, { at: number; byServer: Record<string, number> }>(),
+    ),
   ]);
   const queryMs = Date.now() - t0;
   // Le tre piu' care, e basta: l'elenco intero sarebbe rumore in ogni riga di
@@ -1328,10 +1390,12 @@ export async function buildAll(
         v: dayAxis.map((t) => byDay?.get(t)?.uniques ?? null),
         final: dayAxis.map((t) => byDay?.get(t)?.final ?? false),
       },
-      // La distribuzione e' un riquadro della sola panoramica: nel payload
-      // di una modalita' non ha senso, e un oggetto con una voce sola
-      // sarebbe un invito a disegnarlo.
+      // La ripartizione PER MODALITA' e' un riquadro della sola panoramica:
+      // dentro una modalita' sarebbe un oggetto con una voce sola.
       current: null,
+      // Quella per SERVER invece e' propria del dettaglio, ed e' il livello
+      // sotto: la stessa domanda, un gradino piu' giu'.
+      serverMix: perServer.get(m) ?? null,
       geo: geoOf(m),
       geoEnabled: facts.geoEnabled,
       // Il record e' della RETE, non della modalita': per una modalita' il

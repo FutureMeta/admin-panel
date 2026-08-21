@@ -232,6 +232,20 @@ export type OverviewPayload = {
 export type ModePayload = Omit<OverviewPayload, 'modes'> & {
   mode: string;
   modes: [string];
+
+  /**
+   * La popolazione di ADESSO, spezzata per server dentro questa modalita'.
+   *
+   * E' il gemello di `current` sulla panoramica, un livello piu' giu': li' la
+   * torta divide la rete per modalita', qui divide la modalita' per server.
+   * Quasi tutte ne hanno piu' di uno, e «duels ha 286 giocatori» non dice se
+   * sono tutti su un server o sparsi su sei — che e' esattamente la domanda
+   * che si fa aprendo il dettaglio.
+   *
+   * `null` quando il campionamento non ha ancora chiuso un bucket da cinque
+   * minuti: e' diverso da «nessun giocatore», e la schermata lo scrive.
+   */
+  serverMix: { at: number; byServer: Record<string, number> } | null;
 };
 
 export class PayloadInvalid extends Error {

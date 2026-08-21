@@ -171,7 +171,9 @@ export async function registerStatsRoutes(app: FastifyInstance, ctx: AppContext)
       const env = await ctx.statsCache.envelope(
         K.ov(range),
         async () => {
-          const built = await buildAll(db, range);
+          // NESSUNA modalita': la panoramica non ne disegna nemmeno una, e
+          // costruirle tutte per buttarle via costava le query piu' care.
+          const built = await buildAll(db, range, undefined, []);
           // Le invarianti si verificano PRIMA di mettere i byte in cache: un
           // payload rotto messo in cache resta rotto per tutta la sua
           // validita', e il difetto tipico non ha sintomi.
@@ -222,7 +224,10 @@ export async function registerStatsRoutes(app: FastifyInstance, ctx: AppContext)
       const env = await ctx.statsCache.envelope(
         K.md(mode, range),
         async () => {
-          const built = await buildAll(db, range);
+          // SOLO QUESTA modalita'. Costruirle tutte per servirne una paga le
+          // tre query per modalita' — le piu' care del giro — su venti payload
+          // che finiscono nel cestino.
+          const built = await buildAll(db, range, undefined, [mode]);
           const payload = built.perMode.get(mode);
           if (!payload) {
             throw new Error(`nessun payload per la modalita\` ${mode} nel range ${range}`);

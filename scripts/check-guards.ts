@@ -187,7 +187,8 @@ const RULES: Rule[] = [
     // `function distinctPlayersByMode(db: Database, ...)`, che ovviamente non
     // ha nessun cancello davanti — una guardia che grida sulla definizione
     // della cosa che protegge si disattiva da sola alla prima occhiata.
-    pattern: /^(?!.*anyMode \?).*\b(heatmapModeRows|uniquesByModeRows|distinctPlayersByMode)\(db,/,
+    pattern:
+      /^(?!.*anyMode \?).*\b(heatmapModeRows|uniquesByModeRows|distinctPlayersByMode|serverMix)\(db[,)]/,
     exempt: (rel) => rel !== join('src', 'stats', 'read.ts'),
   },
 ];

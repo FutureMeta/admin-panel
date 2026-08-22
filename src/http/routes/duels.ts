@@ -23,6 +23,7 @@ import type { AppContext } from '#src/app-context.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import { DK, isCommentFilter, isSort, RANGES, type Range } from '#src/duels/contract.ts';
 import { BadCursor } from '#src/duels/provider.ts';
+import { markDuelsHot } from '#src/duels/warm.ts';
 import { isRange } from '#src/stats/contract.ts';
 import { ttlOf } from '#src/stats/warm.ts';
 import { sendEnvelope } from '../envelope.ts';
@@ -137,6 +138,12 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
           detail: 'nessuna modalita` con questo identificativo nel catalogo dei duels',
         });
       }
+
+      // Solo le modalita' che qualcuno guarda davvero entrano nel giro di
+      // riscaldamento. Senza, l'alternativa sarebbe costruire ottantacinque
+      // payload per periodo a ogni giro — quasi tutti destinati al cestino —
+      // oppure non costruirne nessuno e far pagare l'aggregazione a chi apre.
+      if (mode !== null) markDuelsHot(ctx.cacheRedis, range, mode);
 
       const env = await ctx.statsCache.envelope(
         DK.rt(mode, range),

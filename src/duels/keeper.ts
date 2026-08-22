@@ -25,6 +25,7 @@ import type { JobRegistry, RunningJob } from '#src/jobs/scheduler.ts';
 import { startJob } from '#src/jobs/scheduler.ts';
 import { runDuelsIngest } from './ingest.ts';
 import { createDuelsMysql, type DuelsMysql } from './mysql.ts';
+import { type DuelsWarmDeps, type DuelsWarmResult, warmDuelsLive } from './warm.ts';
 
 /** La cadenza, che e' anche quella con cui il browser richiede. */
 export const DUELS_INTERVAL_MS = 30_000;
@@ -47,6 +48,15 @@ export type DuelsIngestOptions = {
    * che questo pannello insegue: si legge nel codice e si da' per fatto.
    */
   mysql?: DuelsMysql;
+  /**
+   * Cosa serve per riscaldare la fetta viva, se la si vuole riscaldare.
+   *
+   * NON E' UN SECONDO TIMER, ed e' il punto: lo stesso ciclo che ingerisce
+   * ricostruisce il payload del 24h e lo scrive su Valkey. Assente — nei test
+   * dell'ingestione, per esempio — il ciclo ingerisce e basta, e i payload si
+   * costruiscono alla prima richiesta.
+   */
+  warm?: DuelsWarmDeps;
 };
 
 export type DuelsIngest = {
@@ -90,6 +100,16 @@ export async function startDuelsIngest(opts: DuelsIngestOptions): Promise<DuelsI
     );
   }
 
+  /**
+   * L'ora dell'ultima ricostruzione della fetta viva.
+   *
+   * Serve perche' la finestra del 24h SCORRE: anche senza una partita nuova,
+   * allo scoccare dell'ora la piu' vecchia esce e il payload cambia. Senza
+   * questo, in una notte tranquilla il grafico resterebbe fermo su ventiquattro
+   * ore che non sono piu' le ultime ventiquattro.
+   */
+  let warmedHour = -1;
+
   const runOnce = async (): Promise<Record<string, unknown>> => {
     const res = await runDuelsIngest(db, my);
     if (res.contended) {
@@ -101,12 +121,38 @@ export async function startDuelsIngest(opts: DuelsIngestOptions): Promise<DuelsI
         'un altro ingeritore sta scrivendo: il lotto e` tornato indietro, si riprende al giro dopo',
       );
     }
+    // SI RICOSTRUISCE SOLO SE QUALCOSA E' CAMBIATO. `builtAt` sta nel payload,
+    // quindi rifarne uno identico ne cambia l'ETag, e un ETag nuovo fa
+    // riscaricare tutto a ogni schermata aperta invece di farle rispondere
+    // 304. In una notte senza partite non si ricostruisce niente, e le
+    // schermate continuano a ricevere trentaquattro byte a richiesta.
+    const hour = Math.floor(Date.now() / 3_600_000);
+    const changed = res.matches > 0 || res.ratings > 0;
+    let warmed: DuelsWarmResult | null = null;
+    if (opts.warm && (changed || hour !== warmedHour)) {
+      try {
+        warmed = await warmDuelsLive(opts.warm);
+        warmedHour = hour;
+      } catch (err) {
+        // L'ingestione e' riuscita: il dato c'e', e' il payload pronto che
+        // manca. Non si fa fallire il giro — il watermark si e' mosso e
+        // ripeterlo non recupererebbe niente — ma lo si dice forte, perche'
+        // una schermata ferma senza una riga di log si scopre tardi.
+        opts.logger.error(
+          { job: 'duels-ingest', err },
+          'payload duels non ricostruito: le schermate serviranno numeri vecchi finche` non li chiede qualcuno',
+        );
+      }
+    }
+
     return {
       partite: res.matches,
       valutazioni: res.ratings,
       degradate: res.degraded,
       indietro: res.behind,
       conteso: res.contended,
+      scaldati: warmed?.payloads ?? 0,
+      rimandati: warmed?.deferred ?? 0,
       ms: res.ms,
     };
   };

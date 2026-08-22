@@ -22,6 +22,7 @@ import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { type DuelsIngest, startDuelsIngest } from '#src/duels/keeper.ts';
 import { PgDuelsProvider } from '#src/duels/pg.ts';
 import type { DuelsProvider } from '#src/duels/provider.ts';
+import { type DuelsWarmDeps, warmDuelsAllClosed } from '#src/duels/warm.ts';
 import type { Mailer } from '#src/email/mailer.ts';
 import { AuthzMiddleware } from '#src/http/authz-middleware.ts';
 import type { IndexHtml } from '#src/http/index-html.ts';
@@ -246,24 +247,6 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     }
   }
 
-  // L'ingestione dei duels, alle stesse condizioni: accesa a mano, con i job
-  // attivi, e con un guasto che non tiene giu' il pannello. Rumoroso pero':
-  // una schermata ferma senza una riga di log e' il modo in cui ce ne si
-  // accorge settimane dopo.
-  let duelsIngest: DuelsIngest | null = null;
-  if (env.DUELS_INGEST_ENABLED && env.DUELS_MYSQL_URL && env.DATABASE_INGEST_URL && opts.startJobs) {
-    try {
-      duelsIngest = await startDuelsIngest({
-        databaseUrl: env.DATABASE_INGEST_URL,
-        mysqlUrl: env.DUELS_MYSQL_URL,
-        logger,
-        registry: maintenance.registry,
-      });
-    } catch (err) {
-      logger.error({ err }, 'ingestione duels non avviata: il pannello parte, i duels restano fermi');
-    }
-  }
-
   const statsPool = env.DATABASE_STATS_URL
     ? createPool({
         connectionString: env.DATABASE_STATS_URL,
@@ -309,6 +292,37 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     // grafico non puo' far rallentare un login.
     pressure: () => eventLoopDelayP99() > 100 || semaphore.stats.inFlight >= 5,
   });
+
+  /**
+   * Cosa serve per riscaldare i payload duels. `null` senza il ruolo di
+   * lettura: senza provider non c'e' niente da costruire.
+   */
+  const duelsWarm: DuelsWarmDeps | null = duels
+    ? { provider: duels, cache: statsCache, redis: cacheRedis, logger }
+    : null;
+
+  // L'ingestione dei duels, alle stesse condizioni del campionamento: accesa a
+  // mano, con i job attivi, e con un guasto che non tiene giu' il pannello.
+  // Rumoroso pero': una schermata ferma senza una riga di log e' il modo in
+  // cui ce ne si accorge settimane dopo.
+  //
+  // Sta QUI e non accanto al campionamento perche' ha bisogno della cache e
+  // del provider: e' lo stesso ciclo che ingerisce a ricostruire la fetta
+  // viva, e senza quei due non avrebbe dove scriverla.
+  let duelsIngest: DuelsIngest | null = null;
+  if (env.DUELS_INGEST_ENABLED && env.DUELS_MYSQL_URL && env.DATABASE_INGEST_URL && opts.startJobs) {
+    try {
+      duelsIngest = await startDuelsIngest({
+        databaseUrl: env.DATABASE_INGEST_URL,
+        mysqlUrl: env.DUELS_MYSQL_URL,
+        logger,
+        registry: maintenance.registry,
+        ...(duelsWarm ? { warm: duelsWarm } : {}),
+      });
+    } catch (err) {
+      logger.error({ err }, 'ingestione duels non avviata: il pannello parte, i duels restano fermi');
+    }
+  }
 
   const shuttingDown = { value: false };
 
@@ -379,11 +393,19 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
  */
 export function startStatsWarming(ctx: AppContext): void {
   if (!ctx.statsDb) return;
+  // I periodi CHIUSI dei duels salgono su questo giro invece di avere il
+  // proprio timer. La fetta viva non e' qui: quella la ricostruisce il ciclo
+  // che ingerisce, subito dopo aver scritto le partite nuove.
+  const duelsWarm: DuelsWarmDeps | null = ctx.duels
+    ? { provider: ctx.duels, cache: ctx.statsCache, redis: ctx.cacheRedis, logger: ctx.logger }
+    : null;
+
   const deps = {
     statsDb: ctx.statsDb,
     cache: ctx.statsCache,
     redis: ctx.cacheRedis,
     logger: ctx.logger,
+    ...(duelsWarm ? { extra: { name: 'duels', run: () => warmDuelsAllClosed(duelsWarm) } } : {}),
   };
   void (async () => {
     try {

@@ -311,4 +311,30 @@ export const DK = {
   tr: (r: Range, day: string = civilDay()) => `duels:v${DUELS_CONTRACT_VERSION}:tr:${day}:${r}`,
   rt: (mode: number | null, r: Range, day: string = civilDay()) =>
     `duels:v${DUELS_CONTRACT_VERSION}:rt:${day}:${mode ?? '_all'}:${r}`,
+  /**
+   * Le modalita' guardate di recente, UNA CHIAVE PER RANGE.
+   *
+   * Con un insieme globale una schermata aperta sul 24h occuperebbe
+   * stabilmente i primi posti, e i payload per modalita' dei periodi lunghi
+   * non verrebbero scaldati mai: il meccanismo che deve evitare l'esplosione
+   * combinatoria smetterebbe di funzionare per quattro range su cinque. Il
+   * giorno qui non serve — cio' che qualcuno ha guardato non scade a
+   * mezzanotte.
+   */
+  hot: (r: Range) => `duels:v${DUELS_CONTRACT_VERSION}:hot:${r}`,
 };
+
+/**
+ * I periodi che, dentro un giorno civile, NON POSSONO cambiare.
+ *
+ * E' il secondo dei tre livelli di cache, ed e' quello che fa il lavoro. La
+ * finestra di `7d`, `30d`, `90d` e `1y` finisce a mezzanotte di oggi: una
+ * partita giocata adesso cade FUORI da tutti e quattro, quindi il loro payload
+ * e' identico per ventiquattro ore e a mezzanotte cambia chiave da solo.
+ *
+ * Solo `24h` si muove, ed e' l'unico che il ciclo di ingestione ricostruisce.
+ */
+export const DUELS_CLOSED_RANGES: readonly Range[] = ['7d', '30d', '90d', '1y'] as const;
+
+/** Il periodo vivo: l'unico la cui finestra si sposta fra un ciclo e l'altro. */
+export const DUELS_LIVE_RANGE: Range = '24h';

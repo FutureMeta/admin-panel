@@ -169,20 +169,37 @@ const HOT_WINDOW_MS = 3_600_000;
  * range su cinque.
  */
 export async function hotModes(redis: Redis, range: Range): Promise<string[]> {
+  return hotOf(redis, K.hot(range));
+}
+
+/** Segna che qualcuno ha guardato questa modalita'. Lo chiama l'handler. */
+export function markHot(redis: Redis, range: Range, mode: string): void {
+  markHotAt(redis, K.hot(range), mode);
+}
+
+/**
+ * Il meccanismo dell'hot-set, senza sapere di CHE COSA e' l'insieme.
+ *
+ * Lo usano le statistiche e i duels, con chiavi diverse. La politica —
+ * finestra di un'ora, venti elementi, potatura prima della lettura — sta qui
+ * una volta sola: due copie divergerebbero al primo aggiustamento, e la
+ * seconda smetterebbe di potare senza che niente fallisca.
+ */
+export async function hotOf(redis: Redis, key: string): Promise<string[]> {
   try {
-    await redis.zremrangebyscore(K.hot(range), '-inf', Date.now() - HOT_WINDOW_MS);
-    return await redis.zrevrange(K.hot(range), 0, HOT_LIMIT - 1);
+    await redis.zremrangebyscore(key, '-inf', Date.now() - HOT_WINDOW_MS);
+    return await redis.zrevrange(key, 0, HOT_LIMIT - 1);
   } catch {
     // Un hot-set irraggiungibile significa scaldare solo le panoramiche. E'
-    // un degrado, non un guasto: i payload per modalita' si costruiscono al
+    // un degrado, non un guasto: i payload di dettaglio si costruiscono al
     // primo accesso.
     return [];
   }
 }
 
-/** Segna che qualcuno ha guardato questa modalita'. Lo chiama l'handler. */
-export function markHot(redis: Redis, range: Range, mode: string): void {
-  void redis.zadd(K.hot(range), Date.now(), mode).catch(() => undefined);
+/** Segna che qualcuno ha guardato questo elemento. Non attende. */
+export function markHotAt(redis: Redis, key: string, member: string): void {
+  void redis.zadd(key, Date.now(), member).catch(() => undefined);
 }
 
 function serialize(payload: OverviewPayload | ModePayload): Buffer {
@@ -205,6 +222,19 @@ export type WarmDeps = {
    * argomentata e non provata.
    */
   budgetMs?: number;
+  /**
+   * Altro da scaldare DOPO le statistiche, sullo stesso timer.
+   *
+   * Oggi sono i periodi chiusi dei duels. Salgono su questo giro invece di
+   * avere il proprio, e non e' pigrizia: un terzo timer con la sua cadenza
+   * avrebbe voluto dire tre sveglie che si incrociano e un payload a volte
+   * piu' vecchio dell'ultima ingestione senza che nessuno sappia di quanto.
+   *
+   * E' una FUNZIONE e non un modulo importato qui, per non far sapere alle
+   * statistiche che i duels esistono: `src/duels/warm.ts` importa gia' da
+   * questo file, e nominarlo di rimando chiuderebbe un anello.
+   */
+  extra?: { name: string; run: () => Promise<number> };
 };
 
 export type WarmResult = {
@@ -341,11 +371,30 @@ export function startStatsWorker(deps: WarmDeps, registry: JobRegistry): StatsWo
         if (pronti.length === 0) {
           throw new Error(`nessun range ricostruito: ${falliti.join(', ')}`);
         }
+
+        // L'EXTRA DOPO, e mai prima. Le statistiche sono la schermata che si
+        // apre per prima e che qualcuno guarda mentre succede qualcosa; se un
+        // giro si allunga, e' il modulo secondario a dover restare indietro.
+        // E un extra che fallisce non fa fallire il giro: le statistiche sono
+        // gia' pronte, e dichiararlo rotto manderebbe a cercarle.
+        let extra = 0;
+        if (deps.extra) {
+          try {
+            extra = await deps.extra.run();
+          } catch (err) {
+            deps.logger.warn(
+              { err, extra: deps.extra.name },
+              'payload secondari non ricostruiti: la prima richiesta paghera` l`aggregazione',
+            );
+          }
+        }
+
         return {
           pronti,
           falliti,
           payloads,
           deferred,
+          ...(deps.extra ? { [deps.extra.name]: extra } : {}),
           ms,
           totaleMs: Date.now() - t0,
           piuLento: worst ? { range: worst.range, query: worst.slowest } : null,

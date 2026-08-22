@@ -59,7 +59,7 @@ type MapDetail = {
 };
 
 const ALL = '__tutte__';
-const TABS = ['Modalità supportate', 'Event type', 'Settings mappa'] as const;
+const TABS = ['Modalità', 'Eventi', 'Settings'] as const;
 type Tab = (typeof TABS)[number];
 
 export function DuelsMapsRoute({ me }: { me: Me }) {
@@ -265,7 +265,7 @@ function MapPanel({
   const [values, setValues] = useState<Record<string, string> | null>(null);
   const [modeIds, setModeIds] = useState<number[] | null>(null);
   const [events, setEvents] = useState<string[] | null>(null);
-  const [tab, setTab] = useState<Tab>('Modalità supportate');
+  const [tab, setTab] = useState<Tab>('Modalità');
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -465,7 +465,7 @@ function MapPanel({
               </button>
             );
           })}
-          {tab === 'Modalità supportate' && canSave ? (
+          {tab === 'Modalità' && canSave ? (
             <AccentBtn height={28} onClick={() => setAdding(true)} style={{ marginLeft: 'auto' }}>
               <Icon path={ICON_PLUS} size={13} stroke={2} />
               Aggiungi modalità
@@ -473,7 +473,7 @@ function MapPanel({
           ) : null}
         </div>
 
-        {tab === 'Modalità supportate' ? (
+        {tab === 'Modalità' ? (
           // OLTRE LE DIECI RIGHE SI SCORRE. Una mappa con trenta modalità
           // allungava il riquadro finché il pulsante Salva usciva dallo
           // schermo: si tolgono due modalità e poi si cerca dove è finito ciò
@@ -517,7 +517,7 @@ function MapPanel({
           </div>
         ) : null}
 
-        {tab === 'Event type' ? (
+        {tab === 'Eventi' ? (
           <div style={{ padding: '6px 20px 14px' }}>
             <div style={{ fontSize: 12, color: 'var(--tx-muted)', padding: '10px 0 4px' }}>
               Righe in duels_map_event_type · elenco indicativo, verifica l’enum EventType del plugin prima di
@@ -554,7 +554,7 @@ function MapPanel({
           </div>
         ) : null}
 
-        {tab === 'Settings mappa'
+        {tab === 'Settings'
           ? vocab.mapSettings.map((spec) => (
               <SettingRow
                 key={spec.key}
@@ -640,7 +640,7 @@ function RowRemoveBtn({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Una riga della tab «Modalità supportate»: nome, tipo, e l'azione a destra. */
+/** Una riga della tab «Modalità»: nome, tipo, e l'azione a destra. */
 function ModeRow({
   name,
   type,

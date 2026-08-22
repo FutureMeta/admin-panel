@@ -596,6 +596,40 @@ body {
     text-overflow: ellipsis;
   }
 
+  /* L'intestazione di una categoria, che adesso si clicca per chiuderla.
+   *
+   * Resta un'ETICHETTA all'aspetto: stessa misura, stesso colore, stessa
+   * posizione di prima. Un'intestazione che si mette a sembrare un pulsante
+   * sposta il peso visivo dalle voci — che sono ciò per cui la barra esiste —
+   * al mobile che le contiene. Che sia cliccabile lo dicono il cursore, il
+   * fondo al passaggio del mouse e la freccia. */
+  .nav-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    height: 22px;
+    padding: 0 8px;
+    margin-bottom: 8px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--tx-muted);
+    cursor: pointer;
+    text-align: left;
+    transition: background var(--dur) var(--ease);
+  }
+  .nav-group:hover {
+    background: var(--s-elevated);
+    color: var(--tx-secondary);
+  }
+  /* `.t-group` porta il proprio colore, quindi non eredita quello del
+   * passaggio del mouse: senza questa riga si schiarirebbe solo la freccia e
+   * il nome resterebbe spento, cioè metà pulsante che reagisce. */
+  .nav-group:hover .t-group {
+    color: var(--tx-secondary);
+  }
+
   .search-trigger {
     display: flex;
     align-items: center;

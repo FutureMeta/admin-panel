@@ -431,7 +431,18 @@ export function RelativeTime({ value }: { value: string | Date }) {
 // ---------------------------------------------------------------------------
 
 /** Icone lineari 1.5px, un solo set in tutta l'app. */
-export function Icon({ path, size = 17 }: { path: string; size?: number }) {
+export function Icon({
+  path,
+  size = 17,
+  style,
+}: {
+  path: string;
+  size?: number;
+  /** Si SOMMA a `flex: none`, non lo sostituisce: senza, un'icona con uno
+   *  stile suo tornerebbe a restringersi dentro un flex, e il difetto si
+   *  vedrebbe solo nella barra più stretta. */
+  style?: React.CSSProperties;
+}) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -442,7 +453,7 @@ export function Icon({ path, size = 17 }: { path: string; size?: number }) {
       strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
-      style={{ flex: 'none' }}
+      style={{ flex: 'none', ...style }}
       aria-hidden="true"
     >
       <path d={path} />

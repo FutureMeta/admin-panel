@@ -7,6 +7,16 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Me, ModuleKey } from '../lib/api.ts';
+import {
+  areaOf,
+  COLLAPSED_KEY,
+  isActive,
+  openArea,
+  readCollapsed,
+  safeStorage,
+  toggleArea,
+  writeCollapsed,
+} from '../lib/nav-collapse.ts';
 import { RANGES, useRange } from '../lib/range.ts';
 import { loadWorld } from '../lib/world.ts';
 import { Avatar, ICONS, Icon } from './ui.tsx';
@@ -124,6 +134,37 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
     return [...map.entries()];
   }, [me.modules]);
 
+  // Il ricordo si legge UNA VOLTA, all'apertura: leggerlo a ogni disegno
+  // significherebbe che una scheda aperta accanto sovrascrive quello che si
+  // sta facendo in questa.
+  //
+  // E la categoria della pagina su cui si atterra si apre GIA' QUI, non
+  // nell'effetto qui sotto: quell'effetto guarda i cambi di percorso, e al
+  // primo disegno non ce n'è stato nessuno. Senza questa riga il caso più
+  // comune — il link aperto da fuori, la scheda ripristinata il giorno dopo —
+  // resterebbe l'unico non coperto, che è il modo in cui una correzione
+  // sembra fatta e non lo è.
+  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
+    openArea(readCollapsed(safeStorage()?.getItem(COLLAPSED_KEY) ?? null), areaOf(groups, pathname)),
+  );
+  useEffect(() => {
+    safeStorage()?.setItem(COLLAPSED_KEY, writeCollapsed(collapsed));
+  }, [collapsed]);
+
+  // ARRIVARE su una pagina apre la sua categoria, se era chiusa: alla palette
+  // ⌘K e ai link condivisi la barra non serve, e senza questo si finirebbe su
+  // una schermata con nessuna voce evidenziata — cioè senza l'unica cosa che
+  // dice dove ci si trova.
+  //
+  // Solo al CAMBIO di percorso: vedi `openArea`, chiuderla restando fermi deve
+  // continuare a funzionare.
+  const wasAt = useRef(pathname);
+  useEffect(() => {
+    if (wasAt.current === pathname) return;
+    wasAt.current = pathname;
+    setCollapsed((prev) => openArea(prev, areaOf(groups, pathname)));
+  }, [pathname, groups]);
+
   return (
     <aside
       aria-label="Moduli"
@@ -182,28 +223,52 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
         </span>
       </button>
 
-      {groups.map(([area, items]) => (
-        <div key={area}>
-          <div className="t-group" style={{ padding: '0 8px', marginBottom: 8 }}>
-            {area}
+      {groups.map(([area, items]) => {
+        const open = !collapsed.has(area);
+        return (
+          <div key={area}>
+            <button
+              type="button"
+              className="nav-group"
+              aria-expanded={open}
+              aria-controls={`nav-${area}`}
+              onClick={() => setCollapsed((prev) => toggleArea(prev, area))}
+            >
+              <span className="t-group">{area}</span>
+              {/* La freccia PUNTA GIU' quando è aperta e a destra quando è
+                  chiusa: è la direzione in cui sta il contenuto, ed è l'unica
+                  cosa che distingue una categoria chiusa da una categoria
+                  vuota. Senza, sparire e non avere voci si disegnano uguale. */}
+              <Icon
+                path={ICONS.chevron}
+                size={13}
+                style={{
+                  marginLeft: 'auto',
+                  transform: open ? 'rotate(90deg)' : 'none',
+                  transition: 'transform var(--dur) var(--ease)',
+                }}
+              />
+            </button>
+            {open ? (
+              <div id={`nav-${area}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {items.map((item) => (
+                  <Link
+                    key={item.to}
+                    to={item.to}
+                    className="nav-item"
+                    data-active={isActive(pathname, item.to)}
+                    onMouseEnter={item.prefetch}
+                    onFocus={item.prefetch}
+                  >
+                    <Icon path={item.icon} />
+                    <span className="nav-label">{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            ) : null}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {items.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className="nav-item"
-                data-active={pathname.startsWith(item.to)}
-                onMouseEnter={item.prefetch}
-                onFocus={item.prefetch}
-              >
-                <Icon path={item.icon} />
-                <span className="nav-label">{item.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </aside>
   );
 }

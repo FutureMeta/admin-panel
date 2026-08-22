@@ -547,6 +547,7 @@ export function Modal({
   title,
   subtitle,
   width = 460,
+  dense = false,
   onClose,
   footer,
   children,
@@ -554,6 +555,17 @@ export function Modal({
   title: string;
   subtitle?: string;
   width?: number;
+  /**
+   * Le misure piu' strette del mockup dei duels: intestazione 16/20, titolo
+   * 15, chiusura 26, corpo senza margini propri, piede 14/20 — e SOLO IL
+   * CORPO che scorre, invece dell'intero riquadro.
+   *
+   * E' un parametro e non una seconda copia del componente perche' le altre
+   * schermate seguono un altro disegno, con 20/22/16 e il titolo a 17: due
+   * modali quasi uguali divergerebbero al primo ritocco, ed e' il motivo per
+   * cui questo componente è stato tirato fuori da 'users.tsx'.
+   */
+  dense?: boolean;
   onClose: () => void;
   footer?: ReactNode;
   children: ReactNode;
@@ -598,8 +610,13 @@ export function Modal({
         style={{
           width,
           maxWidth: '100%',
-          maxHeight: '88vh',
-          overflowY: 'auto',
+          maxHeight: dense ? '74vh' : '88vh',
+          // Con il corpo che scorre, intestazione e piede restano dove sono:
+          // altrimenti scorrendo l'elenco se ne vanno via anche il titolo e i
+          // pulsanti, cioe' proprio quello che serve dopo aver scelto.
+          ...(dense
+            ? { display: 'flex', flexDirection: 'column', overflow: 'hidden' }
+            : { overflowY: 'auto' }),
           border: '1px solid var(--bd-strong)',
           borderRadius: 'var(--r-lg)',
           background: 'var(--s-elevated)',
@@ -612,17 +629,18 @@ export function Modal({
             alignItems: 'flex-start',
             justifyContent: 'space-between',
             gap: 16,
-            padding: '20px 22px 16px',
+            padding: dense ? '16px 20px' : '20px 22px 16px',
             borderBottom: '1px solid var(--bd-subtle)',
+            flex: 'none',
           }}
         >
           <div>
             <div
               style={{
                 fontFamily: 'var(--font-display)',
-                fontSize: 17,
+                fontSize: dense ? 15 : 17,
                 fontWeight: 700,
-                letterSpacing: '-.01em',
+                ...(dense ? {} : { letterSpacing: '-.01em' }),
               }}
             >
               {title}
@@ -636,14 +654,14 @@ export function Modal({
             onClick={onClose}
             aria-label="Chiudi"
             style={{
-              width: 28,
-              height: 28,
+              width: dense ? 26 : 28,
+              height: dense ? 26 : 28,
               border: '1px solid var(--bd-subtle)',
               borderRadius: 'var(--r-sm)',
               background: 'transparent',
               color: 'var(--tx-muted)',
               cursor: 'pointer',
-              fontSize: 14,
+              fontSize: dense ? 13 : 14,
               lineHeight: 1,
               flex: 'none',
             }}
@@ -651,16 +669,25 @@ export function Modal({
             ×
           </button>
         </div>
-        <div style={{ padding: '20px 22px' }}>{children}</div>
+        <div
+          style={
+            dense
+              ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }
+              : { padding: '20px 22px' }
+          }
+        >
+          {children}
+        </div>
         {footer ? (
           <div
             style={{
               display: 'flex',
               justifyContent: 'flex-end',
               gap: 8,
-              padding: '16px 22px',
+              padding: dense ? '14px 20px' : '16px 22px',
               borderTop: '1px solid var(--bd-subtle)',
               background: 'var(--s-inset)',
+              flex: 'none',
             }}
           >
             {footer}

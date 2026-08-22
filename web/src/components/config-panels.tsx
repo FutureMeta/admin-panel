@@ -108,6 +108,25 @@ const base = (height: number): CSSProperties => ({
   flex: 'none',
 });
 
+/**
+ * Lato e corpo di un pulsante, per altezza.
+ *
+ * UNA TABELLA E NON UNA SOGLIA. Avevo scritto `height >= 28 ? 14 : 11` e mi
+ * ero convinto che bastasse: nei mockup il lato non cresce con l'altezza in
+ * modo regolare — 10 a 26, 11 a 28, 14 a 30 e a 32, 16 a 34 sul pulsante
+ * accento della modale — e ogni soglia che si inventa sbaglia almeno una
+ * misura. Sono i numeri del disegno, presi uno per uno.
+ */
+const SIDE: Record<number, { accent: number; quiet: number; font: number }> = {
+  26: { accent: 10, quiet: 10, font: 11.5 },
+  28: { accent: 11, quiet: 11, font: 12 },
+  30: { accent: 14, quiet: 12, font: 12 },
+  32: { accent: 14, quiet: 12, font: 12.5 },
+  34: { accent: 16, quiet: 14, font: 13 },
+};
+
+const metrics = (height: number) => SIDE[height] ?? { accent: 14, quiet: 12, font: 12.5 };
+
 /** Fondo accento, testo scuro: l'azione principale di un riquadro. */
 export function AccentBtn({ onClick, children, disabled, height = 32, style }: BtnProps) {
   return (
@@ -117,11 +136,11 @@ export function AccentBtn({ onClick, children, disabled, height = 32, style }: B
       disabled={disabled}
       style={{
         ...base(height),
-        padding: height >= 28 ? '0 14px' : '0 11px',
+        padding: `0 ${metrics(height).accent}px`,
         border: '1px solid transparent',
         background: 'var(--ac)',
         color: ON_ACCENT,
-        fontSize: height >= 32 ? 12.5 : 12,
+        fontSize: metrics(height).font,
         fontWeight: 600,
         opacity: disabled ? 0.5 : 1,
         ...style,
@@ -141,11 +160,11 @@ export function RaisedBtn({ onClick, children, disabled, height = 30 }: BtnProps
       disabled={disabled}
       style={{
         ...base(height),
-        padding: '0 12px',
+        padding: `0 ${metrics(height).quiet}px`,
         border: '1px solid var(--bd-strong)',
         background: 'var(--s-elevated)',
         color: 'var(--tx-primary)',
-        fontSize: height >= 30 ? 12 : 11.5,
+        fontSize: metrics(height).font,
         fontWeight: 500,
       }}
     >
@@ -163,11 +182,11 @@ export function QuietBtn({ onClick, children, disabled, height = 30 }: BtnProps)
       disabled={disabled}
       style={{
         ...base(height),
-        padding: '0 12px',
+        padding: `0 ${metrics(height).quiet}px`,
         border: '1px solid var(--bd-subtle)',
         background: 'transparent',
         color: 'var(--tx-secondary)',
-        fontSize: 12,
+        fontSize: metrics(height).font,
       }}
     >
       {children}
@@ -184,11 +203,11 @@ export function DangerBtn({ onClick, children, disabled, height = 30 }: BtnProps
       disabled={disabled}
       style={{
         ...base(height),
-        padding: '0 12px',
+        padding: `0 ${metrics(height).quiet}px`,
         border: '1px solid rgba(219,52,52,.4)',
         background: 'var(--err-soft)',
         color: 'var(--err)',
-        fontSize: height >= 30 ? 12 : 11.5,
+        fontSize: metrics(height).font,
         fontWeight: 600,
       }}
     >

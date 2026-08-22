@@ -151,7 +151,10 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
               title: m.displayName,
               name: m.name,
               tags: [m.type, m.context],
-              tagColors: [m.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9', 'var(--tx-muted)'],
+              tagColors: [
+                m.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9',
+                m.context === 'EVENT' ? 'var(--ac-text)' : 'var(--tx-muted)',
+              ],
               // Le mappe disattivate si attenuano: e' l'unica cosa che le
               // distingue nell'elenco, e senza sembrano attive come le altre.
               dim: !m.enabled,
@@ -577,7 +580,7 @@ function MapPanel({
 
       {adding ? (
         <AddModes
-          modes={modes.filter((m) => !modeIds.includes(m.id))}
+          modes={modes.filter((m) => !modeIds.includes(m.id) && !saved.modeIds.includes(m.id))}
           onClose={() => setAdding(false)}
           onAdd={(ids) => {
             setModeIds([...modeIds, ...ids]);
@@ -719,6 +722,7 @@ function AddModes({
     <Modal
       title="Aggiungi modalità"
       width={440}
+      dense
       onClose={onClose}
       footer={
         <>
@@ -731,7 +735,15 @@ function AddModes({
         </>
       }
     >
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      <div
+        style={{
+          display: 'flex',
+          gap: 6,
+          padding: '14px 20px',
+          borderBottom: '1px solid var(--bd-subtle)',
+          flex: 'none',
+        }}
+      >
         <SearchField
           value={search}
           onChange={setSearch}
@@ -767,7 +779,16 @@ function AddModes({
           Nessuna modalità corrisponde ai filtri.
         </div>
       ) : (
-        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
+        <div
+          style={{
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            padding: '4px 8px',
+            flex: 1,
+            minHeight: 0,
+          }}
+        >
           {rows.map((mode) => {
             const on = picked.includes(mode.id);
             return (

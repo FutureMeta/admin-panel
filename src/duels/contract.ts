@@ -206,6 +206,22 @@ export const DUELS_BUCKET: Record<Range, DuelsBucket> = {
   '1y': 'week',
 };
 
+/**
+ * Quanti GIORNI copre ogni periodo. In un posto solo.
+ *
+ * Era una catena di ternari dentro la finestra, e l'anno valeva 364 li' e 365
+ * altrove: due definizioni di «un anno» nello stesso pannello, sotto la stessa
+ * etichetta. 364 perche' sono 52 settimane esatte, che e' cio' che l'asse
+ * disegna.
+ */
+export const DUELS_DAYS: Record<Range, number> = {
+  '24h': 1,
+  '7d': 7,
+  '30d': 30,
+  '90d': 90,
+  '1y': 364,
+};
+
 export type DuelsWindow = {
   from: Date;
   to: Date;
@@ -240,22 +256,43 @@ const HOUR_MS = 3_600_000;
  * una partita giocata cinque minuti fa non comparirebbe da nessuna parte fino
  * allo scoccare dell'ora.
  */
-export function duelsWindowOf(range: Range, now: Date): DuelsWindow {
-  const bucket = DUELS_BUCKET[range];
+export function duelsWindowOf(
+  range: Range,
+  now: Date,
+  bucket: DuelsBucket = DUELS_BUCKET[range],
+): DuelsWindow {
+  // LA GRANULARITA' E' UN PARAMETRO, e non per generalita' astratta: lo stesso
+  // periodo si guarda a grane diverse a seconda di cosa si conta. Sul `7d` le
+  // partite stanno bene a ore — sono migliaia al giorno — e le valutazioni no,
+  // perche' un centinaio al giorno diviso per ventiquattro sono zero o uno per
+  // punto, cioe' rumore disegnato come segnale. E la finestra CAMBIA con la
+  // grana: a ore scorre con l'orologio, a giorni si allinea alla mezzanotte.
+  const days = DUELS_DAYS[range];
 
-  if (range === '24h') {
+  // I PERIODI A BUCKET ORARIO SCORRONO CON L'OROLOGIO, non con la mezzanotte.
+  //
+  // «Ultime ventiquattro ore» e «ultimi sette giorni» vogliono dire quello:
+  // alle 15:40 il grafico finisce alle 15, non a mezzanotte di stasera. Il 7g
+  // era allineato ai giorni civili e le ore che restavano fino a stanotte
+  // erano dentro la griglia ma vuote — mezzo grafico bianco, con l'adesso a
+  // meta' invece che al bordo destro.
+  //
+  // I periodi a bucket GIORNALIERO o SETTIMANALE no: li' l'ultimo bucket e'
+  // oggi (o questa settimana) e contiene gia' l'adesso, quindi allinearli
+  // all'orologio spezzerebbe il primo giorno a meta' senza guadagnare niente.
+  if (bucket === 'hour') {
+    const hours = days * 24;
     const to = new Date(Math.floor(now.getTime() / HOUR_MS) * HOUR_MS + HOUR_MS);
-    return { from: new Date(to.getTime() - 24 * HOUR_MS), to, bucket, liveTail: true };
+    return { from: new Date(to.getTime() - hours * HOUR_MS), to, bucket, liveTail: true };
   }
 
-  if (range === '1y') {
+  if (bucket === 'week') {
     // La settimana IN CORSO c'e', e finisce al lunedi' prossimo: e' l'ultima
     // colonna, parziale, e la UI la tratteggia.
     const to = shiftDays(mondayOf(now), 7);
-    return { from: shiftDays(to, -52 * 7), to, bucket, liveTail: true };
+    return { from: shiftDays(to, -Math.round(days / 7) * 7), to, bucket, liveTail: true };
   }
 
-  const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
   // OGGI E' DENTRO, e prima non lo era. La finestra finisce alla mezzanotte
   // che VERRA', non a quella passata: un grafico di sette giorni che si ferma
   // alle 23 di ieri e' la prima cosa che si nota aprendolo, e nessuna

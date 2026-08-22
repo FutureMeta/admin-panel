@@ -17,8 +17,8 @@ import { gaps, niceScale, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
 import { numberFmt, shareLabel } from '../lib/format.ts';
-import { axisLabel } from '../lib/when.ts';
-import { CHART } from './chart-frame.tsx';
+import { axisLabel, bucketLabel } from '../lib/when.ts';
+import { CHART, ChartFrame } from './chart-frame.tsx';
 import { HeatGrid, HeatLegend } from './heat-grid.tsx';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
@@ -189,17 +189,16 @@ export function KpiCard({ card }: { card: Card }) {
 // 3 — andamento online nel tempo
 // ---------------------------------------------------------------------------
 
-// LE MISURE VENGONO DAL TELAIO CONDIVISO, non da qui.
+// IL TELAIO E' CONDIVISO, e ormai non resta nemmeno una misura qui.
 //
-// Per un po' questo file le teneva per sé e i grafici dei duels ne avevano
-// altre due: stessa figura, tre geometrie, e le etichette dell'asse orizzontale
-// finivano appiccicate al bordo della scheda su due schermate su tre. Adesso
-// il margine sinistro, la larghezza e la banda sotto il tracciato stanno in un
-// posto solo, e cambiarli li cambia ovunque.
-const { W, LEFT, RIGHT, TOP } = CHART;
+// Per un po' questo file disegnava il proprio `<svg>` con la propria griglia e
+// le proprie etichette, e i grafici dei duels ne avevano altri due: stessa
+// figura, tre geometrie, e le tre divergevano — 1120×300 con le ore a venti
+// unità dal fondo, 1120×268 con le ore a due, 1120×246 senza ore affatto.
+// Adesso c'è un telaio solo (`chart-frame.tsx`) e ogni grafico gli passa
+// l'altezza del proprio tracciato e disegna dentro.
 /** Il fondo del tracciato. Sotto ci sono le 32 unità della banda dell'asse. */
 const BOTTOM = 268;
-const H = BOTTOM + CHART.AXIS_BAND;
 
 export function OnlineChart({
   data,
@@ -222,129 +221,123 @@ export function OnlineChart({
 }) {
   const lines = parts ?? { keys: data.modes, series: data.online.series };
   const values = data.online.total;
-  const n = Math.max(1, values.length);
+  const points = Math.max(1, values.length);
   const observed = Math.max(
     1,
     ...values.filter((v): v is number => v !== null),
     ...data.online.peak.filter((v): v is number => v !== null),
   );
   const scale = niceScale(observed);
-  const max = scale.top;
-  const x = (i: number) => LEFT + ((RIGHT - LEFT) * i) / Math.max(1, n - 1);
-  const y = (v: number) => BOTTOM - ((BOTTOM - TOP) * v) / max;
-
-  const ticks = scale.values.map((v) => ({ v, y: y(v) }));
-  const totalSegments = segments(values, x, y);
-  const area =
-    totalSegments.length > 0
-      ? `${totalSegments[0]} L${x(values.length - 1).toFixed(1)},${BOTTOM} L${x(0).toFixed(1)},${BOTTOM} Z`
-      : '';
-
-  const xTickEvery = Math.max(1, Math.round(n / 8));
+  const spacing = data.bucketSec * Math.max(1, Math.round(points / 8));
 
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      style={{ width: '100%', height: 320, display: 'block' }}
-      role="img"
-      aria-label="Andamento dei giocatori online nel tempo"
+    // LO STESSO TELAIO DEI GRAFICI DUELS. Prima questo componente disegnava il
+    // proprio `<svg>`, la propria griglia e le proprie etichette: tre grafici,
+    // tre geometrie, e le tre divergevano. Adesso margini, banda dell'asse,
+    // carattere delle etichette, linea sotto il cursore e tooltip stanno in un
+    // posto solo, e qui resta cio' che e' davvero di questo grafico — il
+    // tratteggio dei buchi, l'area del totale e le righe delle sue parti.
+    <ChartFrame
+      plot={BOTTOM}
+      top={scale.top}
+      points={points}
+      yTicks={scale.values.map((v) => ({ value: v, label: numberFmt.format(Math.round(v)) }))}
+      xLabelOf={(i) => axisLabel(data.online.t[i] ?? 0, spacing)}
+      ariaLabel="Andamento dei giocatori online nel tempo"
+      tipOf={(i) => {
+        const v = values[i];
+        return {
+          title: bucketLabel(data.online.t[i] ?? 0, data.bucketSec),
+          detail:
+            v === null || v === undefined ? 'non rilevato' : `${numberFmt.format(Math.round(v))} giocatori`,
+        };
+      }}
     >
-      <defs>
-        <linearGradient id="mmArea" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="var(--ac)" stopOpacity="0.15" />
-          <stop offset="100%" stopColor="var(--ac)" stopOpacity="0" />
-        </linearGradient>
-        <pattern id="mmGap" width="7" height="7" patternTransform="rotate(45)" patternUnits="userSpaceOnUse">
-          <line x1="0" y1="0" x2="0" y2="7" stroke="rgba(255,255,255,.14)" strokeWidth="2" />
-        </pattern>
-      </defs>
+      {({ x, y, bottom }, hovered) => {
+        const totalSegments = segments(values, x, y);
+        const area =
+          totalSegments.length > 0
+            ? `${totalSegments[0]} L${x(points - 1).toFixed(1)},${bottom} L${x(0).toFixed(1)},${bottom} Z`
+            : '';
+        const marked = hovered === null ? null : (values[hovered] ?? null);
 
-      {ticks.map((t) => (
-        <g key={t.y}>
-          <line x1={LEFT} x2={RIGHT} y1={t.y} y2={t.y} stroke="var(--grid)" strokeWidth="1" />
-          <text
-            x={46}
-            y={t.y}
-            textAnchor="end"
-            dominantBaseline="middle"
-            fill="var(--tx-muted)"
-            fontSize="11"
-            fontFamily={CHART.FONT}
-          >
-            {numberFmt.format(Math.round(t.v))}
-          </text>
-        </g>
-      ))}
+        return (
+          <>
+            <defs>
+              <linearGradient id="mmArea" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--ac)" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="var(--ac)" stopOpacity="0" />
+              </linearGradient>
+              <pattern
+                id="mmGap"
+                width="7"
+                height="7"
+                patternTransform="rotate(45)"
+                patternUnits="userSpaceOnUse"
+              >
+                <line x1="0" y1="0" x2="0" y2="7" stroke="rgba(255,255,255,.14)" strokeWidth="2" />
+              </pattern>
+            </defs>
 
-      {/* Il buco è tratteggiato e ha un'etichetta: non si interpola, e non
-          diventa uno zero. È l'unica operazione irreversibile della catena. */}
-      {/*
-        Solo il tratteggio, senza etichetta.
+            {/*
+              Solo il tratteggio, senza etichetta.
 
-        L'etichetta diceva anche l'orario, e su un intervallo che attraversa la
-        mezzanotte usciva «19:40–18:55»: corretto e illeggibile, perché senza
-        la data sembra invertito. Il tratteggio da solo dice l'unica cosa che
-        conta — qui non è stato rilevato niente — e il quando si legge
-        dall'asse, che ce l'ha già.
-      */}
-      {gaps(values).map(([a, b]) => (
-        <rect
-          key={`gap-${a}`}
-          x={x(a)}
-          y={TOP}
-          width={Math.max(2, x(b) - x(a))}
-          height={BOTTOM - TOP}
-          fill="url(#mmGap)"
-        />
-      ))}
+              L'etichetta diceva anche l'orario, e su un intervallo che
+              attraversa la mezzanotte usciva «19:40–18:55»: corretto e
+              illeggibile, perché senza la data sembra invertito. Il tratteggio
+              da solo dice l'unica cosa che conta — qui non è stato rilevato
+              niente — e il quando si legge dall'asse, che ce l'ha già.
+            */}
+            {gaps(values).map(([a, b]) => (
+              <rect
+                key={`gap-${a}`}
+                x={x(a)}
+                y={CHART.TOP}
+                width={Math.max(2, x(b) - x(a))}
+                height={bottom - CHART.TOP}
+                fill="url(#mmGap)"
+              />
+            ))}
 
-      {area ? <path d={area} fill="url(#mmArea)" /> : null}
-      {totalSegments.map((d) => (
-        <path
-          key={d.slice(0, 24)}
-          d={d}
-          fill="none"
-          stroke="var(--ac)"
-          strokeWidth="2.2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-      ))}
+            {area ? <path d={area} fill="url(#mmArea)" /> : null}
+            {totalSegments.map((d) => (
+              <path
+                key={d.slice(0, 24)}
+                d={d}
+                fill="none"
+                stroke="var(--ac)"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ))}
 
-      {lines.keys
-        .filter((m) => !hidden.has(m))
-        .flatMap((m) =>
-          segments(lines.series[m] ?? [], x, y).map((d) => (
-            <path
-              key={`${m}-${d.slice(0, 20)}`}
-              d={d}
-              fill="none"
-              stroke={colorOf(m)}
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )),
-        )}
+            {lines.keys
+              .filter((m) => !hidden.has(m))
+              .flatMap((m) =>
+                segments(lines.series[m] ?? [], x, y).map((d) => (
+                  <path
+                    key={`${m}-${d.slice(0, 20)}`}
+                    d={d}
+                    fill="none"
+                    stroke={colorOf(m)}
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )),
+              )}
 
-      {data.online.t
-        .map((t, i) => ({ t, i }))
-        .filter(({ i }) => i % xTickEvery === 0)
-        .map(({ t, i }) => (
-          <text
-            key={t}
-            x={x(i)}
-            y={BOTTOM + CHART.LABEL_DY}
-            textAnchor="middle"
-            fill="var(--tx-muted)"
-            fontSize="11"
-            fontFamily={CHART.FONT}
-          >
-            {axisLabel(t, data.bucketSec * xTickEvery)}
-          </text>
-        ))}
-    </svg>
+            {/* Il punto sotto il cursore, solo dove un valore c'è: su un
+                bucket non rilevato non si marca niente, o si direbbe che il
+                buco vale zero. */}
+            {hovered !== null && marked !== null ? (
+              <circle cx={x(hovered)} cy={y(marked)} r={3.5} fill="var(--ac)" />
+            ) : null}
+          </>
+        );
+      }}
+    </ChartFrame>
   );
 }
 

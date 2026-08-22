@@ -161,24 +161,25 @@ describe('la finestra e la griglia, che decide il server', () => {
 
     expect(p.t).toHaveLength(168);
     expect(p.liveTail).toBe(true);
-    // Mezzanotte del 31 agosto a Roma = 30 agosto 22:00 UTC, quindi l'ultimo
-    // bucket comincia alle 21:00 UTC.
-    expect(new Date((p.t.at(-1) as number) * 1000).toISOString()).toBe('2026-08-30T21:00:00.000Z');
+    // ULTIME 168 ORE, non «gli ultimi sette giorni civili»: alle 10:00 il
+    // grafico finisce all'ora delle 10:00, non a mezzanotte di stasera. Con
+    // l'allineamento ai giorni, le ore che restavano fino a stanotte erano
+    // dentro la griglia ma vuote — mezzo grafico bianco con l'adesso a meta`.
+    expect(new Date((p.t.at(-1) as number) * 1000).toISOString()).toBe('2026-08-30T10:00:00.000Z');
   });
 
-  it('le ore che non sono ancora arrivate sono `null`, non zero', async () => {
-    // La finestra contiene ore future per costruzione. Uno zero direbbe
-    // «nessuna partita in quell'ora», che di un'ora non ancora accaduta e`
-    // falso — e sull'area si leggerebbe come un crollo a fondo scala.
+  it('nessun periodo finisce nel FUTURO: l`ultimo bucket contiene adesso', async () => {
+    // E` l'invariante che rende superfluo annullare i bucket futuri: se non ce
+    // ne sono, non c'e' niente da annullare. Se un domani una finestra
+    // superasse l'adesso, la coda si riempirebbe di zeri — «nessuna partita»
+    // per ore che non sono ancora accadute.
     await mode(1, 'classic');
-    await matches(SABATO, 4);
-    const p = await duels.trends('7d', NOW_7D);
-    const serie = p.combos[0]?.v ?? [];
     const nowSec = Math.floor(NOW_7D.getTime() / 1000);
 
-    for (let i = 0; i < p.t.length; i += 1) {
-      const future = (p.t[i] as number) >= nowSec;
-      expect(serie[i] === null, `bucket ${i} future=${future}`).toBe(future);
+    for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {
+      const p = await duels.trends(range, NOW_7D);
+      const last = p.t.at(-1) as number;
+      expect(last, range).toBeLessThanOrEqual(nowSec);
     }
   });
 

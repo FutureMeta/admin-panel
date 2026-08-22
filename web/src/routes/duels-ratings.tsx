@@ -16,7 +16,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CHART, ChartFrame, everyNth } from '../components/chart-frame.tsx';
+import { CHART, ChartFrame } from '../components/chart-frame.tsx';
 import { HoverTip, useHoverTip } from '../components/hover-tip.tsx';
 import {
   FilterSelect,
@@ -48,7 +48,7 @@ import {
   starsFilled,
 } from '../lib/duels.ts';
 import { labelOf, useRange } from '../lib/range.ts';
-import { axisLabel, dayAndTime } from '../lib/when.ts';
+import { axisLabel, bucketLabel } from '../lib/when.ts';
 
 /** L'altezza del tracciato. Il telaio ci aggiunge la banda delle etichette. */
 const PLOT = 214;
@@ -353,12 +353,12 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
         top={MAX_STARS}
         points={points}
         yTicks={[0, 1, 2, 3, 4, 5].map((v) => ({ value: v, label: `${v}★` }))}
-        xTicks={everyNth(points, (i) => axisLabel(t[i] ?? 0, spacing))}
+        xLabelOf={(i) => axisLabel(t[i] ?? 0, spacing)}
         ariaLabel="Andamento del voto medio nel tempo"
         tipOf={(i) => {
           const v = avg[i];
           return {
-            title: dayAndTime(t[i] ?? 0),
+            title: bucketLabel(t[i] ?? 0, spacing),
             detail:
               v === null || v === undefined
                 ? 'nessuna valutazione'
@@ -366,9 +366,9 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
           };
         }}
       >
-        {({ x, y, bottom }, hovered) => {
+        {({ x, y, bottom, right }, hovered) => {
           const lines = segments(avg, x, y);
-          const barWidth = Math.max(1, (CHART.RIGHT - CHART.LEFT) / points - 1);
+          const barWidth = Math.max(1, (right - CHART.LEFT) / points - 1);
           return (
             <>
               {/* LA NUMEROSITA' SI DISEGNA. Il legacy la trasporta e non la usa
@@ -395,7 +395,7 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
                 <line
                   x1={CHART.LEFT}
                   y1={y(data.average)}
-                  x2={CHART.RIGHT}
+                  x2={right}
                   y2={y(data.average)}
                   stroke="var(--tx-muted)"
                   strokeWidth={1}

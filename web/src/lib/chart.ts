@@ -76,10 +76,27 @@ export function gaps(values: (number | null)[]): Array<[number, number]> {
 // ---------------------------------------------------------------------------
 
 export const CHART = {
-  /** Larghezza del sistema di coordinate. La resa e' sempre a piena larghezza. */
+  /**
+   * La larghezza di RIPIEGO, usata solo finché il riquadro non è stato
+   * misurato.
+   *
+   * IL VIEWBOX SEGUE I PIXEL, e non è un dettaglio di implementazione: con
+   * `preserveAspectRatio="none"` un sistema di coordinate fisso viene STIRATO
+   * per riempire il contenitore, e con lui il testo. A piena pagina 1120 unità
+   * su ~1050 pixel sono un 6% di compressione che non si nota; nel riquadro a
+   * metà pagina dell'andamento del voto diventa il 50%, e allora sì che si
+   * nota: le etichette dell'asse si schiacciano e il «5★» finisce sopra la
+   * prima colonna.
+   *
+   * Misurando il riquadro e usando la sua larghezza come viewBox, un'unità è
+   * un pixel su entrambi gli assi e non c'è più niente da stirare.
+   */
   W: 1120,
   /** Margine sinistro: ci stanno le etichette dell'asse verticale. */
   LEFT: 56,
+  /** Margine destro, in pixel: il bordo destro è `larghezza - questo`. */
+  PAD_RIGHT: 12,
+  /** Il bordo destro alla larghezza di ripiego. Le scale lo ricalcolano. */
   RIGHT: 1108,
   TOP: 16,
   /**
@@ -103,6 +120,8 @@ export type ChartScales = {
   y: (v: number) => number;
   /** Il fondo del tracciato, dove si chiudono le aree. */
   bottom: number;
+  /** Il bordo destro EFFETTIVO: dipende da quanto è largo il riquadro. */
+  right: number;
 };
 
 /**
@@ -112,27 +131,49 @@ export type ChartScales = {
  * `plot + AXIS_BAND`, cosi' la banda delle etichette non puo' essere
  * dimenticata da chi disegna.
  */
-export function chartScales(n: number, top: number, plot: number): ChartScales {
+export function chartScales(n: number, top: number, plot: number, width: number = CHART.W): ChartScales {
   const points = Math.max(1, n);
+  const right = Math.max(CHART.LEFT + 1, width - CHART.PAD_RIGHT);
   return {
-    x: (i) => CHART.LEFT + ((CHART.RIGHT - CHART.LEFT) * i) / Math.max(1, points - 1),
+    x: (i) => CHART.LEFT + ((right - CHART.LEFT) * i) / Math.max(1, points - 1),
     y: (v) => plot - ((plot - CHART.TOP) * v) / Math.max(1, top),
     bottom: plot,
+    right,
   };
 }
 
+/** Quanti pixel serve riservare a un'etichetta perché non tocchi la vicina. */
+const LABEL_ROOM = 130;
+
 /**
- * Le tacche orizzontali da mostrare: una ogni `n / 8`, e sempre l'ultima.
+ * Quante tacche stanno su una certa larghezza.
  *
- * Otto e' il numero che sta su mille pixel senza sovrapporsi; l'ultima si
- * aggiunge sempre perche' e' l'unica che dice DOVE FINISCE il periodo, ed e'
- * la domanda che si fa guardando il bordo destro di un grafico.
+ * NON UN NUMERO FISSO. Otto etichette stanno su mille pixel e si accavallano
+ * su cinquecento — che è la larghezza del riquadro dell'andamento del voto,
+ * metà pagina. Il numero lo detta lo spazio, non il grafico.
  */
-export function everyNth(points: number, labelOf: (index: number) => string): XTick[] {
-  const step = Math.max(1, Math.round(points / 8));
+export function slotsFor(width: number): number {
+  return Math.max(2, Math.floor(width / LABEL_ROOM));
+}
+
+/**
+ * Le tacche orizzontali da mostrare, e SEMPRE l'ultima.
+ *
+ * L'ultima si aggiunge sempre perché è l'unica che dice DOVE FINISCE il
+ * periodo, ed è la domanda che si fa guardando il bordo destro di un grafico.
+ * Se cade troppo vicino alla penultima, è la penultima a cedere il posto: un
+ * bordo senza etichetta è peggio di una tacca in meno in mezzo.
+ */
+export function everyNth(points: number, labelOf: (index: number) => string, slots = 8): XTick[] {
+  const step = Math.max(1, Math.round(points / Math.max(1, slots)));
   const out: XTick[] = [];
   for (let i = 0; i < points; i += 1) {
-    if (i % step === 0 || i === points - 1) out.push({ at: i, label: labelOf(i) });
+    if (i % step === 0) out.push({ at: i, label: labelOf(i) });
+  }
+  const last = points - 1;
+  if (out.at(-1)?.at !== last) {
+    if (last - (out.at(-1)?.at ?? 0) < step / 2) out.pop();
+    out.push({ at: last, label: labelOf(last) });
   }
   return out;
 }

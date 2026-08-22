@@ -13,7 +13,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
-import { ChartFrame, everyNth } from '../components/chart-frame.tsx';
+import { ChartFrame } from '../components/chart-frame.tsx';
 import { HeatGrid, HeatLegend } from '../components/heat-grid.tsx';
 import { PageHeader, Panel, PanelBar } from '../components/page.tsx';
 import { numberFmt, StatsPanelsSkeleton } from '../components/stats-panels.tsx';
@@ -31,7 +31,7 @@ import {
   spacingOf,
 } from '../lib/duels.ts';
 import { useRange } from '../lib/range.ts';
-import { axisLabel, dayAndTime } from '../lib/when.ts';
+import { axisLabel, bucketLabel } from '../lib/when.ts';
 
 /** L'altezza del tracciato. Il telaio ci aggiunge la banda delle etichette. */
 const PLOT = 236;
@@ -222,12 +222,12 @@ function MatchesPanel({
         top={scale.top}
         points={points}
         yTicks={scale.values.map((v) => ({ value: v, label: numberFmt.format(v) }))}
-        xTicks={everyNth(points, (i) => axisLabel(data.t[i] ?? 0, spacing))}
+        xLabelOf={(i) => axisLabel(data.t[i] ?? 0, spacing)}
         ariaLabel="Partite avviate nel tempo"
         tipOf={(i) => {
           const v = values[i];
           return {
-            title: dayAndTime(data.t[i] ?? 0),
+            title: bucketLabel(data.t[i] ?? 0, spacing),
             detail:
               v === null || v === undefined ? 'dato non ancora raccolto' : `${numberFmt.format(v)} partite`,
           };

@@ -24,8 +24,8 @@
 
 import type React from 'react';
 import type { ReactNode } from 'react';
-import { useState } from 'react';
-import { CHART, type ChartScales, chartScales, type XTick } from '../lib/chart.ts';
+import { useEffect, useRef, useState } from 'react';
+import { CHART, type ChartScales, chartScales, everyNth, slotsFor } from '../lib/chart.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
 export type YTick = { value: number; label: string };
@@ -35,7 +35,7 @@ export function ChartFrame({
   top,
   points,
   yTicks,
-  xTicks,
+  xLabelOf,
   ariaLabel,
   tipOf,
   children,
@@ -46,7 +46,8 @@ export function ChartFrame({
   top: number;
   points: number;
   yTicks: YTick[];
-  xTicks: XTick[];
+  /** L`etichetta di un bucket. Quali mostrarne lo decide la LARGHEZZA. */
+  xLabelOf: (index: number) => string;
   ariaLabel: string;
   /** Il contenuto del tooltip per un indice. `null` per non mostrarlo. */
   tipOf?: (index: number) => { title: string; detail: string } | null;
@@ -62,7 +63,29 @@ export function ChartFrame({
   // il grafico no. Agganciare la linea al bucket più vicino è ciò che rende
   // leggibile il valore — una riga a metà fra due punti non indica niente.
   const [hovered, setHovered] = useState<number | null>(null);
-  const scales = chartScales(points, top, plot);
+
+  // LA LARGHEZZA SI MISURA. Con un viewBox fisso e `preserveAspectRatio="none"`
+  // il disegno viene stirato per riempire il contenitore, e con lui il TESTO:
+  // a piena pagina è un 6% che non si nota, nel riquadro a metà pagina è il
+  // 50% e le etichette dell'asse si accavallano sul grafico. Prendendo la
+  // larghezza vera come sistema di coordinate, un'unità è un pixel e non c'è
+  // più niente da stirare.
+  const box = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState<number>(CHART.W);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const measure = () => setWidth(Math.max(320, Math.round(el.getBoundingClientRect().width)));
+    measure();
+    // Non basta misurare una volta: la barra laterale si chiude, la finestra
+    // cambia, e un grafico misurato al primo render resterebbe della larghezza
+    // di allora.
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  const scales = chartScales(points, top, plot, width);
   const height = plot + CHART.AXIS_BAND;
 
   const leave = () => {
@@ -71,85 +94,87 @@ export function ChartFrame({
   };
 
   return (
-    <div ref={hover.boxRef} onPointerLeave={leave} style={{ position: 'relative' }}>
-      <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
-      <svg
-        viewBox={`0 0 ${CHART.W} ${height}`}
-        preserveAspectRatio="none"
-        style={{ width: '100%', height, display: 'block' }}
-        role="img"
-        aria-label={ariaLabel}
-        onPointerLeave={leave}
-        onPointerMove={(e: React.PointerEvent<SVGSVGElement>) => {
-          const box = e.currentTarget.getBoundingClientRect();
-          const step = (CHART.RIGHT - CHART.LEFT) / Math.max(1, points - 1);
-          const at = Math.round((((e.clientX - box.left) / box.width) * CHART.W - CHART.LEFT) / step);
-          const index = Math.min(points - 1, Math.max(0, at));
-          setHovered(index);
-          const tip = tipOf?.(index);
-          if (tip) hover.at(e, tip.title, tip.detail);
-        }}
-      >
-        <g stroke="var(--grid)" strokeWidth={1}>
+    <div ref={box} style={{ position: 'relative' }}>
+      <div ref={hover.boxRef} onPointerLeave={leave} style={{ position: 'relative' }}>
+        <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
+        <svg
+          viewBox={`0 0 ${width} ${height}`}
+          preserveAspectRatio="none"
+          style={{ width: '100%', height, display: 'block' }}
+          role="img"
+          aria-label={ariaLabel}
+          onPointerLeave={leave}
+          onPointerMove={(e: React.PointerEvent<SVGSVGElement>) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const step = (scales.right - CHART.LEFT) / Math.max(1, points - 1);
+            const at = Math.round((((e.clientX - rect.left) / rect.width) * width - CHART.LEFT) / step);
+            const index = Math.min(points - 1, Math.max(0, at));
+            setHovered(index);
+            const tip = tipOf?.(index);
+            if (tip) hover.at(e, tip.title, tip.detail);
+          }}
+        >
+          <g stroke="var(--grid)" strokeWidth={1}>
+            {yTicks.map((t) => (
+              <line
+                key={t.value}
+                x1={CHART.LEFT}
+                x2={scales.right}
+                y1={scales.y(t.value)}
+                y2={scales.y(t.value)}
+              />
+            ))}
+          </g>
           {yTicks.map((t) => (
-            <line
-              key={t.value}
-              x1={CHART.LEFT}
-              x2={CHART.RIGHT}
-              y1={scales.y(t.value)}
-              y2={scales.y(t.value)}
-            />
+            <text
+              key={t.label}
+              x={CHART.LEFT - 10}
+              y={scales.y(t.value)}
+              textAnchor="end"
+              dominantBaseline="middle"
+              fill="var(--tx-muted)"
+              fontSize="11"
+              fontFamily={CHART.FONT}
+            >
+              {t.label}
+            </text>
           ))}
-        </g>
-        {yTicks.map((t) => (
-          <text
-            key={t.label}
-            x={CHART.LEFT - 10}
-            y={scales.y(t.value)}
-            textAnchor="end"
-            dominantBaseline="middle"
-            fill="var(--tx-muted)"
-            fontSize="11"
-            fontFamily={CHART.FONT}
-          >
-            {t.label}
-          </text>
-        ))}
 
-        {/* LA LINEA DI RIFERIMENTO, sotto il tracciato e sopra la griglia: dice
-            DOVE si sta guardando. Senza, il tooltip mostra un numero e non c'è
-            modo di sapere a quale punto del grafico appartiene — su
-            centosessantotto ore la differenza fra due colonne vicine è un
-            pixel. Sta prima di `children` per finire sotto la linea dei dati. */}
-        {hovered !== null ? (
-          <line
-            x1={scales.x(hovered)}
-            x2={scales.x(hovered)}
-            y1={CHART.TOP}
-            y2={plot}
-            stroke="var(--tx-muted)"
-            strokeWidth={1}
-            strokeDasharray="3 3"
-            pointerEvents="none"
-          />
-        ) : null}
+          {/* LA LINEA DI RIFERIMENTO, sotto il tracciato e sopra la griglia: dice
+              DOVE si sta guardando. Senza, il tooltip mostra un numero e non c'è
+              modo di sapere a quale punto del grafico appartiene — su
+              centosessantotto ore la differenza fra due colonne vicine è un
+              pixel. Sta prima di `children` per finire sotto la linea dei dati. */}
+          {hovered !== null ? (
+            <line
+              x1={scales.x(hovered)}
+              x2={scales.x(hovered)}
+              y1={CHART.TOP}
+              y2={plot}
+              stroke="var(--tx-muted)"
+              strokeWidth={1}
+              strokeDasharray="3 3"
+              pointerEvents="none"
+            />
+          ) : null}
 
-        {children(scales, hovered)}
+          {children(scales, hovered)}
 
-        {xTicks.map((t) => (
-          <text
-            key={`${t.at}-${t.label}`}
-            x={scales.x(t.at)}
-            y={plot + CHART.LABEL_DY}
-            textAnchor="middle"
-            fill="var(--tx-muted)"
-            fontSize="11"
-            fontFamily={CHART.FONT}
-          >
-            {t.label}
-          </text>
-        ))}
-      </svg>
+          {everyNth(points, xLabelOf, slotsFor(width)).map((t) => (
+            <text
+              key={`${t.at}-${t.label}`}
+              x={scales.x(t.at)}
+              y={plot + CHART.LABEL_DY}
+              textAnchor="middle"
+              fill="var(--tx-muted)"
+              fontSize="11"
+              fontFamily={CHART.FONT}
+            >
+              {t.label}
+            </text>
+          ))}
+        </svg>
+      </div>
     </div>
   );
 }

@@ -18,7 +18,7 @@
 //     conteggio devono avere lo stesso rango.
 
 import { describe, expect, it } from 'vitest';
-import { CHART, chartScales, everyNth, gaps, niceScale, segments } from '#web/lib/chart.ts';
+import { CHART, chartScales, everyNth, gaps, niceScale, segments, slotsFor } from '#web/lib/chart.ts';
 import {
   ALL,
   avgLabel,
@@ -293,5 +293,44 @@ describe('la rampa della heatmap ha piu` di quattro colori', () => {
     expect(heatPosition(10, 100)).toBeLessThan(heatPosition(70, 100));
     expect(heatPosition(0, 100)).toBe(0);
     expect(heatPosition(100, 100)).toBe(1);
+  });
+});
+
+describe('il grafico non si stira per riempire il riquadro', () => {
+  it('le scale seguono la LARGHEZZA misurata, non un viewBox fisso', async () => {
+    // Con un viewBox fisso e `preserveAspectRatio="none"` il disegno viene
+    // stirato per riempire il contenitore, e con lui il TESTO: a piena pagina
+    // e` un 6% che non si nota, nel riquadro a meta` pagina dell'andamento del
+    // voto e` il 50% — e il «5★» finisce sopra la prima colonna.
+    const largo = chartScales(10, 100, 200, 1120);
+    const stretto = chartScales(10, 100, 200, 520);
+
+    expect(largo.right).toBe(1108);
+    expect(stretto.right).toBe(508);
+    // Il margine sinistro resta lo stesso in PIXEL: e` lo spazio delle
+    // etichette, e non si restringe con il riquadro.
+    expect(largo.x(0)).toBe(stretto.x(0));
+  });
+
+  it('un riquadro strettissimo non produce una scala rovesciata', async () => {
+    const minimo = chartScales(10, 100, 200, 20);
+    expect(minimo.right).toBeGreaterThan(CHART.LEFT);
+  });
+
+  it('le tacche dell`asse le detta lo SPAZIO, non un numero fisso', async () => {
+    // Otto etichette stanno su mille pixel e si accavallano su cinquecento.
+    expect(slotsFor(1120)).toBeGreaterThan(slotsFor(520));
+    expect(slotsFor(120)).toBeGreaterThanOrEqual(2);
+  });
+
+  it('l`ultima tacca c`e` sempre, e non si accavalla alla penultima', async () => {
+    const larghe = everyNth(168, (i) => String(i), 8);
+    expect(larghe.at(-1)?.at).toBe(167);
+    const strette = everyNth(168, (i) => String(i), 3);
+    expect(strette.at(-1)?.at).toBe(167);
+    // Fra le ultime due tacche resta almeno mezzo passo.
+    const passo = 168 / 3;
+    const ultime = strette.slice(-2).map((t) => t.at);
+    expect((ultime[1] as number) - (ultime[0] as number)).toBeGreaterThan(passo / 2);
   });
 });

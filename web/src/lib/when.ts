@@ -118,3 +118,28 @@ export function axisLabel(epochSec: number, spacingSec: number): string {
   if (spacingSec < 48 * 3_600) return WEEKDAY_HOUR.format(at);
   return SHORT_DATE.format(at);
 }
+
+/**
+ * L'etichetta di un BUCKET, che non è sempre un istante.
+ *
+ * «20 gennaio alle 00:00» su una colonna che vale l'intero 20 gennaio è falso
+ * due volte: l'ora non significa niente — il bucket copre ventiquattro ore —
+ * e suggerisce che il valore appartenga a quel minuto. Su un bucket
+ * settimanale è peggio ancora: quel lunedì a mezzanotte è solo il bordo
+ * sinistro di sette giorni.
+ *
+ * Il passo lo dice la GRIGLIA, non il nome del range: un mese non dura sempre
+ * lo stesso e un giorno di cambio ora dura 23 o 25 ore.
+ */
+export function bucketLabel(epochSec: number, spacingSec: number, now: Date = new Date()): string {
+  if (spacingSec < 24 * 3_600) return dayAndTime(epochSec, now);
+
+  const at = new Date(epochSec * 1000);
+  const sameYear = CIVIL_DAY.format(at).slice(0, 4) === CIVIL_DAY.format(now).slice(0, 4);
+  const date = sameYear ? SHORT_DATE.format(at) : SHORT_DATE_YEAR.format(at);
+
+  // Sopra i due giorni di passo si sta guardando una settimana, e dirlo cambia
+  // come si legge il numero accanto: settemila partite in un giorno e in una
+  // settimana sono due fatti molto diversi.
+  return spacingSec >= 2 * 24 * 3_600 ? `settimana del ${date}` : date;
+}

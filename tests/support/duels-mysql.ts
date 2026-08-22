@@ -18,6 +18,8 @@ export type FakeDuelsSource = {
   maps?: unknown[];
   matches?: unknown[];
   ratings?: unknown[];
+  /** Le righe di , per il controllo d'avvio. */
+  columns?: Array<{ t: string; c: string }>;
 };
 
 /** La tabella nominata dalla prima FROM della query. */
@@ -57,6 +59,9 @@ export function fakeDuelsMysql(source: FakeDuelsSource): DuelsMysql {
         const n = all.filter((r) => BigInt(String(r.id)) <= upTo).length;
         return [{ n: String(n) }] as T[];
       }
+
+      // Il controllo delle colonne all'avvio.
+      if (query.includes('information_schema')) return (source.columns ?? []) as T[];
 
       // I cataloghi: interi, senza watermark.
       if (query.includes('duels_mode') || query.includes('duels_map')) return all as T[];

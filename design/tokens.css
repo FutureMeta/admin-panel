@@ -46,6 +46,16 @@
      barra. */
   --vio-viz: #9b8fd9;
 
+  /* La scala dei voti, 1-5 stelle. Uno e cinque sono l'errore e l'ok del
+     pannello; i due gradini in mezzo si RICAVANO da quelli, invece di essere
+     inventati. Il colore di una serie non e' decorazione: e' l'unica cosa che
+     distingue una barra dall'altra. */
+  --r1: var(--err);
+  --r2: color-mix(in oklab, var(--err) 55%, var(--warn));
+  --r3: var(--warn);
+  --r4: color-mix(in oklab, var(--ok) 55%, var(--warn));
+  --r5: var(--ok);
+
   /* Semantici */
   --ok: #22c55e;
   --ok-soft: rgba(34, 197, 94, 0.12);

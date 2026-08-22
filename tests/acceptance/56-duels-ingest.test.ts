@@ -17,7 +17,12 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { runDuelsIngest } from '#src/duels/ingest.ts';
-import { createExecutionCap, type DuelsMysql } from '#src/duels/mysql.ts';
+import {
+  createExecutionCap,
+  type DuelsMysql,
+  missingSourceColumns,
+  SOURCE_COLUMNS,
+} from '#src/duels/mysql.ts';
 import { fakeDuelsMysql } from '#tests/support/duels-mysql.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
@@ -103,9 +108,12 @@ async function one<T>(query: string): Promise<T> {
 }
 
 describe('i cataloghi si replicano interi a ogni giro', () => {
-  it('modalita` e mappe entrano, e il colore storto diventa nullo', async () => {
-    // Perdere l'intero catalogo per un esadecimale non valido sarebbe
-    // sproporzionato: la schermata ha gia` un ripiego per posizione.
+  it('modalita` e mappe entrano, e il colore resta vuoto', async () => {
+    // IL COLORE NON VIENE DALLA SORGENTE. `duels_mode` all'origine non ha
+    // quella colonna — verificato in produzione il 22 agosto 2026, errno 1054
+    // — e la colonna su PostgreSQL resta perche` e` nostra: ci finira` la
+    // scelta fatta dalla configurazione. Finche` e` nulla le schermate
+    // ripiegano su una posizione stabile nel dizionario.
     const res = await runDuelsIngest(db, fakeMysql({ modes: MODES, maps: MAPS }));
     expect(res.modes).toBe(2);
 
@@ -113,9 +121,21 @@ describe('i cataloghi si replicano interi a ogni giro', () => {
       `SELECT mode_id, color, ranking FROM stats.duels_mode ORDER BY mode_id`,
     );
     expect(rows.rows).toEqual([
-      { mode_id: 1, color: '#d34545', ranking: 'RANKED' },
+      { mode_id: 1, color: null, ranking: 'RANKED' },
       { mode_id: 2, color: null, ranking: 'UNRANKED' },
     ]);
+  });
+
+  it('un colore gia` scelto SOPRAVVIVE al giro successivo', async () => {
+    // Il difetto opposto, e sarebbe silenzioso: se l'upsert scrivesse anche il
+    // colore, ogni ciclo da trenta secondi cancellerebbe la scelta fatta dalla
+    // configurazione, e chi l'ha fatta la vedrebbe sparire senza capire
+    // perche`.
+    await runDuelsIngest(db, fakeMysql({ modes: MODES }));
+    await sql.query(`UPDATE stats.duels_mode SET color = '#d34545' WHERE mode_id = 1`);
+    await runDuelsIngest(db, fakeMysql({ modes: MODES }));
+
+    expect(await one<string>(`SELECT color FROM stats.duels_mode WHERE mode_id = 1`)).toBe('#d34545');
   });
 
   it('un nome cambiato si aggiorna, senza watermark che lo nasconda', async () => {
@@ -412,5 +432,33 @@ describe('il tetto di esecuzione ha due nomi su due database diversi', () => {
       }),
     ).rejects.toThrow(/connessione persa/);
     expect(cap.kind()).toBe('unknown');
+  });
+});
+
+describe('cosa manca alla sorgente si chiede una volta, all`avvio', () => {
+  const TUTTE = Object.entries(SOURCE_COLUMNS).flatMap(([t, cols]) => cols.map((c) => ({ t, c })));
+
+  it('con la sorgente allineata non manca niente', async () => {
+    expect(await missingSourceColumns(fakeMysql({ columns: TUTTE }))).toEqual([]);
+  });
+
+  it('una colonna assente si nomina, non si indovina', async () => {
+    // E` cosi` che sono usciti `max_execution_time` e `duels_mode.color`: uno
+    // per riavvio, ognuno dopo un deploy. Chiederle tutte insieme costa una
+    // query e toglie il giro di scoperte.
+    const senza = TUTTE.filter((x) => !(x.t === 'duels_userdata' && x.c === 'username'));
+    expect(await missingSourceColumns(fakeMysql({ columns: senza }))).toEqual(['duels_userdata.username']);
+  });
+
+  it('una tabella assente si segnala per INTERA, non colonna per colonna', async () => {
+    // Sei righe identiche non si leggono; una riga che dice «tabella assente»
+    // si` — ed e` un guasto diverso, che si risolve in un altro modo.
+    const senza = TUTTE.filter((x) => x.t !== 'duels_map');
+    expect(await missingSourceColumns(fakeMysql({ columns: senza }))).toEqual(['duels_map: tabella assente']);
+  });
+
+  it('il maiuscolo di MariaDB non conta come una colonna diversa', async () => {
+    const urlate = TUTTE.map((x) => ({ t: x.t.toUpperCase(), c: x.c.toUpperCase() }));
+    expect(await missingSourceColumns(fakeMysql({ columns: urlate }))).toEqual([]);
   });
 });

@@ -24,7 +24,7 @@ import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import type { JobRegistry, RunningJob } from '#src/jobs/scheduler.ts';
 import { startJob } from '#src/jobs/scheduler.ts';
 import { runDuelsIngest } from './ingest.ts';
-import { createDuelsMysql, type DuelsMysql } from './mysql.ts';
+import { createDuelsMysql, type DuelsMysql, missingSourceColumns } from './mysql.ts';
 import { type DuelsWarmDeps, type DuelsWarmResult, warmDuelsLive } from './warm.ts';
 
 /** La cadenza, che e' anche quella con cui il browser richiede. */
@@ -103,6 +103,20 @@ export async function startDuelsIngest(opts: DuelsIngestOptions): Promise<DuelsI
       );
     } else {
       opts.logger.info({ job: 'duels-ingest', cap }, 'MySQL del gioco raggiungibile');
+    }
+
+    // LE COLONNE SI CHIEDONO UNA VOLTA SOLA, E ALL'AVVIO.
+    //
+    // Non cambia niente in base alla risposta — quello sarebbe `hasColumn` a
+    // runtime, che e' fra le cose da non replicare. Serve a non scoprire le
+    // colonne mancanti UNA PER DEPLOY: e' esattamente cosi' che sono usciti
+    // `max_execution_time` e `duels_mode.color`, uno per riavvio.
+    const missing = await missingSourceColumns(my);
+    if (missing.length > 0) {
+      opts.logger.error(
+        { job: 'duels-ingest', mancanti: missing },
+        'la sorgente non ha tutto cio` che l`ingestione legge: ogni ciclo fallira` finche` non si allinea',
+      );
     }
   } catch (err) {
     opts.logger.error(

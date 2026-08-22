@@ -108,7 +108,6 @@ type ModeRow = {
   display_name: string | null;
   ranking: string | null;
   type: string | null;
-  color: string | null;
 };
 
 type MapRow = { id: number; name: string | null; display_name: string | null; type: string | null };
@@ -136,29 +135,34 @@ export async function watermarkOf(db: Database, source: string): Promise<bigint>
  * con la forma vecchia fino al riavvio del processo.
  */
 export async function syncCatalogs(db: Database, my: DuelsMysql): Promise<{ modes: number; maps: number }> {
-  const modes = await my.rows<ModeRow>(`SELECT id, name, display_name, ranking, type, color FROM duels_mode`);
+  // NIENTE `color`: quella colonna all'origine NON ESISTE — verificato in
+  // produzione il 22 agosto 2026, errno 1054 su `duels_mode`. La colonna
+  // `stats.duels_mode.color` resta, vuota: e' NOSTRA, e il giorno in cui la
+  // schermata di configurazione lascera' scegliere un colore per modalita' e'
+  // li' che finira'. Finche' e' NULL le schermate ripiegano su una posizione
+  // stabile nel dizionario, che e' gia' il comportamento del resto del
+  // pannello.
+  const modes = await my.rows<ModeRow>(`SELECT id, name, display_name, ranking, type FROM duels_mode`);
   const maps = await my.rows<MapRow>(`SELECT id, name, display_name, type FROM duels_map`);
 
   if (modes.length > 0) {
     await sql`
-      INSERT INTO stats.duels_mode (mode_id, name, display_name, ranking, mode_type, color, seen_at)
+      INSERT INTO stats.duels_mode (mode_id, name, display_name, ranking, mode_type, seen_at)
       SELECT * FROM unnest(
         ${modes.map((m) => m.id)}::smallint[],
         ${modes.map((m) => m.name ?? String(m.id))}::text[],
         ${modes.map((m) => m.display_name ?? m.name ?? String(m.id))}::text[],
         ${modes.map((m) => m.ranking ?? 'UNRANKED')}::text[],
-        ${modes.map((m) => m.type ?? 'DUEL')}::text[],
-        -- Un colore che non passa il vincolo diventa NULL invece di far
-        -- fallire il lotto: la schermata ha gia' un ripiego per posizione, e
-        -- perdere l'intero catalogo per un esadecimale storto sarebbe
-        -- sproporzionato.
-        ${modes.map((m) => normalizeColor(m.color))}::text[]
-      ) AS c(mode_id, name, display_name, ranking, mode_type, color)
+        ${modes.map((m) => m.type ?? 'DUEL')}::text[]
+      ) AS c(mode_id, name, display_name, ranking, mode_type)
       CROSS JOIN LATERAL (SELECT now() AS seen_at) t
       ON CONFLICT (mode_id) DO UPDATE SET
         name = EXCLUDED.name, display_name = EXCLUDED.display_name,
         ranking = EXCLUDED.ranking, mode_type = EXCLUDED.mode_type,
-        color = EXCLUDED.color, seen_at = EXCLUDED.seen_at
+        -- Il colore NON si tocca: non viene dalla sorgente, quindi un giro di
+        -- ingestione non deve poterlo cancellare. Il giorno in cui la
+        -- configurazione lo lascera' scegliere, sopravvivera' ai giri.
+        seen_at = EXCLUDED.seen_at
     `.execute(db);
   }
 
@@ -179,13 +183,6 @@ export async function syncCatalogs(db: Database, my: DuelsMysql): Promise<{ mode
   }
 
   return { modes: modes.length, maps: maps.length };
-}
-
-/** Un colore valido per il vincolo della colonna, o `null`. */
-function normalizeColor(value: string | null): string | null {
-  if (typeof value !== 'string') return null;
-  const s = value.trim().toLowerCase();
-  return /^#[0-9a-f]{6}$/.test(s) ? s : null;
 }
 
 /**

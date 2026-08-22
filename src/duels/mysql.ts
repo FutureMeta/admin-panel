@@ -236,3 +236,72 @@ export function parseDialog(raw: unknown): { turns: DialogTurn[] | null; degrade
   }
   return { turns, degraded: false };
 }
+
+/**
+ * Le colonne che l'ETL nomina, tabella per tabella.
+ *
+ * NON E' `hasColumn` A RUNTIME — quello e' fra le cose da non replicare (§6.7):
+ * il legacy interrogava INFORMATION_SCHEMA sul percorso caldo, teneva l'esito
+ * in una Map senza scadenza e CAMBIAVA COMPORTAMENTO in base alla risposta,
+ * quindi dopo una migrazione del gioco continuava con la forma vecchia fino al
+ * riavvio.
+ *
+ * Qui si fa il contrario: una lettura sola all'avvio, che non cambia niente e
+ * si limita a DIRE cosa manca. Serve perche' l'alternativa e' scoprire le
+ * colonne una per volta, un deploy per volta — che e' esattamente come sono
+ * usciti `max_execution_time` e `duels_mode.color`.
+ */
+export const SOURCE_COLUMNS: Readonly<Record<string, readonly string[]>> = {
+  duels_match_statistics: ['id', 'created_at', 'type', 'context', 'mode_id', 'map_id'],
+  duels_match_ratings: [
+    'id',
+    'created_at',
+    'match_id',
+    'player_id',
+    'mode_id',
+    'rating',
+    'comment',
+    'dialog',
+  ],
+  duels_mode: ['id', 'name', 'display_name', 'ranking', 'type'],
+  duels_map: ['id', 'name', 'display_name', 'type'],
+  duels_userdata: ['id', 'uuid', 'username'],
+};
+
+/**
+ * Cio' che manca alla sorgente, in una lista sola.
+ *
+ * Una tabella assente si segnala per intero invece di elencarne le sei
+ * colonne: «duels_map: tabella assente» si legge, sei righe identiche no.
+ */
+export async function missingSourceColumns(my: DuelsMysql): Promise<string[]> {
+  const names = Object.keys(SOURCE_COLUMNS);
+  const rows = await my.rows<{ t: string; c: string }>(
+    `SELECT table_name AS t, column_name AS c
+       FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name IN (${names.map(() => '?').join(', ')})`,
+    names,
+  );
+
+  const found = new Map<string, Set<string>>();
+  for (const row of rows) {
+    const table = String(row.t).toLowerCase();
+    const set = found.get(table) ?? new Set<string>();
+    set.add(String(row.c).toLowerCase());
+    found.set(table, set);
+  }
+
+  const missing: string[] = [];
+  for (const [table, columns] of Object.entries(SOURCE_COLUMNS)) {
+    const present = found.get(table);
+    if (!present || present.size === 0) {
+      missing.push(`${table}: tabella assente`);
+      continue;
+    }
+    for (const column of columns) {
+      if (!present.has(column)) missing.push(`${table}.${column}`);
+    }
+  }
+  return missing;
+}

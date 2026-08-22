@@ -162,3 +162,158 @@ export function spacingOf(t: number[]): number {
   if (t.length < 2) return 3_600;
   return Math.max(1, (t[1] as number) - (t[0] as number));
 }
+
+// ---------------------------------------------------------------------------
+// Ratings
+// ---------------------------------------------------------------------------
+
+export type DuelsModeScore = { id: number; name: string; count: number; average: number };
+
+export type DuelsRatings = {
+  v: number;
+  range: string;
+  mode: number | null;
+  total: number;
+  average: number;
+  withComment: number;
+  distribution: [number, number, number, number, number];
+  trend: { t: number[]; avg: (number | null)[]; n: (number | null)[] };
+  mostRated: DuelsModeScore | null;
+  bestRated: DuelsModeScore | null;
+  bestRatedMinSample: number;
+  since: string | null;
+  builtAt: number;
+};
+
+export type DialogTurn = { role: string; content: string };
+
+export type DuelsRatingRow = {
+  id: string;
+  at: number;
+  player: string | null;
+  playerUuid: string | null;
+  mode: number | null;
+  modeName: string | null;
+  rating: number;
+  comment: string | null;
+  dialog: DialogTurn[] | null;
+};
+
+export type DuelsRecent = {
+  v: number;
+  rows: DuelsRatingRow[];
+  cursor: string | null;
+  total: number | null;
+  pageSize: number;
+};
+
+export type CommentFilter = 'all' | 'with' | 'without';
+export type RecentSort = 'recent' | 'worst' | 'best';
+
+/**
+ * La scala semaforica dei voti, DAI TOKEN.
+ *
+ * Il mockup assegna i colori nell'ordine sbagliato — cinque stelle finiscono
+ * rosse — e il legacy improvvisa `rgb(251 146 60)` e `rgb(132 204 22)`, che
+ * non esistono nemmeno fra le sue variabili. Qui uno e cinque stelle sono
+ * l'errore e l'ok del pannello, e i due gradini in mezzo si ricavano da quelli:
+ * il colore di una serie non e' decorazione.
+ */
+export const RATING_COLORS = ['var(--r1)', 'var(--r2)', 'var(--r3)', 'var(--r4)', 'var(--r5)'] as const;
+
+export type RatingBar = { stars: number; count: number; share: number; color: string };
+
+/**
+ * Le cinque barre, SEMPRE cinque anche a zero voti.
+ *
+ * Non esistono barre mancanti: una distribuzione con quattro colonne
+ * suggerirebbe che quel voto non si possa dare.
+ */
+export function distributionBars(distribution: readonly number[], total: number): RatingBar[] {
+  return [0, 1, 2, 3, 4].map((i) => {
+    const count = distribution[i] ?? 0;
+    return {
+      stars: i + 1,
+      count,
+      share: total > 0 ? (count / total) * 100 : 0,
+      color: RATING_COLORS[i] as string,
+    };
+  });
+}
+
+/**
+ * Quante stelle si disegnano piene per un valore medio.
+ *
+ * ARROTONDA, e il difetto e' noto: 3,50 disegna quattro stelle piene sopra la
+ * scritta «3,50». E' tollerabile SOLO perche' il numero sta sempre accanto, e
+ * l'etichetta per lo screen reader porta i due decimali — mai le stelle da
+ * sole.
+ */
+export function starsFilled(value: number): number {
+  return Math.max(0, Math.min(5, Math.round(value)));
+}
+
+/** Una media con due decimali, in italiano. */
+export function avgLabel(value: number): string {
+  return value.toFixed(2).replace('.', ',');
+}
+
+/** Una quota intera, in italiano. Per i KPI, che non hanno decimali. */
+export function pctLabel(part: number, whole: number): string {
+  if (whole <= 0) return '0%';
+  return `${Math.round((part / whole) * 100)}%`;
+}
+
+/**
+ * La chiave dei filtri della lista.
+ *
+ * Quando cambia, il cursore si azzera DURANTE IL RENDER confrontandola con la
+ * precedente. In un `useEffect` si emetterebbe prima una richiesta con il
+ * cursore vecchio — cioe' la pagina due di una ricerca che non e' piu' quella.
+ */
+export function filterKey(f: {
+  mode: number | null;
+  q: string;
+  comment: CommentFilter;
+  sort: RecentSort;
+  range: string;
+}): string {
+  return `${f.range}|${f.mode ?? '_all'}|${f.q}|${f.comment}|${f.sort}`;
+}
+
+export function isCommentFilter(v: unknown): v is CommentFilter {
+  return v === 'all' || v === 'with' || v === 'without';
+}
+
+export function isRecentSort(v: unknown): v is RecentSort {
+  return v === 'recent' || v === 'worst' || v === 'best';
+}
+
+export type RatingsSearch = {
+  mode?: number;
+  q?: string;
+  comment?: CommentFilter;
+  sort?: RecentSort;
+};
+
+/**
+ * I filtri letti dalla URL, per `validateSearch` della rotta.
+ *
+ * NELLA URL e non in `useState`, come il periodo: nel legacy il filtro
+ * modalita' e' uno stato di React e la vista filtrata non e' condivisibile —
+ * chi incolla il collegamento a «le peggiori valutazioni di Sumo» manda la
+ * lista di tutto.
+ *
+ * Un valore impossibile SI TOGLIE invece di tenerlo: lasciare in barra un
+ * `?sort=migliori` che non ha effetto fa credere che l'abbia avuto.
+ */
+export function ratingsSearch(search: Record<string, unknown>): RatingsSearch {
+  const out: RatingsSearch = {};
+  const mode = Number(search['mode']);
+  if (Number.isInteger(mode) && mode >= 0 && mode <= 32_767) out.mode = mode;
+  const q = search['q'];
+  if (typeof q === 'string' && q.trim() !== '') out.q = q.slice(0, 120);
+  if (isCommentFilter(search['comment']) && search['comment'] !== 'all') out.comment = search['comment'];
+  if (isRecentSort(search['sort']) && search['sort'] !== 'recent') out.sort = search['sort'];
+  return out;
+}

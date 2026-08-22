@@ -220,11 +220,15 @@ function MatchesPanel({
         t={data.t}
         yTicks={scale.values.map((v) => ({ value: v, label: numberFmt.format(v) }))}
         ariaLabel="Partite avviate nel tempo"
-        detailOf={(i) => {
+        readingsOf={(i) => {
+          // Una linea sola: le tab filtrano la serie, non ne aggiungono.
           const v = values[i];
-          return v === null || v === undefined
-            ? 'dato non ancora raccolto'
-            : `${numberFmt.format(v)} partite`;
+          return [
+            {
+              value:
+                v === null || v === undefined ? 'dato non ancora raccolto' : `${numberFmt.format(v)} partite`,
+            },
+          ];
         }}
       >
         {({ x, y, bottom }, hovered) => {

@@ -27,7 +27,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { CHART, type ChartScales, chartScales, everyNth, slotsFor, spacingOf, spanOf } from '../lib/chart.ts';
 import { bucketLabel, tickLabel } from '../lib/when.ts';
-import { HoverTip, useHoverTip } from './hover-tip.tsx';
+import { HoverTip, type TipRow, useHoverTip } from './hover-tip.tsx';
 
 export type YTick = { value: number; label: string };
 
@@ -37,7 +37,7 @@ export function ChartFrame({
   t,
   yTicks,
   ariaLabel,
-  detailOf,
+  readingsOf,
   children,
 }: {
   /** Altezza del tracciato in unita' del viewBox. */
@@ -59,12 +59,18 @@ export function ChartFrame({
   yTicks: YTick[];
   ariaLabel: string;
   /**
-   * La seconda riga del tooltip: il valore in quel bucket, con la sua unità.
+   * Le LETTURE in quel bucket: una riga per ogni linea che il grafico disegna.
+   *
+   * Erano una sola, ed era quella in alto — il totale. Su un grafico che
+   * disegna anche le sue parti, fermarsi lì è la risposta a una domanda che
+   * nessuno ha fatto: si passa sopra il grafico proprio per sapere COME si
+   * divide quel punto, e il tooltip rispondeva sempre con la somma. Le altre
+   * linee erano disegnate, colorate, spiegate in legenda, e mute.
    *
    * La PRIMA riga — quando — la scrive il telaio, perché è la stessa domanda
    * per tutti e tre i grafici e dipende dal passo dei bucket, non dai dati.
    */
-  detailOf?: (index: number) => string;
+  readingsOf?: (index: number) => TipRow[];
   /**
    * Il disegno vero. Riceve le scale e QUALE BUCKET è sotto il cursore, così
    * ogni grafico può marcare il proprio punto: il telaio conosce la posizione
@@ -120,7 +126,7 @@ export function ChartFrame({
   return (
     <div ref={box} style={{ position: 'relative' }}>
       <div ref={hover.boxRef} onPointerLeave={leave} style={{ position: 'relative' }}>
-        <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
+        <HoverTip tip={hover.tip} boxRef={hover.boxRef} width={230} />
         <svg
           viewBox={`0 0 ${width} ${height}`}
           preserveAspectRatio="none"
@@ -138,7 +144,7 @@ export function ChartFrame({
             // tre i grafici, e su un bucket giornaliero «20 gennaio alle
             // 00:00» è falso due volte — l'ora non significa niente e
             // suggerisce che il valore appartenga a quel minuto.
-            if (detailOf) hover.at(e, bucketLabel(t[index] ?? 0, bucketStep), detailOf(index));
+            if (readingsOf) hover.at(e, bucketLabel(t[index] ?? 0, bucketStep), readingsOf(index));
           }}
         >
           <g stroke="var(--grid)" strokeWidth={1}>

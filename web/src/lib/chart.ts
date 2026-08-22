@@ -236,3 +236,90 @@ export function everyNth(points: number, labelOf: (index: number) => string, slo
   }
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// Cosa dice il riquadro sotto il cursore
+// ---------------------------------------------------------------------------
+
+/**
+ * Una riga del riquadro sotto il cursore: una lettura sola.
+ *
+ * `label` e `color` esistono perche' un grafico puo' disegnare PIU' linee — un
+ * totale e le sue parti — e allora un numero da solo non dice a quale
+ * appartiene. Il pallino e' lo stesso colore della legenda: e' cio' che lega
+ * la riga alla linea senza doverlo spiegare.
+ *
+ * Chi ha una lettura sola non li passa, e la riga resta il numero e basta.
+ */
+export type TipRow = { value: string; label?: string; color?: string };
+
+/**
+ * Quante parti entrano nel riquadro.
+ *
+ * Un tetto serve: il dettaglio di una modalita' si divide per server, e venti
+ * righe sono un riquadro piu' alto del grafico che dovrebbe spiegare. Le
+ * escluse si CONTANO in fondo invece di sparire — un elenco troncato in
+ * silenzio si legge come un elenco completo, ed e' il modo piu' facile di far
+ * sembrare che un server non ci fosse.
+ */
+export const MAX_PARTS = 8;
+
+/**
+ * Le letture di un bucket: il totale, poi le parti che in quel punto ci sono.
+ *
+ * PRIMA ERA SOLO IL TOTALE. Le altre linee erano disegnate, colorate, spiegate
+ * in legenda, e mute: si passa sopra un grafico proprio per sapere come si
+ * divide quel punto, e il riquadro rispondeva sempre con la somma in cima.
+ *
+ * IL TOTALE NON E' LA SOMMA DELLE RIGHE, ed e' il motivo per cui arriva da
+ * fuori invece di essere calcolato qui: e' misurato, e spegnere una voce dalla
+ * legenda toglie la sua linea senza sottrarla dal totale. Sommare le parti
+ * produrrebbe un numero che non compare da nessun'altra parte nel pannello.
+ *
+ * Le parti nulle si saltano: in quel bucket la loro linea non e' disegnata, e
+ * scrivere «0» dove il dato manca e' esattamente la differenza che `gaps` e
+ * `segments` esistono per non perdere.
+ *
+ * L'ordine e' decrescente perche' e' l'ordine in cui le linee si incontrano
+ * scendendo con l'occhio: l'elenco e il disegno si leggono nello stesso verso.
+ */
+export function readingsAt(input: {
+  index: number;
+  /** La serie del totale: e' la linea spessa, e puo' non essere rilevata. */
+  total: (number | null)[];
+  parts: { keys: string[]; series: Record<string, (number | null)[]> };
+  /** Le voci spente dalla legenda: non sono disegnate, non si leggono. */
+  hidden: Set<string>;
+  colorOf: (key: string) => string;
+  /** Il nome da mostrare. Senza voce, la chiave: e' cio' che fa la legenda. */
+  labels: Record<string, string>;
+  format: (value: number) => string;
+}): TipRow[] {
+  const { index, total, parts, hidden, colorOf, labels, format } = input;
+  const measured = total[index];
+  const rows: TipRow[] = [
+    {
+      label: 'Totale',
+      value: measured === null || measured === undefined ? 'non rilevato' : format(Math.round(measured)),
+      color: 'var(--ac)',
+    },
+  ];
+
+  const visible = parts.keys
+    .filter((k) => !hidden.has(k))
+    .map((k) => ({ key: k, value: parts.series[k]?.[index] ?? null }))
+    .filter((p): p is { key: string; value: number } => p.value !== null)
+    .sort((a, b) => b.value - a.value);
+
+  for (const part of visible.slice(0, MAX_PARTS)) {
+    rows.push({
+      label: labels[part.key] ?? part.key,
+      value: format(Math.round(part.value)),
+      color: colorOf(part.key),
+    });
+  }
+  const rest = visible.length - MAX_PARTS;
+  if (rest > 0) rows.push({ value: `+${rest} altre` });
+
+  return rows;
+}

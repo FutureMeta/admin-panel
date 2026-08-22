@@ -351,11 +351,16 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
         t={t}
         yTicks={[0, 1, 2, 3, 4, 5].map((v) => ({ value: v, label: `${v}★` }))}
         ariaLabel="Andamento del voto medio nel tempo"
-        detailOf={(i) => {
+        readingsOf={(i) => {
+          // Due letture, e sono due cose diverse: la media e su QUANTE
+          // valutazioni sta. Erano gia' entrambe, in una riga sola; separate
+          // si incolonnano con quelle degli altri grafici.
           const v = avg[i];
-          return v === null || v === undefined
-            ? 'nessuna valutazione'
-            : `${avgLabel(v)}★ su ${numberFmt.format(n[i] ?? 0)} valutazioni`;
+          if (v === null || v === undefined) return [{ value: 'nessuna valutazione' }];
+          return [
+            { label: 'Voto medio', value: `${avgLabel(v)}★`, color: 'var(--warn)' },
+            { label: 'Valutazioni', value: numberFmt.format(n[i] ?? 0) },
+          ];
         }}
       >
         {(scales, hovered) => {

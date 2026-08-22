@@ -13,7 +13,7 @@
 // stessa cosa detta a due livelli diversi.
 
 import type React from 'react';
-import { gaps, niceScale, segments } from '../lib/chart.ts';
+import { gaps, niceScale, readingsAt, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
 import { numberFmt, shareLabel } from '../lib/format.ts';
@@ -241,12 +241,17 @@ export function OnlineChart({
       t={data.online.t}
       yTicks={scale.values.map((v) => ({ value: v, label: numberFmt.format(Math.round(v)) }))}
       ariaLabel="Andamento dei giocatori online nel tempo"
-      detailOf={(i) => {
-        const v = values[i];
-        return v === null || v === undefined
-          ? 'non rilevato'
-          : `${numberFmt.format(Math.round(v))} giocatori`;
-      }}
+      readingsOf={(i) =>
+        readingsAt({
+          index: i,
+          total: values,
+          parts: lines,
+          hidden,
+          colorOf,
+          labels: data.labels,
+          format: (v) => numberFmt.format(v),
+        })
+      }
     >
       {({ x, y, bottom }, hovered) => {
         const totalSegments = segments(values, x, y);

@@ -39,6 +39,7 @@ export const MODULE_KEYS = [
   'duels_feedback',
   'duels_modes',
   'duels_maps',
+  'assistente',
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -69,6 +70,10 @@ export const MODULE_AREAS: Record<string, string> = {
   duels_modes: 'Duels',
   duels_maps: 'Duels',
   server: 'Sistema',
+  // Sta con «Impostazioni» e «Server» e non con «Analisi»: non e' una
+  // schermata di dati, e' una capacita' del pannello che si accende o si
+  // spegne per persona.
+  assistente: 'Sistema',
 };
 
 export function areaOfModule(key: string): string {

@@ -10,6 +10,7 @@
 // effimero creato con `initdb -A trust` su una porta dedicata.
 
 import pg from 'pg';
+import { ASSISTANT_ROLE, ASSISTANT_ROLE_SQL } from '#scripts/create-assistant-role.ts';
 import { STATS_ROLES, STATS_ROLES_SQL } from '#scripts/create-stats-roles.ts';
 import { runMigrations } from '#scripts/migrate.ts';
 
@@ -41,6 +42,15 @@ export type TestDatabase = {
   statsUrl: string;
   /** Scrittura sulle statistiche, con i timeout stretti del ciclo di campionamento. */
   ingestUrl: string;
+  /**
+   * Sola lettura per l'assistente: le viste delle statistiche (per
+   * appartenenza a metamc_stats) piu' il minimo su `auth` e `audit`.
+   *
+   * Gira qui la stessa definizione che il runbook esegue in produzione,
+   * importata e non ricopiata: una copia diverge, e i test proverebbero uno
+   * schema di privilegi che non esiste da nessuna parte.
+   */
+  assistantUrl: string;
   drop: () => Promise<void>;
 };
 
@@ -96,7 +106,10 @@ function ensureRoles(): Promise<void> {
       // produzione, importata e non ricopiata: una copia diverge, e i test
       // proverebbero uno schema di privilegi che non esiste da nessuna parte.
       await c.query(STATS_ROLES_SQL);
-      for (const role of STATS_ROLES) {
+      // Il ruolo dell'assistente e' membro di metamc_stats, quindi si crea
+      // DOPO. La 019 lo pretende e non lo crea: e' un oggetto di CLUSTER.
+      await c.query(ASSISTANT_ROLE_SQL);
+      for (const role of [...STATS_ROLES, ASSISTANT_ROLE]) {
         // La password serve ai test che devono CONNETTERSI come questi ruoli:
         // `default_transaction_read_only` e i timeout sono impostazioni di
         // ruolo, si applicano al login e non le eredita un SET ROLE.
@@ -127,11 +140,12 @@ export async function createTestDatabase(label = 'test'): Promise<TestDatabase> 
   const appUrl = withDatabase(ADMIN_URL, name, 'metamc_app');
   const statsUrl = withDatabase(ADMIN_URL, name, 'metamc_stats');
   const ingestUrl = withDatabase(ADMIN_URL, name, 'metamc_ingest');
+  const assistantUrl = withDatabase(ADMIN_URL, name, ASSISTANT_ROLE);
 
   // Il ruolo applicativo deve potersi collegare al database.
   await withAdmin(async (c) => {
     await c.query(
-      `GRANT CONNECT ON DATABASE ${name} TO metamc_app, metamc_migrate, metamc_stats, metamc_ingest`,
+      `GRANT CONNECT ON DATABASE ${name} TO metamc_app, metamc_migrate, metamc_stats, metamc_ingest, ${ASSISTANT_ROLE}`,
     );
     await c.query('REVOKE ALL ON SCHEMA public FROM PUBLIC');
   }, adminUrl);
@@ -145,6 +159,7 @@ export async function createTestDatabase(label = 'test'): Promise<TestDatabase> 
     adminUrl,
     statsUrl,
     ingestUrl,
+    assistantUrl,
     drop: async () => {
       await withAdmin(async (c) => {
         await c.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);

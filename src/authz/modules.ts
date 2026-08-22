@@ -22,6 +22,12 @@ export const MODULES = [
   // non compare e' un permesso che nessuno revoca. Vedi migration 018.
   'duels_modes',
   'duels_maps',
+  // L'assistente conversazionale. Un modulo a se' perche' altrimenti non si
+  // puo' spegnere: le risposte passano da un fornitore esterno, e dare o non
+  // dare quell'accesso e' una decisione che la matrice deve poter esprimere.
+  // Non allarga niente — ogni tool ricontrolla i moduli che la persona ha
+  // gia'. Vedi migration 019.
+  'assistente',
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number];

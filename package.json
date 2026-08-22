@@ -42,6 +42,7 @@
     "duels:backfill": "node scripts/duels-backfill.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.120.0",
     "@better-auth/redis-storage": "1.6.29",
     "@fastify/cookie": "11.1.2",
     "@fastify/helmet": "13.1.0",

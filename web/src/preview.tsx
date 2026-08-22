@@ -51,6 +51,7 @@ const ME: Me = {
     duels_feedback: 3,
     duels_modes: 3,
     duels_maps: 3,
+    assistente: 3,
   },
   modules: [
     'utenti',
@@ -63,6 +64,9 @@ const ME: Me = {
     'server',
     'duels',
     'duels_feedback',
+    'duels_modes',
+    'duels_maps',
+    'assistente',
   ],
   aal: 2,
   authenticatedAt: new Date().toISOString(),

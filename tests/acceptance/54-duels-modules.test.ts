@@ -65,6 +65,7 @@ describe('il vocabolario dei moduli e` uno solo', () => {
       'duels_feedback',
       'duels_modes',
       'duels_maps',
+      'assistente',
       'server',
     ]);
   });

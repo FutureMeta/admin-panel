@@ -53,7 +53,20 @@ export function LoginPage() {
         // messaggio: distinguerli direbbe quali email sono registrate (SEC-30).
         return { title: 'Credenziali non valide', body: 'Controlla email e password e riprova.' };
       }
-      if (err.isForbidden) return { title: 'Accesso non consentito da questa origine' };
+      if (err.isForbidden) {
+        // NON si nomina l'origine. Un 403 qui puo' venire da tre controlli
+        // diversi — origine, Sec-Fetch-Site, token CSRF — e questa pagina non
+        // sa quale ha risposto: il corpo e' lo stesso per tutti e tre, apposta.
+        //
+        // Dirne uno solo e' costato una diagnosi sbagliata: un collega non
+        // riusciva a entrare, il messaggio accusava l'origine, e l'origine era
+        // corretta. Era il cookie CSRF, e la cosa che l'ha sbloccato e'
+        // proprio quella che ora c'e' scritta qui sotto.
+        return {
+          title: 'Accesso rifiutato',
+          body: 'La richiesta è stata bloccata prima delle credenziali. Cancella i cookie del pannello e riprova.',
+        };
+      }
     }
     return { title: 'Qualcosa non ha funzionato', body: 'Riprova fra un momento.' };
   }

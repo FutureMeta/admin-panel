@@ -64,7 +64,29 @@ type CookieSetter = {
  * un 403 sulla richiesta successiva, in un punto lontano da dove sta la causa.
  * E' gia' successo tre volte durante questa implementazione: dopo il login,
  * dopo la verifica TOTP, e dopo l'accettazione dell'invito.
+ *
+ * LA DURATA E' OBBLIGATORIA, e deve essere quella della sessione. Senza
+ * `maxAge` il browser tratta il cookie come cookie di sessione SUA e lo butta
+ * alla chiusura, mentre la sessione vera dura giorni (D-11): si resta con
+ * meta' della coppia. In quello stato SEC-17 si attiva — la sessione c'e' ed
+ * e' valida — e non trova il token, quindi rifiuta OGNI richiesta che cambia
+ * stato, compreso il login stesso. E il login e' l'unica cosa che quella
+ * persona puo' provare a fare, per cui non ne esce: le sue credenziali sono
+ * giuste, la sua origine e' giusta, e il pannello risponde 403 finche' non
+ * cancella i cookie a mano. E' successo in produzione.
+ *
+ * Obbligatoria e non con un default, perche' il valore giusto lo conosce solo
+ * il chiamante e perche' un default sbagliato qui non fa rumore: rifa'
+ * esattamente il difetto, e lo rifa' in silenzio.
  */
-export function issueCsrfCookie(reply: CookieSetter, key: Buffer, sessionId: string): void {
-  reply.setCookie(CSRF_COOKIE, csrfToken(key, sessionId), { ...CSRF_COOKIE_OPTIONS });
+export function issueCsrfCookie(
+  reply: CookieSetter,
+  key: Buffer,
+  sessionId: string,
+  maxAgeSeconds: number,
+): void {
+  reply.setCookie(CSRF_COOKIE, csrfToken(key, sessionId), {
+    ...CSRF_COOKIE_OPTIONS,
+    maxAge: maxAgeSeconds,
+  });
 }

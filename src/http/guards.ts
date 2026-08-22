@@ -50,7 +50,7 @@ export function requireAuth(ctx: AppContext): PreHandler {
     // SEC-17 — il cookie CSRF viene (ri)emesso a ogni richiesta autenticata:
     // e' derivato dall'id di sessione, quindi cambia quando la sessione
     // ruota, e il client non deve preoccuparsi di aggiornarlo.
-    issueCsrfCookie(reply, ctx.keys.csrf, outcome.context.sessionId);
+    issueCsrfCookie(reply, ctx.keys.csrf, outcome.context.sessionId, ctx.env.SESSION_ABSOLUTE_SECONDS);
   };
 }
 

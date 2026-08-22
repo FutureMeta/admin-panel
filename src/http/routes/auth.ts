@@ -376,7 +376,8 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
         const fresh = new Headers();
         fresh.set('cookie', emitted.map((c) => c.split(';')[0]).join('; '));
         const session = await ctx.auth.api.getSession({ headers: fresh });
-        if (session?.session?.id) issueCsrfCookie(reply, ctx.keys.csrf, session.session.id);
+        if (session?.session?.id)
+          issueCsrfCookie(reply, ctx.keys.csrf, session.session.id, ctx.env.SESSION_ABSOLUTE_SECONDS);
       }
 
       const text = await res.text();
@@ -397,7 +398,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
     { preHandler: requireAuth(ctx) },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const actor = actorOf(request);
-      issueCsrfCookie(reply, ctx.keys.csrf, actor.sessionId);
+      issueCsrfCookie(reply, ctx.keys.csrf, actor.sessionId, ctx.env.SESSION_ABSOLUTE_SECONDS);
       return reply.send({
         userId: actor.userId,
         email: actor.actorEmail,

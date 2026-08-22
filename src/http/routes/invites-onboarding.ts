@@ -297,7 +297,8 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
       const freshSession = await ctx.auth.api.getSession({
         headers: new Headers({ cookie: setCookies.map((c) => c.split(';')[0]).join('; ') }),
       });
-      if (freshSession?.session?.id) issueCsrfCookie(reply, ctx.keys.csrf, freshSession.session.id);
+      if (freshSession?.session?.id)
+        issueCsrfCookie(reply, ctx.keys.csrf, freshSession.session.id, ctx.env.SESSION_ABSOLUTE_SECONDS);
 
       const enrollHeaders = new Headers();
       enrollHeaders.set('cookie', setCookies.map((c) => c.split(';')[0]).join('; '));

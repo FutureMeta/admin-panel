@@ -334,6 +334,7 @@ describe('due ingeritori insieme non raddoppiano niente', () => {
     const conteso: DuelsMysql = {
       cap: base.cap,
       close: base.close,
+      tx: base.tx,
       rows: async <T>(query: string, params: unknown[] = []): Promise<T[]> => {
         const out = await base.rows<T>(query, params);
         if (query.includes('duels_match_statistics') && !interfered) {

@@ -225,6 +225,7 @@ describe('un secondo scrittore ferma il backfill, non lo fa sbagliare', () => {
     const conteso: DuelsMysql = {
       cap: base.cap,
       close: base.close,
+      tx: base.tx,
       rows: async <T>(query: string, params: unknown[] = []): Promise<T[]> => {
         const out = await base.rows<T>(query, params);
         if (query.includes('id > ?') && query.includes('duels_match_statistics') && !interfered) {

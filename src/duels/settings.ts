@@ -45,6 +45,49 @@ export type SettingSpec = {
 const DIFFICULTY = ['PEACEFUL', 'EASY', 'NORMAL', 'HARD'] as const;
 const OBJECTIVE = ['NONE', 'DESTROY_BLOCK', 'ENTER_AREA'] as const;
 
+// ---------------------------------------------------------------------------
+// Gli enum delle colonne, non dei settings
+// ---------------------------------------------------------------------------
+
+/** `duels_mode.type`. Non esiste `EVENT`: il contesto e' della MAPPA. */
+export const MODE_TYPES = ['DUEL', 'FFA'] as const;
+
+/** `duels_mode.ranking`. */
+export const RANKING_TYPES = ['UNRANKED', 'RANKED'] as const;
+
+/** `duels_map.type`. */
+export const MATCH_TYPES = ['DUEL', 'FFA'] as const;
+
+/** `duels_map.context`. */
+export const MATCH_CONTEXTS = ['NORMAL', 'EVENT'] as const;
+
+/**
+ * `duels_map_event_type.event_type`.
+ *
+ * Elenco completo, confermato dall'esercente il 22 agosto 2026. Resta scritto
+ * qui e non indovinato altrove: e' una colonna `VARCHAR` senza vincolo, quindi
+ * il database accetta qualunque cosa e il plugin lancia leggendola.
+ *
+ * SI UNISCE SEMPRE A QUELLO CHE C'E' GIA'. Se una mappa usasse un valore che
+ * questo elenco non contiene — un tipo aggiunto al plugin e non qui — mostrare
+ * solo l'elenco lo farebbe sparire dalla schermata, e salvare la scheda lo
+ * cancellerebbe dal database senza che nessuno abbia chiesto di toglierlo.
+ * Vedi `withObserved`.
+ */
+export const EVENT_TYPES = ['UHC', 'MANHUNT', 'CRYSTAL_ROYALE', 'TNT_RUN', 'PILLARS', 'LAVA_RISE'] as const;
+
+/**
+ * L'elenco dichiarato piu' quello osservato nel database, senza doppioni.
+ *
+ * E' la rete che impedisce a una schermata di cancellare cio' che non sa
+ * disegnare. Quello che arriva dal database del gioco passa comunque per il
+ * filtro di forma: e' `TEXT` senza vincoli, e non e' roba nostra.
+ */
+export function withObserved(declared: readonly string[], observed: readonly string[]): string[] {
+  const extra = observed.filter((v) => /^[A-Z][A-Z0-9_]*$/.test(v));
+  return [...new Set([...declared, ...extra])];
+}
+
 /**
  * I sei gruppi.
  *
@@ -330,9 +373,7 @@ export function withObservedOptions(
 ): SettingSpec[] {
   return specs.map((spec) => {
     if (spec.kind !== 'enum') return spec;
-    const extra = (observed.get(spec.key) ?? []).filter((v) => /^[A-Z][A-Z0-9_]*$/.test(v));
-    const options = [...new Set([...(spec.options ?? []), ...extra])];
-    return { ...spec, options };
+    return { ...spec, options: withObserved(spec.options ?? [], observed.get(spec.key) ?? []) };
   });
 }
 

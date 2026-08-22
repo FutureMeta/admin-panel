@@ -75,6 +75,14 @@ export function fakeDuelsMysql(source: FakeDuelsSource): DuelsMysql {
         .sort((a, b) => Number(a.id) - Number(b.id))
         .slice(0, limit) as T[];
     },
+    // IL FINTO NON SCRIVE, e non fa finta di scrivere. Chi lo usa — l'ingestione
+    // e il backfill — legge soltanto; le rotte di configurazione scrivono, ma la
+    // regola che decide COSA scrivere sta nel pianificatore, che si prova senza
+    // database. Un `tx` che accettasse in silenzio farebbe passare un test che
+    // non ha esercitato niente.
+    tx: async () => {
+      throw new Error('fakeDuelsMysql non scrive: le scritture si provano sul pianificatore');
+    },
     cap: () => 'mysql' as const,
     close: async () => undefined,
   };

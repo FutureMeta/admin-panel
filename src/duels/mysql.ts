@@ -1,19 +1,31 @@
-// La connessione al MySQL del gioco. Solo il job la usa.
+// La connessione al MySQL del gioco.
 //
 // E' L'UNICO PUNTO DEL PANNELLO CHE PARLA CON IL DATABASE DEL GIOCO, ed e'
-// voluto: le schermate leggono `stats.duels_*` su Postgres e non sanno che
-// questo file esista. Se un giorno il MySQL diventasse irraggiungibile, il
-// pannello continuerebbe a disegnare lo storico gia' ingerito e a dire da
-// quando e' fermo — invece di svuotarsi.
+// voluto: le schermate delle statistiche leggono `stats.duels_*` su Postgres e
+// non sanno che questo file esista. Se un giorno il MySQL diventasse
+// irraggiungibile, il pannello continuerebbe a disegnare lo storico gia'
+// ingerito e a dire da quando e' fermo — invece di svuotarsi.
 //
-// POOL SEPARATO, e non e' simmetria estetica. Il pool del pannello regge i
-// login: una query lenta verso un database altrui che ne occupasse una
-// connessione si vedrebbe come un login che non arriva. Due connessioni
-// bastano — il giro e' sequenziale — e sono due connessioni tolte a nessuno.
+// POOL SEPARATO da quello del pannello, e non e' simmetria estetica. Il pool
+// del pannello regge i login: una query lenta verso un database altrui che ne
+// occupasse una connessione si vedrebbe come un login che non arriva.
 //
-// SOLA LETTURA PER CONVENZIONE E PER RUOLO. Qui non c'e' una sola INSERT, e
-// l'utente MySQL dovrebbe avere il SELECT sulle sole tabelle che servono. Il
-// codice non puo' imporlo: puo' solo non scrivere mai, che e' quello che fa.
+// NON E' PIU' SOLA LETTURA, e questa riga e' cambiata insieme al codice. Fino
+// alle schermate Modes e Maps qui non c'era una sola INSERT e il commento lo
+// diceva; adesso c'e' `tx`, e un commento che continuasse a promettere sola
+// lettura sarebbe la cosa peggiore di tutte — qualcuno lo leggerebbe per
+// decidere quali privilegi concedere.
+//
+// Le due cose che ne conseguono:
+//
+//   * il pool serve DUE padroni: il job ETL, che gira ogni trenta secondi in
+//     lotti sequenziali, e le rotte di configurazione, che rispondono a una
+//     persona che sta guardando lo schermo. Due connessioni bastavano al
+//     primo da solo; ora sono quattro, perche' un salvataggio non deve mettersi
+//     in coda dietro un lotto da diecimila righe;
+//   * le scritture stanno TUTTE dentro `tx`. Cambiare una modalita' vuol dire
+//     toccare piu' tabelle, e a meta' strada il database del gioco resterebbe
+//     in uno stato che nessuno ha mai chiesto.
 
 import mysql from 'mysql2/promise';
 
@@ -122,9 +134,32 @@ export function createExecutionCap(ms: number) {
  */
 export const BACKFILL_MAX_EXECUTION_MS = 120_000;
 
+/**
+ * Le operazioni disponibili DENTRO una transazione.
+ *
+ * Vivono su una connessione sola, ed e' il punto: `BEGIN` vale per la
+ * connessione, non per il pool. Prendendo query dal pool dentro una
+ * transazione si finirebbe a scrivere meta' delle righe fuori da essa — che e'
+ * il difetto piu' silenzioso di tutti, perche' funziona sempre finche' il pool
+ * ha una connessione libera e sbaglia solo sotto carico.
+ */
+export type DuelsTx = {
+  rows: <T>(sql: string, params?: unknown[]) => Promise<T[]>;
+  /** Una scrittura. Restituisce quante righe ha toccato davvero. */
+  run: (sql: string, params?: unknown[]) => Promise<{ affectedRows: number }>;
+};
+
 export type DuelsMysql = {
   /** Una SELECT, con il tetto di esecuzione gia' applicato. */
   rows: <T>(sql: string, params?: unknown[]) => Promise<T[]>;
+  /**
+   * Un gruppo di scritture, tutte o nessuna.
+   *
+   * Se `fn` lancia si fa `ROLLBACK` e l'eccezione prosegue: chi ha chiamato
+   * deve sapere che non e' stato fatto niente, e un errore mangiato qui
+   * diventerebbe un salvataggio che dice di essere riuscito.
+   */
+  tx: <T>(fn: (t: DuelsTx) => Promise<T>) => Promise<T>;
   /** Quale tetto e' in vigore. `none` e' un degrado da dire. */
   cap: () => CapKind;
   close: () => Promise<void>;
@@ -133,8 +168,11 @@ export type DuelsMysql = {
 export function createDuelsMysql(url: string, maxExecutionMs = MAX_EXECUTION_MS): DuelsMysql {
   const pool = mysql.createPool({
     uri: url,
-    // Due: una che lavora e una di riserva. Il giro e' sequenziale.
-    connectionLimit: 2,
+    // Quattro. Erano due, quando l'unico cliente era il job e il giro era
+    // sequenziale; adesso ci sono anche le rotte di configurazione, e un
+    // salvataggio che aspetta la fine di un lotto e' un pulsante che sembra
+    // rotto.
+    connectionLimit: 4,
     // Non accodare all'infinito: se il pool e' pieno vuol dire che qualcosa
     // non sta finendo, e la coda nasconderebbe il problema allungandolo.
     waitForConnections: true,
@@ -162,6 +200,39 @@ export function createDuelsMysql(url: string, maxExecutionMs = MAX_EXECUTION_MS)
         await cap.apply((statement) => conn.query(statement));
         const [result] = await conn.query(sql, params);
         return result as T[];
+      } finally {
+        conn.release();
+      }
+    },
+    tx: async <T>(fn: (t: DuelsTx) => Promise<T>): Promise<T> => {
+      const conn = await pool.getConnection();
+      try {
+        await cap.apply((statement) => conn.query(statement));
+        await conn.beginTransaction();
+        try {
+          const out = await fn({
+            rows: async <R>(sql: string, params: unknown[] = []): Promise<R[]> => {
+              const [result] = await conn.query(sql, params);
+              return result as R[];
+            },
+            run: async (sql: string, params: unknown[] = []) => {
+              const [result] = await conn.query(sql, params);
+              // `affectedRows` e' l'unica risposta alla domanda «la riga
+              // c'era?». Un UPDATE che non trova niente riesce senza toccare
+              // niente, e senza guardarlo si direbbe «salvato» a chi ha appena
+              // modificato una modalita' che qualcun altro ha eliminato.
+              return { affectedRows: (result as { affectedRows?: number }).affectedRows ?? 0 };
+            },
+          });
+          await conn.commit();
+          return out;
+        } catch (err) {
+          // Il rollback non deve poter nascondere l'errore vero: se anche lui
+          // fallisce — connessione caduta a meta' — quello che si rilancia
+          // resta il primo, che e' quello che dice cosa e' successo.
+          await conn.rollback().catch(() => undefined);
+          throw err;
+        }
       } finally {
         conn.release();
       }

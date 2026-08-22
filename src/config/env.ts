@@ -123,6 +123,31 @@ const EnvSchema = z.object({
    */
   DATABASE_STATS_URL: z.string().min(1).optional(),
   /**
+   * L'ingestione dei duels e' SPENTA finche' non la si accende.
+   *
+   * Stessa ragione del campionamento, piu' una: accenderla apre una
+   * connessione permanente al MySQL del gioco, che e' un database di
+   * qualcun altro. Deve essere una decisione.
+   *
+   * L'ORDINE CONTA: prima si importa lo storico con `pnpm run duels:backfill`,
+   * poi si accende questa. Accendendola prima, il giro da trenta secondi
+   * comincia dallo storico piu' vecchio a lotti da diecimila e ci mette ore,
+   * e nel frattempo le schermate mostrano una storia che cresce all'indietro.
+   * Non e' sbagliato — i numeri restano giusti — ma e' incomprensibile.
+   */
+  DUELS_INGEST_ENABLED: z
+    .enum(['0', '1'])
+    .default('0')
+    .transform((v) => v === '1'),
+  /**
+   * Il MySQL del gioco, in SOLA LETTURA.
+   *
+   * L'utente dovrebbe avere il SELECT sulle cinque tabelle che
+   * `src/duels/mysql.ts` nomina e su nient'altro. Il codice non puo'
+   * imporlo: puo' solo non scrivere mai, che e' quello che fa.
+   */
+  DUELS_MYSQL_URL: z.string().min(1).optional(),
+  /**
    * Il Redis di gioco. In questa installazione e' la stessa istanza del
    * pannello, quindi in assenza si usa REDIS_URL — ma con un client
    * dedicato, con i suoi timeout e senza autopipelining.
@@ -177,6 +202,18 @@ export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
     // settimane dopo davanti a un grafico vuoto.
     throw new Error(
       'STATS_INGEST_ENABLED=1 richiede DATABASE_INGEST_URL (ruolo metamc_ingest, non metamc_app).',
+    );
+  }
+  if (
+    result.data.DUELS_INGEST_ENABLED &&
+    (!result.data.DUELS_MYSQL_URL || !result.data.DATABASE_INGEST_URL)
+  ) {
+    // Due variabili, e mancarne una sola basta a rendere il giro inutile: si
+    // fallisce all'avvio invece di partire, non ingerire, e lasciare le
+    // schermate ferme a un'ora che non si muove piu'.
+    throw new Error(
+      'DUELS_INGEST_ENABLED=1 richiede DUELS_MYSQL_URL (sola lettura sul MySQL del gioco) ' +
+        'e DATABASE_INGEST_URL (ruolo di scrittura su stats).',
     );
   }
   return result.data;

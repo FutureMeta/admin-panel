@@ -19,6 +19,7 @@ import type { CacheService } from '#src/cache/service.ts';
 import type { Env } from '#src/config/env.ts';
 import { type DerivedKeys, deriveKeys, pepperRing } from '#src/crypto/keys.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { type DuelsIngest, startDuelsIngest } from '#src/duels/keeper.ts';
 import type { Mailer } from '#src/email/mailer.ts';
 import { AuthzMiddleware } from '#src/http/authz-middleware.ts';
 import type { IndexHtml } from '#src/http/index-html.ts';
@@ -56,6 +57,12 @@ export type AppContext = {
    * nessuna connessione in piu' viene aperta.
    */
   statsIngest: StatsIngest | null;
+  /**
+   * L'ingestione dei duels. `null` finche' non la si accende con
+   * DUELS_INGEST_ENABLED: senza, nessuna connessione al MySQL del gioco viene
+   * aperta e le schermate leggono lo storico gia' importato.
+   */
+  duelsIngest: DuelsIngest | null;
   /**
    * Il pool di sola lettura delle statistiche. `null` finche' non e'
    * configurato: le rotte rispondono 503 e il resto del pannello non cambia.
@@ -230,6 +237,24 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     }
   }
 
+  // L'ingestione dei duels, alle stesse condizioni: accesa a mano, con i job
+  // attivi, e con un guasto che non tiene giu' il pannello. Rumoroso pero':
+  // una schermata ferma senza una riga di log e' il modo in cui ce ne si
+  // accorge settimane dopo.
+  let duelsIngest: DuelsIngest | null = null;
+  if (env.DUELS_INGEST_ENABLED && env.DUELS_MYSQL_URL && env.DATABASE_INGEST_URL && opts.startJobs) {
+    try {
+      duelsIngest = await startDuelsIngest({
+        databaseUrl: env.DATABASE_INGEST_URL,
+        mysqlUrl: env.DUELS_MYSQL_URL,
+        logger,
+        registry: maintenance.registry,
+      });
+    } catch (err) {
+      logger.error({ err }, 'ingestione duels non avviata: il pannello parte, i duels restano fermi');
+    }
+  }
+
   const statsPool = env.DATABASE_STATS_URL
     ? createPool({
         connectionString: env.DATABASE_STATS_URL,
@@ -290,6 +315,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     skins,
     maintenance,
     statsIngest,
+    duelsIngest,
     statsDb,
     statsCache,
     cacheRedis,
@@ -311,6 +337,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       // spegnimento.
       maintenance.stop();
       await statsIngest?.stop().catch(() => undefined);
+      await duelsIngest?.stop().catch(() => undefined);
       context.statsWarm?.stop();
       await statsDb?.destroy().catch(() => undefined);
       await cacheRedis.quit().catch(() => undefined);

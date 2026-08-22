@@ -142,6 +142,29 @@ export function chartScales(n: number, top: number, plot: number, width: number 
   };
 }
 
+/**
+ * La barra di un bucket: dove comincia e quanto è larga, SENZA sbordare.
+ *
+ * Una linea vive sui PUNTI, una barra su una FASCIA, e le due cose non
+ * coincidono: centrando la barra sul punto, la prima e l'ultima sporgono di
+ * mezza larghezza oltre i bordi del tracciato. Con centosessantotto punti sono
+ * due pixel e non si vedono; con sette — l'andamento del voto a sette giorni —
+ * sono trenta, e la prima barra finisce sopra le etichette dell'asse verticale.
+ *
+ * Quindi si tagliano ai bordi: la prima e l'ultima diventano mezze barre, che è
+ * la resa giusta perché mezza fascia è davvero fuori dal periodo.
+ *
+ * Il 70% dello spazio lascia il respiro fra una barra e l'altra: attaccate
+ * diventerebbero un'area piena, cioè un'altra figura.
+ */
+export function bandAt(scales: ChartScales, points: number, index: number): { x: number; width: number } {
+  const slot = (scales.right - CHART.LEFT) / Math.max(1, points - 1);
+  const wanted = Math.max(1, slot * 0.7);
+  const from = Math.max(CHART.LEFT, scales.x(index) - wanted / 2);
+  const to = Math.min(scales.right, scales.x(index) + wanted / 2);
+  return { x: from, width: Math.max(1, to - from) };
+}
+
 /** Quanti pixel serve riservare a un'etichetta perché non tocchi la vicina. */
 const LABEL_ROOM = 130;
 

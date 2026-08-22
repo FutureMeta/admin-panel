@@ -18,7 +18,7 @@
 //     conteggio devono avere lo stesso rango.
 
 import { describe, expect, it } from 'vitest';
-import { CHART, chartScales, everyNth, gaps, niceScale, segments, slotsFor } from '#web/lib/chart.ts';
+import { bandAt, CHART, chartScales, everyNth, gaps, niceScale, segments, slotsFor } from '#web/lib/chart.ts';
 import {
   ALL,
   avgLabel,
@@ -332,5 +332,38 @@ describe('il grafico non si stira per riempire il riquadro', () => {
     const passo = 168 / 3;
     const ultime = strette.slice(-2).map((t) => t.at);
     expect((ultime[1] as number) - (ultime[0] as number)).toBeGreaterThan(passo / 2);
+  });
+});
+
+describe('le barre di fondo non escono dal tracciato', () => {
+  it('la prima e l`ultima si tagliano al bordo invece di sporgere', async () => {
+    // Una linea vive sui PUNTI, una barra su una FASCIA: centrando la barra sul
+    // punto, la prima sporge di mezza larghezza a sinistra del tracciato. Con
+    // 168 punti sono due pixel; con sette — l'andamento del voto a sette
+    // giorni — sono trenta, e la barra finisce sopra le etichette dell'asse.
+    const scales = chartScales(7, 5, 214, 520);
+
+    const first = bandAt(scales, 7, 0);
+    expect(first.x).toBeGreaterThanOrEqual(CHART.LEFT);
+
+    const last = bandAt(scales, 7, 6);
+    expect(last.x + last.width).toBeLessThanOrEqual(scales.right);
+  });
+
+  it('quelle in mezzo restano intere e con un po` di respiro', async () => {
+    const scales = chartScales(7, 5, 214, 520);
+    const slot = (scales.right - CHART.LEFT) / 6;
+    const middle = bandAt(scales, 7, 3);
+
+    expect(middle.width).toBeCloseTo(slot * 0.7, 1);
+    // Attaccate diventerebbero un'area piena, cioe` un'altra figura.
+    expect(middle.width).toBeLessThan(slot);
+  });
+
+  it('con un punto solo non si divide per zero', async () => {
+    const scales = chartScales(1, 5, 214, 520);
+    const only = bandAt(scales, 1, 0);
+    expect(only.width).toBeGreaterThan(0);
+    expect(Number.isFinite(only.x)).toBe(true);
   });
 });

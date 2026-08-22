@@ -31,7 +31,7 @@ import {
 import { numberFmt, StatsPanelsSkeleton } from '../components/stats-panels.tsx';
 import { Avatar, EmptyState, Notice, Pill, RelativeTime } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
-import { segments } from '../lib/chart.ts';
+import { bandAt, segments } from '../lib/chart.ts';
 import {
   avgLabel,
   type CommentFilter,
@@ -366,27 +366,34 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
           };
         }}
       >
-        {({ x, y, bottom, right }, hovered) => {
+        {(scales, hovered) => {
+          const { x, y, bottom, right } = scales;
           const lines = segments(avg, x, y);
-          const barWidth = Math.max(1, (right - CHART.LEFT) / points - 1);
           return (
             <>
               {/* LA NUMEROSITA' SI DISEGNA. Il legacy la trasporta e non la usa
                   mai: un giorno con UN voto da cinque stelle è indistinguibile
                   da uno con quattrocento voti a 5,00, e la media sembra un
-                  fatto quando è rumore. */}
-              {n.map((value, i) =>
-                value === null || value === 0 ? null : (
+                  fatto quando è rumore.
+
+                  Le barre stanno su una FASCIA, la linea sui punti: `bandAt`
+                  taglia la prima e l'ultima al bordo del tracciato, o
+                  sporgerebbero di mezza larghezza — trenta pixel su sette
+                  giorni, cioè sopra le etichette dell'asse. */}
+              {n.map((value, i) => {
+                if (value === null || value === 0) return null;
+                const band = bandAt(scales, points, i);
+                return (
                   <rect
                     key={t[i]}
-                    x={x(i) - barWidth / 2}
+                    x={band.x}
                     y={bottom - ((bottom - CHART.TOP) * value) / maxN}
-                    width={barWidth}
+                    width={band.width}
                     height={((bottom - CHART.TOP) * value) / maxN}
                     fill="color-mix(in oklab, var(--tx-muted) 20%, transparent)"
                   />
-                ),
-              )}
+                );
+              })}
 
               {/* La media del periodo, tratteggiata: l'asse fisso 0-5 è corretto
                   ma schiaccia la differenza fra 4,1 e 4,4, e questa riga la

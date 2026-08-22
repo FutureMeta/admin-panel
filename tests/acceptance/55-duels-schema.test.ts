@@ -52,6 +52,53 @@ describe('le partizioni esistono davvero, non solo la dichiarazione', () => {
     }
   });
 
+  it('anche il PASSATO ha le sue partizioni, non solo il presente', async () => {
+    // `ensure_partitions` guarda AVANTI: dal mese scorso a due mesi avanti
+    // (011_stats.sql:900-905). Basta per tutte le tabelle della 011, che
+    // nascono oggi e crescono in avanti; non basta qui, dove lo storico
+    // comincia il 2026-03-09 e va importato tutto in una volta.
+    //
+    // Senza le partizioni dei mesi passati il backfill morirebbe con SQLSTATE
+    // 23514 a meta` importazione, con dentro un pezzo di storia e nessun modo
+    // di sapere quale. Non e` un guasto silenzioso — e` peggio: e` un guasto
+    // rumoroso in un momento in cui la meta` del lavoro e` gia` fatta.
+    for (const table of ['duels_match_hour', 'duels_rating']) {
+      const missing = await mig.query<{ month: string }>(
+        `SELECT to_char(m, 'YYYY_MM') AS month
+           FROM generate_series(date '2026-01-01',
+                                date_trunc('month', current_date)::date,
+                                interval '1 month') g(m)
+          WHERE to_regclass('stats.' || $1 || '_' || to_char(m, 'YYYY_MM')) IS NULL
+          ORDER BY 1`,
+        [table],
+      );
+      expect(
+        missing.rows.map((r) => r.month),
+        table,
+      ).toEqual([]);
+    }
+  });
+
+  it('una partita del 9 marzo, la piu` vecchia che esiste, entra davvero', async () => {
+    // La data non e` inventata: e` il primo `created_at` di
+    // `duels_match_statistics` in produzione, accertato il 22 agosto 2026.
+    await mig.query(
+      `INSERT INTO stats.duels_match_hour (bucket_at, mode_id, map_id, match_type, context, matches)
+       VALUES (timestamptz '2026-03-09 10:00:00+00', 1, 1, 'DUEL', 'NORMAL', 3)`,
+    );
+    await mig.query(
+      `INSERT INTO stats.duels_rating (rating_id, created_at, match_id, player_id, rating)
+       VALUES (309, timestamptz '2026-03-09 10:05:00+00', gen_random_uuid(), 7, 5)`,
+    );
+    expect(
+      await one<string>(
+        mig,
+        `SELECT count(*)::text FROM stats.duels_match_hour
+          WHERE bucket_at < timestamptz '2026-04-01 00:00:00+00'`,
+      ),
+    ).toBe('1');
+  });
+
   it('la retention e` registrata, e quella dei feedback e` 730 giorni', async () => {
     // 730 come `stats.player_day`, perche' contiene dati personali. E` l'unico
     // numero della migration che e` una decisione e non una conseguenza.

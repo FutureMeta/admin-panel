@@ -16,13 +16,17 @@
 // una lettura indicizzata, ed e' cio' che rende sostenibile un ciclo da
 // trenta secondi.
 //
-// LA SOVRAPPOSIZIONE NON SI PUO' VERIFICARE, e non serve una guardia:
-// `startJob` ripianifica DOPO che il giro e' finito (jobs/scheduler.ts:139),
-// quindi due cicli non si accavallano nemmeno dopo un fermo lungo. Cio' che
-// serve invece e' il BUDGET: un ciclo ingerisce finche' ha tempo e lascia il
-// resto al successivo, cosi' il recupero dopo un'interruzione avviene in
-// qualche minuto di cicli consecutivi e non in una corsa unica che tiene
-// occupato il database del gioco.
+// DUE CICLI DELLO STESSO PROCESSO non si accavallano: `startJob` ripianifica
+// DOPO che il giro e' finito (jobs/scheduler.ts:139), nemmeno dopo un fermo
+// lungo. Cio' che serve li' e' il BUDGET: un ciclo ingerisce finche' ha tempo
+// e lascia il resto al successivo, cosi' il recupero dopo un'interruzione
+// avviene in qualche minuto di cicli consecutivi e non in una corsa unica che
+// tiene occupato il database del gioco.
+//
+// DUE PROCESSI DIVERSI invece si accavallano eccome — il backfill si lancia a
+// mano, e il pannello nel frattempo e' acceso — e per quelli la guardia c'e':
+// il watermark si scrive solo se vale ancora quello da cui il lotto e'
+// partito. Vedi `WatermarkMoved`.
 
 import { sql } from 'kysely';
 import type { Database } from '#src/db/pool.ts';
@@ -48,8 +52,33 @@ export type IngestResult = {
   maps: number;
   degraded: number;
   behind: boolean;
+  contended: boolean;
   ms: number;
 };
+
+/**
+ * Un altro ingeritore ha mosso il watermark mentre questo leggeva il lotto.
+ *
+ * SUCCEDE PER DAVVERO: il backfill si lancia a mano, e il modo naturale di
+ * lanciarlo e' contro il database di produzione mentre il pannello e' acceso e
+ * il suo giro da trenta secondi sta girando. Se i due lavorassero insieme
+ * leggerebbero lo stesso watermark e ingerirebbero lo stesso lotto due volte:
+ * l'upsert delle partite e' additivo, quindi i conteggi RADDOPPIEREBBERO senza
+ * che niente fallisca. Un numero doppio e' un numero valido.
+ *
+ * La guardia e' un confronto-e-scambio sul watermark: si aggiorna solo se vale
+ * ancora quello che si era letto. Se non vale piu', la transazione intera
+ * torna indietro — conteggi compresi — e il giro si ferma dicendo perche'.
+ */
+export class WatermarkMoved extends Error {
+  readonly source: string;
+
+  constructor(source: string) {
+    super(`watermark '${source}' mosso da un altro ingeritore: lotto annullato.`);
+    this.name = 'WatermarkMoved';
+    this.source = source;
+  }
+}
 
 type MatchRow = {
   id: number;
@@ -85,7 +114,7 @@ type ModeRow = {
 type MapRow = { id: number; name: string | null; display_name: string | null; type: string | null };
 
 /** Il watermark di una sorgente, letto per il giro. */
-async function watermarkOf(db: Database, source: string): Promise<bigint> {
+export async function watermarkOf(db: Database, source: string): Promise<bigint> {
   const res = await sql<{ last_id: string }>`
     SELECT last_id::text FROM stats.duels_ingest_state WHERE source = ${source}
   `.execute(db);
@@ -106,7 +135,7 @@ async function watermarkOf(db: Database, source: string): Promise<bigint> {
  * scadenza — non entra qui: dopo una migrazione del gioco avrebbe continuato
  * con la forma vecchia fino al riavvio del processo.
  */
-async function syncCatalogs(db: Database, my: DuelsMysql): Promise<{ modes: number; maps: number }> {
+export async function syncCatalogs(db: Database, my: DuelsMysql): Promise<{ modes: number; maps: number }> {
   const modes = await my.rows<ModeRow>(`SELECT id, name, display_name, ranking, type, color FROM duels_mode`);
   const maps = await my.rows<MapRow>(`SELECT id, name, display_name, type FROM duels_map`);
 
@@ -173,7 +202,7 @@ function normalizeColor(value: string | null): string | null {
  * lo protegge il fatto che il watermark si aggiorna NELLA STESSA TRANSAZIONE.
  * O si scrivono entrambi o nessuno dei due.
  */
-async function ingestMatchBatch(
+export async function ingestMatchBatch(
   db: Database,
   my: DuelsMysql,
   from: bigint,
@@ -222,12 +251,18 @@ async function ingestMatchBatch(
         DO UPDATE SET matches = stats.duels_match_hour.matches + EXCLUDED.matches
     `.execute(tx);
 
-    await sql`
+    const bumped = await sql<{ last_id: string }>`
       UPDATE stats.duels_ingest_state
          SET last_id = ${lastId.toString()}::bigint, last_run_at = now(),
              since_day = LEAST(since_day, ${agg[0]?.bucket ?? null}::timestamptz::date)
        WHERE source = 'match'
+         -- Confronto-e-scambio: vale solo se il watermark e' ancora quello da
+         -- cui questo lotto e' partito. Altrimenti c'e' un secondo ingeritore
+         -- e i conteggi appena sommati sono un doppione: si torna indietro.
+         AND last_id = ${from.toString()}::bigint
+      RETURNING last_id::text
     `.execute(tx);
+    if (bumped.rows.length !== 1) throw new WatermarkMoved('match');
   });
 
   return { read: rows.length, lastId };
@@ -243,11 +278,11 @@ async function ingestMatchBatch(
  * cambio nome deve liberare il vecchio valore prima di scrivere il nuovo — i
  * NULL transitori sono normali.
  */
-async function ingestRatingBatch(
+export async function ingestRatingBatch(
   db: Database,
   my: DuelsMysql,
   from: bigint,
-): Promise<{ read: number; lastId: bigint; degraded: number }> {
+): Promise<{ read: number; lastId: bigint; degraded: number; discarded: number }> {
   const rows = await my.rows<RatingRow>(
     `SELECT r.id, r.created_at, HEX(r.match_id) AS match_hex, r.player_id, r.mode_id,
             r.rating, r.comment, r.dialog, u.uuid AS player_uuid, u.username AS player_name
@@ -258,7 +293,7 @@ async function ingestRatingBatch(
       LIMIT ?`,
     [from.toString(), BATCH],
   );
-  if (rows.length === 0) return { read: 0, lastId: from, degraded: 0 };
+  if (rows.length === 0) return { read: 0, lastId: from, degraded: 0, discarded: 0 };
 
   let lastId = from;
   let degraded = 0;
@@ -284,9 +319,13 @@ async function ingestRatingBatch(
   });
 
   // `match_id` e' NOT NULL: una riga con un identificativo illeggibile non si
-  // scrive, ma non ferma il lotto. E' l'unico scarto possibile, ed e' contato.
+  // scrive, ma non ferma il lotto. E' l'unico scarto possibile, ed e' contato
+  // A PARTE: la verifica del backfill confronta il numero di righe scritte con
+  // il COUNT(*) della sorgente, e senza sapere quante ne sono state scartate
+  // uno scarto legittimo sarebbe indistinguibile da un'importazione monca.
   const writable = parsed.filter((p) => p.matchId !== null);
-  degraded += parsed.length - writable.length;
+  const discarded = parsed.length - writable.length;
+  degraded += discarded;
 
   await db.transaction().execute(async (tx) => {
     if (writable.length > 0) {
@@ -313,16 +352,23 @@ async function ingestRatingBatch(
 
     await recomputeRatingDays(tx, [...days]);
 
-    await sql`
+    const bumped = await sql<{ last_id: string }>`
       UPDATE stats.duels_ingest_state
          SET last_id = ${lastId.toString()}::bigint, last_run_at = now(),
              degraded = degraded + ${degraded},
              since_day = LEAST(since_day, ${[...days].sort()[0] ?? null}::date)
        WHERE source = 'rating'
+         -- Come per le partite. Qui l'inserimento e' idempotente e non
+         -- raddoppierebbe, ma il contatore delle righe degradate e' additivo:
+         -- due ingeritori insieme lo gonfierebbero, ed e' l'unico numero che
+         -- dice se ci si puo' fidare del resto.
+         AND last_id = ${from.toString()}::bigint
+      RETURNING last_id::text
     `.execute(tx);
+    if (bumped.rows.length !== 1) throw new WatermarkMoved('rating');
   });
 
-  return { read: rows.length, lastId, degraded };
+  return { read: rows.length, lastId, degraded, discarded };
 }
 
 /**
@@ -368,6 +414,12 @@ async function recomputeRatingDays(db: Database, days: string[]): Promise<void> 
  *
  * `behind` dice che il budget e' finito prima dell'arretrato. E' il segnale
  * che il recupero e' in corso: si vede nel log e non e' un errore.
+ *
+ * `contended` dice che un altro ingeritore — il backfill, quasi sempre — sta
+ * lavorando sulle stesse tabelle. Nemmeno questo e' un errore: il lotto
+ * contestato e' tornato indietro intero e il giro dopo riparte da dove l'altro
+ * e' arrivato. Se resta acceso a lungo senza che nessuno abbia lanciato niente,
+ * allora si', c'e' un secondo pannello vivo che non dovrebbe esserci.
  */
 export async function runDuelsIngest(
   db: Database,
@@ -381,30 +433,40 @@ export async function runDuelsIngest(
   let ratings = 0;
   let degraded = 0;
   let behind = false;
+  let contended = false;
 
-  let matchAt = await watermarkOf(db, 'match');
-  for (;;) {
-    if (Date.now() - started > budgetMs) {
-      behind = true;
-      break;
+  // Il conflitto ferma il giro, non lo fa fallire: il lotto contestato e' gia'
+  // tornato indietro per intero, e il ciclo successivo ripartira' dal
+  // watermark che l'altro ha lasciato. Riprovare subito significherebbe fare a
+  // gara con lui.
+  try {
+    let matchAt = await watermarkOf(db, 'match');
+    for (;;) {
+      if (Date.now() - started > budgetMs) {
+        behind = true;
+        break;
+      }
+      const batch = await ingestMatchBatch(db, my, matchAt);
+      matches += batch.read;
+      matchAt = batch.lastId;
+      if (batch.read < BATCH) break;
     }
-    const batch = await ingestMatchBatch(db, my, matchAt);
-    matches += batch.read;
-    matchAt = batch.lastId;
-    if (batch.read < BATCH) break;
-  }
 
-  let ratingAt = await watermarkOf(db, 'rating');
-  for (;;) {
-    if (Date.now() - started > budgetMs) {
-      behind = true;
-      break;
+    let ratingAt = await watermarkOf(db, 'rating');
+    for (;;) {
+      if (Date.now() - started > budgetMs) {
+        behind = true;
+        break;
+      }
+      const batch = await ingestRatingBatch(db, my, ratingAt);
+      ratings += batch.read;
+      degraded += batch.degraded;
+      ratingAt = batch.lastId;
+      if (batch.read < BATCH) break;
     }
-    const batch = await ingestRatingBatch(db, my, ratingAt);
-    ratings += batch.read;
-    degraded += batch.degraded;
-    ratingAt = batch.lastId;
-    if (batch.read < BATCH) break;
+  } catch (err) {
+    if (!(err instanceof WatermarkMoved)) throw err;
+    contended = true;
   }
 
   await sql`
@@ -418,6 +480,7 @@ export async function runDuelsIngest(
     maps: catalogs.maps,
     degraded,
     behind,
+    contended,
     ms: Date.now() - started,
   };
 }

@@ -36,13 +36,25 @@ export const SOURCE_TABLES = [
  */
 const MAX_EXECUTION_MS = 10_000;
 
+/**
+ * Il tetto del BACKFILL, che e' un'altra cosa.
+ *
+ * Il giro da trenta secondi legge per chiave primaria e non supera mai il
+ * decimo di secondo: dieci secondi la' dentro significano «qualcosa non sta
+ * finendo». La verifica finale del backfill invece conta due milioni e mezzo
+ * di righe apposta, una volta sola, a mano — e interromperla a dieci secondi
+ * vorrebbe dire non poterla fare, cioe' dichiarare finita un'importazione
+ * senza averla confrontata con la sorgente.
+ */
+export const BACKFILL_MAX_EXECUTION_MS = 120_000;
+
 export type DuelsMysql = {
   /** Una SELECT, con il tetto di esecuzione gia' applicato. */
   rows: <T>(sql: string, params?: unknown[]) => Promise<T[]>;
   close: () => Promise<void>;
 };
 
-export function createDuelsMysql(url: string): DuelsMysql {
+export function createDuelsMysql(url: string, maxExecutionMs = MAX_EXECUTION_MS): DuelsMysql {
   const pool = mysql.createPool({
     uri: url,
     // Due: una che lavora e una di riserva. Il giro e' sequenziale.
@@ -69,7 +81,7 @@ export function createDuelsMysql(url: string): DuelsMysql {
     rows: async <T>(sql: string, params: unknown[] = []): Promise<T[]> => {
       const conn = await pool.getConnection();
       try {
-        await conn.query(`SET SESSION max_execution_time = ${MAX_EXECUTION_MS}`);
+        await conn.query(`SET SESSION max_execution_time = ${Number(maxExecutionMs)}`);
         const [result] = await conn.query(sql, params);
         return result as T[];
       } finally {

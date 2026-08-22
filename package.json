@@ -38,7 +38,8 @@
     "job:verify": "node scripts/maintenance.ts verify",
     "lint:pg17": "node scripts/check-pg17.ts",
     "stats:roles": "node scripts/create-stats-roles.ts",
-    "probe:redis": "node scripts/probe-game-redis.ts"
+    "probe:redis": "node scripts/probe-game-redis.ts",
+    "duels:backfill": "node scripts/duels-backfill.ts"
   },
   "dependencies": {
     "@better-auth/redis-storage": "1.6.29",

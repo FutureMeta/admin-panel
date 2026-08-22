@@ -18,6 +18,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { runDuelsIngest } from '#src/duels/ingest.ts';
 import type { DuelsMysql } from '#src/duels/mysql.ts';
+import { fakeDuelsMysql } from '#tests/support/duels-mysql.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 let testDb: TestDatabase;
@@ -53,31 +54,8 @@ beforeEach(async () => {
     UPDATE stats.duels_ingest_state SET last_id = 0, since_day = NULL, degraded = 0;`);
 });
 
-/** Il MySQL finto: risponde in base alla tabella nominata dalla query. */
-function fakeMysql(source: {
-  modes?: unknown[];
-  maps?: unknown[];
-  matches?: unknown[];
-  ratings?: unknown[];
-}): DuelsMysql {
-  return {
-    rows: async <T>(query: string, params: unknown[] = []): Promise<T[]> => {
-      if (query.includes('duels_mode')) return (source.modes ?? []) as T[];
-      if (query.includes('duels_map')) return (source.maps ?? []) as T[];
-
-      // Le due query a lotti portano `id > ?` e `LIMIT ?`: il finto rispetta
-      // entrambi, o il test del budget non proverebbe niente.
-      const after = BigInt(String(params[0] ?? '0'));
-      const limit = Number(params[1] ?? 10_000);
-      const all = (query.includes('duels_match_ratings') ? source.ratings : source.matches) ?? [];
-      return all
-        .filter((r) => BigInt(String((r as { id: unknown }).id)) > after)
-        .sort((a, b) => Number((a as { id: number }).id) - Number((b as { id: number }).id))
-        .slice(0, limit) as T[];
-    },
-    close: async () => undefined,
-  };
-}
+/** Il MySQL finto vive in `tests/support`: lo condivide con il backfill. */
+const fakeMysql = fakeDuelsMysql;
 
 const MODES = [
   { id: 1, name: 'classic', display_name: 'Classic', ranking: 'RANKED', type: 'DUEL', color: '#d34545' },
@@ -313,5 +291,52 @@ describe('le valutazioni portano il nome, e l`aggregato torna', () => {
 
     expect(res.degraded).toBeGreaterThan(0);
     expect(await one<string>(`SELECT count(*)::text FROM stats.duels_rating`)).toBe('1');
+  });
+});
+
+describe('due ingeritori insieme non raddoppiano niente', () => {
+  it('se il watermark si muove sotto i piedi, il lotto torna INDIETRO INTERO', async () => {
+    // La scena vera: il backfill si lancia a mano, e il modo naturale di
+    // lanciarlo e` contro la produzione mentre il pannello e` acceso. I due
+    // leggerebbero lo stesso watermark, ingerirebbero lo stesso lotto, e
+    // l'upsert additivo raddoppierebbe i conteggi senza che niente fallisca.
+    //
+    // Qui l'interferenza e` simulata dove accade davvero: mentre la lettura
+    // del MySQL e` in corso, cioe` fra il momento in cui si legge il
+    // watermark e il momento in cui lo si riscrive.
+    const base = fakeMysql({ modes: MODES, maps: MAPS, matches: MATCHES });
+    let interfered = false;
+    const conteso: DuelsMysql = {
+      close: base.close,
+      rows: async <T>(query: string, params: unknown[] = []): Promise<T[]> => {
+        const out = await base.rows<T>(query, params);
+        if (query.includes('duels_match_statistics') && !interfered) {
+          interfered = true;
+          await sql.query(`UPDATE stats.duels_ingest_state SET last_id = 99 WHERE source = 'match'`);
+        }
+        return out;
+      },
+    };
+
+    const res = await runDuelsIngest(db, conteso);
+
+    expect(res.contended, 'il giro deve DIRE che c`era un altro').toBe(true);
+    expect(res.matches).toBe(0);
+    // Nessuna partita scritta: la transazione e` tornata indietro con dentro
+    // sia i conteggi sia il watermark.
+    expect(await one<string>(`SELECT COALESCE(sum(matches), 0)::text FROM stats.duels_match_hour`)).toBe('0');
+    // E il watermark dell'altro e` rimasto il suo, non e` stato sovrascritto.
+    expect(
+      await one<string>(`SELECT last_id::text FROM stats.duels_ingest_state WHERE source = 'match'`),
+    ).toBe('99');
+  });
+
+  it('senza interferenza il giro finisce come sempre', async () => {
+    // Il verso opposto della stessa guardia: un confronto-e-scambio che
+    // fallisse sempre sarebbe un pannello che non ingerisce mai, e il test
+    // qui sopra da solo non lo distinguerebbe.
+    const res = await runDuelsIngest(db, fakeMysql({ modes: MODES, maps: MAPS, matches: MATCHES }));
+    expect(res.contended).toBe(false);
+    expect(res.matches).toBe(3);
   });
 });

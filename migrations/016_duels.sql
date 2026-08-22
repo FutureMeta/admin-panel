@@ -226,11 +226,16 @@ CREATE TABLE stats.duels_ingest_state (
   last_id     bigint NOT NULL DEFAULT 0 CHECK (last_id >= 0),
   last_run_at timestamptz,
   since_day   date,
-  -- Righe DEGRADATE in ingestione, contate per poterlo dire. Oggi ce n'e' un
-  -- genere solo: un `dialog` che non e' un array di turni {role, content}. Il
-  -- voto fuori scala non entra qui perche' non puo' esistere: il vincolo c'e'
-  -- all'origine. La riga si scrive comunque, con `dialog` nullo — perdere un
-  -- feedback per un seguito malformato sarebbe sproporzionato.
+  -- Righe DEGRADATE in ingestione, contate per poterlo dire. Due generi, e il
+  -- secondo non dovrebbe mai accadere: un `dialog` che non e' un array di
+  -- turni {role, content} — e la riga si scrive comunque, con `dialog` nullo,
+  -- perche' perdere un feedback per un seguito malformato sarebbe
+  -- sproporzionato — oppure un `match_id` illeggibile, e allora la riga non si
+  -- scrive affatto. Il secondo caso e' impossibile per costruzione (BINARY(16)
+  -- NOT NULL: HEX() ne restituisce sempre 32 caratteri esadecimali), quindi se
+  -- il contatore sale senza un solo dialogo storto c'e' qualcosa di nuovo
+  -- all'origine. Il voto fuori scala non entra qui perche' non puo' esistere:
+  -- il vincolo c'e' gia' sul MySQL.
   degraded    bigint NOT NULL DEFAULT 0 CHECK (degraded >= 0)
 );
 
@@ -253,6 +258,54 @@ INSERT INTO stats.partitioned_table (table_name, granularity, keep_days, partiti
   ('duels_rating',     'month',  730, 'autovacuum_vacuum_insert_scale_factor=0.02');
 
 SELECT stats.ensure_partitions();
+
+-- ---------------------------------------------------------------------------
+-- 5b. LE PARTIZIONI DEL PASSATO, che `ensure_partitions` non puo' creare.
+--
+-- `stats.ensure_partitions` guarda AVANTI: dal mese scorso a due mesi avanti
+-- (011_stats.sql:900-905). Va bene per un flusso che nasce oggi e cresce in
+-- avanti — ed e' il caso di tutte le tabelle della 011, alimentate da un tick
+-- che campiona il presente.
+--
+-- Qui no. Lo storico dei duels comincia il 2026-03-09 e va importato tutto in
+-- una volta: senza le partizioni dei mesi passati il backfill morirebbe al
+-- primo lotto con SQLSTATE 23514 «no partition of relation found» — e ci
+-- morirebbe a meta' importazione, con dentro un pezzo di storia e nessun modo
+-- di sapere quale.
+--
+-- Si parte da GENNAIO 2026, un mese prima della riga piu' vecchia accertata:
+-- il margine costa due tabelle vuote e copre un dato retrodatato.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE t record; m date; part text; lo text; hi text; made integer := 0;
+BEGIN
+  FOR t IN SELECT table_name, partition_options FROM stats.partitioned_table
+            WHERE table_name IN ('duels_match_hour', 'duels_rating')
+            ORDER BY table_name LOOP
+    FOR m IN SELECT s::date FROM generate_series(
+               date '2026-01-01',
+               (date_trunc('month', current_date) - interval '1 month')::date,
+               interval '1 month') s LOOP
+      part := format('%s_%s', t.table_name, to_char(m, 'YYYY_MM'));
+      CONTINUE WHEN to_regclass('stats.' || quote_ident(part)) IS NOT NULL;
+
+      -- I confini si scrivono con l'offset ESPLICITO, non come date nude: su
+      -- una chiave timestamptz un letterale senza offset viene interpretato
+      -- nel fuso della sessione, e la stessa migration applicata da un client
+      -- a Roma e da uno a UTC creerebbe partizioni sfalsate di due ore. E'
+      -- la ragione per cui `ensure_partitions` si impone `SET TimeZone`; qui
+      -- non c'e' una funzione su cui imporlo, quindi lo dice il letterale.
+      lo := to_char(m, 'YYYY-MM-DD') || ' 00:00:00+00';
+      hi := to_char((m + interval '1 month')::date, 'YYYY-MM-DD') || ' 00:00:00+00';
+
+      EXECUTE format(
+        'CREATE TABLE stats.%I PARTITION OF stats.%I FOR VALUES FROM (%L) TO (%L) WITH (%s)',
+        part, t.table_name, lo, hi, t.partition_options);
+      made := made + 1;
+    END LOOP;
+  END LOOP;
+  RAISE NOTICE 'partizioni storiche duels create: %', made;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- 6. VISTE DI LETTURA, ed e' li' che va il GRANT.

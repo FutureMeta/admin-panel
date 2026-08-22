@@ -95,6 +95,28 @@ mai il valore (SEC-41).
 | `RESEND_WEBHOOK_SECRET` | sì in prod | senza, il webhook risponde 503 e non accetta nulla |
 | `MAIL_FROM` | no | default `MetaMC Admin <no-reply@metamc.it>` |
 | `AUDIT_ANCHOR_PATH` | no | dove il job `anchor` scrive le teste firmate. Default `./audit-anchor.jsonl` |
+| `ANTHROPIC_API_KEY` | no | **assente = Svetlana spenta.** Vive solo qui e non raggiunge mai il browser |
+| `DATABASE_ASSISTANT_URL` | no | ruolo `metamc_assistant`, sola lettura. Vedi sotto |
+| `ASSISTANT_EFFORT` | no (`medium`) | quanto a fondo pensa l'assistente |
+| `ASSISTANT_MONTHLY_BUDGET_USD` | no (`50`) | tetto di spesa mensile. `0` = nessun tetto |
+| `ASSISTANT_TIMEOUT_MS` | no (`60000`) | timeout verso l'API di Anthropic |
+
+**Prima di impostare `ANTHROPIC_API_KEY`** leggi
+[docs/svetlana.md](svetlana.md) §3: le risposte degli strumenti escono verso un
+fornitore esterno e servono due decisioni — sulla conservazione lato fornitore
+e sul registro dei trattamenti. Finché non sono prese, la scelta prudente è
+lasciare la variabile non impostata: il resto del pannello non cambia.
+
+Il ruolo di lettura dell'assistente si crea **una volta sola**, come quelli
+della fase 2 — sono operazioni di cluster e `metamc_migrate` non ha
+`CREATEROLE`:
+
+```bash
+DATABASE_SUPERUSER_URL=postgres://postgres:...@host:5432/metamc \
+  node scripts/create-assistant-role.ts
+psql -c "ALTER ROLE metamc_assistant WITH PASSWORD '...'"
+pnpm run migrate
+```
 
 `MASTER_KEY` si genera con:
 

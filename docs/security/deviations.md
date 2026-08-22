@@ -201,6 +201,16 @@ impedisce l'abuso, ma lo rende impossibile da cancellare.
 `requireStepUp` in `src/http/guards.ts`, dove il commento conserva l'elenco
 chiuso delle operazioni che lo richiedevano.
 
+**Da rivalutare prima delle scritture di Svetlana.** L'assistente
+([docs/svetlana.md](../svetlana.md)) è in sola lettura e non tocca questa
+deviazione. Il giorno in cui gli si daranno le scritture, però, la conferma
+esplicita dell'operatore diventa **l'unica barriera** fra una sessione rubata e
+una modifica ai privilegi — e sarà una conferma che si dà con un clic, in una
+chat, dentro la stessa sessione che è stata rubata. Con lo step-up quella
+conferma costerebbe anche un codice dall'app; senza, non costa niente. Vale la
+pena riaprire questa decisione **prima** di quel passo, non dopo: rimetterlo su
+una superficie che esiste già è più difficile che progettarla con lui dentro.
+
 ---
 
 ## D-10 — Risposte cacheabili sotto `/api/stats/*` (contro §9 del progetto)

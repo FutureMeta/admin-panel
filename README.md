@@ -76,6 +76,7 @@ src/
   authz/       l'UNICO posto che decide. can(actor, module, level)
   auth/        Argon2 con pepper e semaforo, TOTP anti-replay, recovery code, HIBP
   audit/       scrittura in transazione, sanitizzazione, verifica della catena
+  assistant/   Svetlana: cinque tool in sola lettura, con il permesso dentro
   http/        server Fastify, middleware del §9, rotte
   invites/     ciclo di vita dell'invito
   db/          pool iniettato, interfaccia Kysely scritta a mano
@@ -112,6 +113,7 @@ operazione che tocca un altro utente. Il client non le ricalcola: riceve
 | [`docs/stack-decisions.md`](docs/stack-decisions.md) | il documento normativo |
 | [`docs/spike-outcomes.md`](docs/spike-outcomes.md) | i 5 spike del §15, con l'esito e il ramo preso |
 | [`docs/runbook.md`](docs/runbook.md) | primo avvio, segreti, backup, manutenzione, break-glass |
+| [`docs/svetlana.md`](docs/svetlana.md) | l'assistente: cosa legge, il modello di sicurezza, i costi, **e le due decisioni che servono al committente prima di accenderlo** |
 | [`docs/security/deviations.md`](docs/security/deviations.md) | 8 deviazioni, con motivo e data di rientro |
 | [`docs/security/asvs.md`](docs/security/asvs.md) | mappatura ASVS 5.0 L2 |
 | [`docs/deps-policy.md`](docs/deps-policy.md) | aggiornamenti, bus factor, floor verificati |

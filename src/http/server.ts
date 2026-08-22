@@ -11,6 +11,7 @@ import { assertNoStateChangingGet, registerSecurityHooks } from './hooks.ts';
 import { contentSecurityPolicy, newNonce } from './index-html.ts';
 import { auditContextOf, authSubjectOf, requestIps } from './request-context.ts';
 import { registerAccountRoutes } from './routes/account.ts';
+import { registerAssistantRoutes } from './routes/assistant.ts';
 import { registerAuditRoutes } from './routes/audit.ts';
 import { registerAuthRoutes } from './routes/auth.ts';
 import { registerAvatarRoutes } from './routes/avatars.ts';
@@ -199,6 +200,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   await registerStatsRoutes(app, ctx);
   await registerDuelsRoutes(app, ctx);
   registerDuelsConfigRoutes(app, ctx);
+  registerAssistantRoutes(app, ctx);
   await registerStatsModeRoutes(app, ctx);
   await registerTwoFactorResetRoutes(app, ctx);
   await registerAuditRoutes(app, ctx);

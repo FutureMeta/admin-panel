@@ -9,6 +9,7 @@
 import type { Redis } from 'ioredis';
 import type pg from 'pg';
 import type { Logger } from 'pino';
+import { type AssistantRuntime, createAssistant } from '#src/assistant/runtime.ts';
 import { type Auth, createAuth } from '#src/auth/auth.ts';
 import { HibpClient } from '#src/auth/hibp.ts';
 import { PasswordService } from '#src/auth/password.ts';
@@ -101,6 +102,12 @@ export type AppContext = {
    * il contesto si costruisce mille volte.
    */
   statsWarm: StatsWorker | null;
+  /**
+   * L'assistente conversazionale. `null` senza `ANTHROPIC_API_KEY`: la rotta
+   * risponde 503, non si apre nessuna connessione e il resto del pannello
+   * gira esattamente come prima.
+   */
+  assistant: AssistantRuntime | null;
   totpGuard: TotpReplayGuard;
   mailer: Mailer;
   /** Fase 2: la cache vera si scrive dietro questa interfaccia (§16.4). */
@@ -375,6 +382,11 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     }
   }
 
+  // Si costruisce DOPO la cache e il provider dei duels, perche' li usa: i
+  // numeri che l'assistente dice sono gli stessi che le schermate disegnano,
+  // e lo sono perche' passano dagli stessi oggetti.
+  const assistant = createAssistant({ env, redis, statsDb, duels, cache: statsCache });
+
   const shuttingDown = { value: false };
 
   const context: AppContext = {
@@ -402,6 +414,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     cacheRedis,
     // Si accende DOPO `listen()`, in `startStatsWarming`.
     statsWarm: null,
+    assistant,
     totpGuard,
     mailer: opts.mailer,
     // La cache generica del §16.4 e quella delle statistiche sono lo STESSO
@@ -422,6 +435,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       // Chi crea chiude: il job lo ha ricevuto, quindi non lo chiude lui.
       await duelsMysql?.close().catch(() => undefined);
       context.statsWarm?.stop();
+      await assistant?.close().catch(() => undefined);
       await statsDb?.destroy().catch(() => undefined);
       await cacheRedis.quit().catch(() => undefined);
       await db.destroy().catch(() => undefined);

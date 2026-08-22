@@ -6,6 +6,7 @@
 import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import type { AppContext } from '#src/app-context.ts';
+import { metricLines } from '#src/assistant/metrics.ts';
 import { verifyRecent } from '#src/audit/integrity.ts';
 import { eventLoopDelayP99 } from '#src/observability/event-loop.ts';
 import { rollupWatermarks } from '#src/stats/rollup.ts';
@@ -280,6 +281,24 @@ export async function registerHealthRoutes(app: FastifyInstance, ctx: AppContext
           `metamc_stats_build_ms{key="${key}",stage="compress"} ${b.compress}`,
         ]),
       );
+    }
+
+    // -----------------------------------------------------------------------
+    // L'assistente. Righe solo se e' acceso: un blocco di zeri su
+    // un'installazione senza chiave direbbe «funziona e non lo usa nessuno»,
+    // che e' diverso da «non c'e'».
+    //
+    // Senza misura, la prima bolletta e' una sorpresa. Il numero da guardare
+    // per primo e' `tokens_total{kind="cache_read"}`: se resta a zero mentre
+    // `input` cresce, la cache non sta lavorando e ogni turno si paga per
+    // intero — un guasto che non produce nessun errore.
+    // -----------------------------------------------------------------------
+    if (ctx.assistant) {
+      const spend = {
+        usd: await ctx.assistant.spend.spentThisMonth(new Date()).catch(() => 0),
+        capUsd: ctx.assistant.spend.capUsd,
+      };
+      lines.push(...metricLines(ctx.assistant.meter, spend));
     }
 
     reply.header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');

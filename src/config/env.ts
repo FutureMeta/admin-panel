@@ -199,6 +199,50 @@ const EnvSchema = z.object({
    * una mappa vuota.
    */
   GEO_MMDB_PATH: z.string().min(1).optional(),
+
+  // --- assistente (Svetlana) ------------------------------------------------
+  /**
+   * La chiave dell'API di Anthropic. Vive SOLO qui, nell'ambiente del
+   * processo Node, e non raggiunge mai il browser: il pannello parla con una
+   * rotta nostra, ed e' quella rotta a parlare con il fornitore.
+   *
+   * Assente = assistente spento. La rotta risponde 503 e il resto del
+   * pannello non cambia, esattamente come per le statistiche senza il loro
+   * ruolo di lettura.
+   */
+  ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  /**
+   * Il ruolo di SOLA LETTURA da cui l'assistente guarda `auth` e `audit`:
+   * `metamc_assistant`, mai `metamc_app`.
+   *
+   * `metamc_app` scrive, e la regola della versione 1 e' che nessun tool
+   * possa modificare niente — una regola che vale quanto il posto in cui e'
+   * scritta. Con questa variabile sta nel database (migration 019); senza,
+   * i due tool che guardano il pannello rispondono «non disponibile» e quelli
+   * delle statistiche funzionano lo stesso.
+   */
+  DATABASE_ASSISTANT_URL: z.string().min(1).optional(),
+  /**
+   * Quanto a fondo pensa. `medium` di base: le domande sono per lo piu'
+   * ricerche su dati gia' aggregati, e alzarlo si paga a ogni messaggio.
+   */
+  ASSISTANT_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('medium'),
+  /**
+   * Il tetto di spesa MENSILE, in dollari. Al superamento l'assistente si
+   * spegne con un messaggio chiaro, non fallisce in silenzio.
+   *
+   * Zero = nessun tetto, ed e' una scelta esplicita: il valore predefinito non
+   * lo e'.
+   */
+  ASSISTANT_MONTHLY_BUDGET_USD: z.coerce.number().min(0).default(50),
+  /**
+   * Il timeout verso l'API, in millisecondi.
+   *
+   * Il default dell'SDK e' dieci minuti: una chiamata appesa dieci minuti e'
+   * una richiesta del pannello appesa dieci minuti. Un guasto del fornitore
+   * deve diventare un messaggio d'errore nella chat, non un'attesa.
+   */
+  ASSISTANT_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(600_000).default(60_000),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

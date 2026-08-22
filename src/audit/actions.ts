@@ -77,6 +77,19 @@ export const AUDIT_ACTIONS = {
   duelsMapUpdated: 'duels.map.update',
   duelsMapDeleted: 'duels.map.delete',
 
+  // --- assistente (Svetlana) ------------------------------------------------
+  //
+  // UNA RIGA PER INTERAZIONE, con i tool chiamati nei metadati. Serve a
+  // rispondere a «chi ha guardato i dati di quella persona» anche quando la
+  // domanda e' passata da una chat invece che da una schermata: senza, il
+  // registro conterrebbe tutte le consultazioni tranne quelle fatte parlando.
+  //
+  // I METADATI PORTANO GLI ARGOMENTI dei tool, non solo i nomi.
+  // «assistant.message con panel_user_search» non dice CHI e' stato cercato, e
+  // il fatto sensibile e' quello — la stessa ragione per cui
+  // `duels.rating.search` registra il termine.
+  assistantMessage: 'assistant.message',
+
   // --- sessioni -------------------------------------------------------------
   loginSucceeded: 'auth.login.success',
   loginFailed: 'auth.login.failure',
@@ -118,6 +131,17 @@ export const AUDIT_ACTIONS = {
 } as const;
 
 export type AuditAction = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+
+/**
+ * Il valore di `meta.via` per cio' che e' passato dall'assistente.
+ *
+ * ESISTE GIA' ADESSO, che l'assistente non scriva niente. Quando arriveranno
+ * le scritture, un `duels.mode.update` fatto a mano e uno proposto in chat e
+ * confermato saranno la stessa azione con lo stesso attore: l'unica cosa che
+ * li distingue e' questo campo, e aggiungerlo dopo vorrebbe dire che tutte le
+ * righe precedenti non si possono piu' interpretare.
+ */
+export const AUDIT_VIA_ASSISTANT = 'assistant';
 
 /**
  * Eventi di SICUREZZA: l'INSERT dovrebbe stare nella STESSA transazione della

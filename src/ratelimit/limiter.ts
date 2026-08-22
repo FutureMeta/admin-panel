@@ -82,6 +82,20 @@ export const LIMITS = {
   hashingAccount: { points: 5, duration: 900, blockDuration: 900 },
   hashingIp: { points: 60, duration: 900, blockDuration: 300 },
 
+  /**
+   * L'assistente. Una chat con i tool puo' chiamare l'API piu' volte per una
+   * sola domanda, quindi il costo non e' intuitivo e va limitato in modo
+   * STRUTTURALE invece che sperando nel buon senso.
+   *
+   * Trenta messaggi all'ora per persona: una conversazione di lavoro ne usa
+   * cinque o sei, e trenta e' largo per chiunque stia davvero indagando
+   * qualcosa. Il tetto per ROTTA e' l'altra meta' — protegge dalla somma di
+   * dieci persone che indagano insieme, che e' il caso in cui la bolletta
+   * cresce senza che nessuno stia esagerando.
+   */
+  assistantUser: { points: 30, duration: 3600, blockDuration: 600 },
+  assistantGlobal: { points: 300, duration: 3600 },
+
   /** Fondo scala per tutte le rotte autenticate. */
   apiIp: { points: 600, duration: 60 },
 } as const satisfies Record<string, LimitSpec>;

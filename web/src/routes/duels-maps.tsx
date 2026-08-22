@@ -479,9 +479,12 @@ function MapPanel({
           // schermo: si tolgono due modalità e poi si cerca dove è finito ciò
           // che le rende vere. Il taglio cade a metà dell'undicesima riga
           // apposta — una riga tagliata dice «ce n'è ancora» senza scriverlo.
-          <div style={{ padding: '6px 20px 16px', maxHeight: 456, overflowY: 'auto' }}>
+          //
+          // Niente margini laterali qui: le righe vanno a tutta larghezza e il
+          // loro `20px` se lo portano dietro, come i settings di mappa.
+          <div style={{ maxHeight: 460, overflowY: 'auto' }}>
             {modeIds.length === 0 && saved.modeIds.length === 0 ? (
-              <div style={{ padding: '16px 0', fontSize: 12.5, color: 'var(--tx-muted)' }}>
+              <div style={{ padding: '16px 20px', fontSize: 12.5, color: 'var(--tx-muted)' }}>
                 Nessuna modalità supportata da questa mappa.
               </div>
             ) : null}
@@ -649,16 +652,17 @@ function ModeRow({
   tone: 'plain' | 'added' | 'removed';
   action: React.ReactNode;
 }) {
-  // AGGIUNTA E' VERDE, non arancione: nel disegno l'arancione e' l'accento
-  // dell'interfaccia — i pulsanti, la selezione — e il verde e' «questa riga
-  // sta per entrare». Usare l'accento per uno stato dei dati confonde le due
-  // cose in una schermata che ne ha tre contemporaneamente.
-  const border =
-    tone === 'added'
-      ? '1px solid rgba(34,197,94,.5)'
-      : tone === 'removed'
-        ? '1px solid rgba(219,52,52,.5)'
-        : '1px solid transparent';
+  // LA STESSA RIGA DEI SETTINGS DI MAPPA: a tutta larghezza, `10px 20px`, e un
+  // filetto sotto invece di una scheda con il bordo tutt'intorno. Erano due
+  // elenchi nello stesso riquadro disegnati in due modi, e la differenza si
+  // vedeva passando da una tab all'altra.
+  //
+  // LO STATO RESTA IL FONDO, e il bordo se ne va. Il filetto separa le righe;
+  // aggiungere anche una cornice colorata su una riga a tutta larghezza
+  // significa disegnare due separatori sovrapposti. Il colore basta:
+  // AGGIUNTA E' VERDE, non arancione — nel disegno l'arancione è l'accento
+  // dell'interfaccia, i pulsanti e la selezione, e usarlo per uno stato dei
+  // dati confonde le due cose su una schermata che ne mostra tre insieme.
   const background =
     tone === 'added' ? 'var(--ok-soft)' : tone === 'removed' ? 'var(--err-soft)' : 'transparent';
 
@@ -668,11 +672,9 @@ function ModeRow({
         display: 'flex',
         alignItems: 'center',
         gap: 12,
-        padding: '9px 8px',
+        padding: '10px 20px',
         borderBottom: '1px solid var(--bd-subtle)',
-        border,
         background,
-        borderRadius: 'var(--r-sm)',
       }}
     >
       <span style={{ fontSize: 13, flex: 1, color: 'var(--tx-primary)' }}>{name}</span>

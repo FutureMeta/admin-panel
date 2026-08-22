@@ -133,7 +133,9 @@ export type ModuleKey =
   | 'audit'
   | 'impostazioni'
   | 'statistiche'
-  | 'server';
+  | 'server'
+  | 'duels'
+  | 'duels_feedback';
 
 export type Me = {
   userId: string;

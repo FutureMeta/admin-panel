@@ -71,6 +71,18 @@ const NAV: NavItem[] = [
     area: 'Analisi',
     icon: ICONS.modes,
   },
+  // Il gruppo «Duels» sta fra Analisi e Amministrazione, come nei mockup.
+  //
+  // Il MODULO E' `duels`, non `statistiche`: sono due permessi distinti perché
+  // sono due domande distinte su chi può vedere cosa. Chi ha le statistiche
+  // del network non ha per questo il diritto di guardare le partite dei duels.
+  {
+    modules: ['duels'],
+    label: 'Trends',
+    to: '/duels/trends',
+    area: 'Duels',
+    icon: ICONS.trend,
+  },
   {
     modules: ['utenti', 'ruoli', 'inviti'],
     label: 'Utenti & Ruoli',

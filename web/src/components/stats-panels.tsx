@@ -13,9 +13,11 @@
 // stessa cosa detta a due livelli diversi.
 
 import type React from 'react';
+import { gaps, niceScale, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
 import { axisLabel } from '../lib/when.ts';
+import { HeatGrid, HeatLegend } from './heat-grid.tsx';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
 export type Series = {
@@ -81,35 +83,6 @@ export const dayFmt = new Intl.DateTimeFormat('it-IT', {
   month: 'long',
   year: 'numeric',
 });
-
-/**
- * Una scala LEGGIBILE per l'asse verticale.
- *
- * Prendere il massimo osservato come cima dell'asse produce tacche come 206,
- * 412, 617, 823: numeri esatti e inutilizzabili, perché nessuno legge un
- * grafico per sapere quanto vale un quarto del picco. Si arrotonda il passo a
- * 1, 2, 2,5 o 5 volte una potenza di dieci — gli unici incrementi che l'occhio
- * somma da solo — e la cima al primo multiplo sopra il massimo.
- *
- * Con 823 giocatori l'asse diventa 0, 250, 500, 750, 1.000.
- */
-export function niceScale(max: number, ticks = 4): { top: number; values: number[] } {
-  if (!Number.isFinite(max) || max <= 0) return { top: 1, values: [0, 1] };
-  const raw = max / ticks;
-  const magnitude = 10 ** Math.floor(Math.log10(raw));
-  const norm = raw / magnitude;
-  // Passo minimo 1: sono conteggi di PERSONE, e mezzo giocatore non esiste.
-  // Senza questo pavimento, una rete quasi vuota produce tacche «0, 0, 1, 1»
-  // — cioè un asse che si ripete.
-  const step = Math.max(
-    1,
-    magnitude * (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 2.5 ? 2.5 : norm <= 5 ? 5 : 10),
-  );
-  const top = Math.ceil(max / step) * step;
-  const values: number[] = [];
-  for (let v = 0; v <= top + step / 2; v += step) values.push(Math.round(v));
-  return { top, values };
-}
 
 export function hhmm(epochSec: number): string {
   return ROME.format(new Date(epochSec * 1000));
@@ -218,37 +191,6 @@ const LEFT = 56;
 const RIGHT = 1108;
 const TOP = 16;
 const BOTTOM = 268;
-
-/** I segmenti di una serie, spezzati sui buchi: mai una linea sopra un `null`. */
-function segments(values: (number | null)[], x: (i: number) => number, y: (v: number) => number): string[] {
-  const out: string[] = [];
-  let current: string[] = [];
-  values.forEach((v, i) => {
-    if (v === null) {
-      if (current.length > 1) out.push(current.join(' '));
-      current = [];
-      return;
-    }
-    current.push(`${current.length === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`);
-  });
-  if (current.length > 1) out.push(current.join(' '));
-  return out;
-}
-
-/** Le fasce non rilevate, come intervalli di indice contigui. */
-function gaps(values: (number | null)[]): Array<[number, number]> {
-  const out: Array<[number, number]> = [];
-  let start: number | null = null;
-  values.forEach((v, i) => {
-    if (v === null && start === null) start = i;
-    if (v !== null && start !== null) {
-      out.push([start, i - 1]);
-      start = null;
-    }
-  });
-  if (start !== null) out.push([start, values.length - 1]);
-  return out;
-}
 
 export function OnlineChart({
   data,
@@ -583,32 +525,21 @@ export function Donut({
 // 4b — heatmap di affluenza
 // ---------------------------------------------------------------------------
 
-const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'];
-/** Le ventiquattro ore come VALORI: la cella è identificata dall'ora, non dalla posizione. */
-const HOURS = Array.from({ length: 24 }, (_, h) => h);
-
 export function Heatmap({ data, label }: { data: Overview; label: string }) {
-  const hover = useHoverTip();
   const { v, w, n } = data.heatmap;
   // TRE array, mai la media già divisa. Nei giorni di cambio ora una cella
   // locale ha zero occorrenze (l'ora saltata di marzo) o due (quella ripetuta
   // di ottobre): con la sola media quella cella mente e nessuno può
   // accorgersene guardandola.
-  const cells = v.map((num, i) => {
+  const detail = v.map((num, i) => {
     const den = w[i] ?? 0;
     return { avg: den > 0 ? num / den : null, occurrences: n[i] ?? 0, coverage: den };
   });
-  const max = Math.max(1, ...cells.map((c) => c.avg ?? 0));
-
-  const colour = (c: (typeof cells)[number]): string => {
-    if (c.occurrences === 0) return 'var(--s-inset)';
-    if (c.avg === null) return 'var(--s-inset)';
-    const f = Math.min(1, c.avg / max);
-    // La stessa scala del design: dal fondo scuro all'accento.
-    const stops = ['#0F212A', '#1E5670', '#8A7147', '#F0A63F'];
-    const i = Math.min(stops.length - 2, Math.floor(f * (stops.length - 1)));
-    return f <= 0 ? (stops[0] as string) : ((f >= 1 ? stops[3] : stops[i + 1]) as string);
-  };
+  // Zero occorrenze non e' «zero giocatori»: e' che quella coppia giorno/ora
+  // non e' ancora capitata nel periodo, o che allora non si campionava. Va
+  // alla griglia come `null`, cioe' tratteggiata.
+  const cells = detail.map((c) => (c.occurrences === 0 ? null : c.avg));
+  const max = Math.max(1, ...cells.map((c) => c ?? 0));
 
   return (
     <section
@@ -635,71 +566,17 @@ export function Heatmap({ data, label }: { data: Overview; label: string }) {
             Media giocatori online · {label} su griglia 7×24 · Europe/Rome
           </div>
         </div>
-        <div
-          style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--tx-muted)' }}
-        >
-          <span>0</span>
-          <span
-            style={{
-              width: 96,
-              height: 8,
-              borderRadius: 4,
-              background: 'linear-gradient(90deg,#0F212A,#1E5670,#8A7147,#F0A63F)',
-            }}
-          />
-          <span>{numberFmt.format(Math.round(max))}</span>
-        </div>
+        <HeatLegend top={numberFmt.format(Math.round(max))} />
       </div>
-      <div
-        ref={hover.boxRef}
-        onPointerLeave={hover.clear}
-        style={{ position: 'relative', display: 'flex', flexDirection: 'column', gap: 3 }}
-      >
-        <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
-        {WEEKDAYS.map((weekday, row) => (
-          <div key={weekday} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 28, fontSize: 11, color: 'var(--tx-muted)', flex: 'none' }}>{weekday}</span>
-            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(24, 1fr)', gap: 3 }}>
-              {HOURS.map((hour) => {
-                const c = cells[row * 24 + hour] as (typeof cells)[number];
-                return (
-                  <div
-                    key={`${weekday}-${hour}`}
-                    onPointerMove={(e) =>
-                      hover.at(
-                        e,
-                        `${weekday} ${String(hour).padStart(2, '0')}:00`,
-                        // Zero occorrenze non significa «ora inesistente»: quel
-                        // caso — l'ora saltata di marzo — e' raro, mentre la
-                        // causa normale e' che quella coppia giorno/ora non e'
-                        // ancora capitata nel periodo, o che allora non si
-                        // stava campionando. La dicitura precedente spacciava
-                        // per cambio d'ora quasi tutte le celle vuote.
-                        c.occurrences === 0
-                          ? 'dati non presenti'
-                          : c.avg === null
-                            ? 'non rilevato'
-                            : `${numberFmt.format(Math.round(c.avg))} giocatori`,
-                      )
-                    }
-                    style={{ height: 20, borderRadius: 3, background: colour(c) }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-        ))}
-        <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-          <span style={{ width: 28, flex: 'none' }} />
-          <div style={{ flex: 1, display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)' }}>
-            {[0, 3, 6, 9, 12, 15, 18, 21].map((h) => (
-              <span key={h} className="mono" style={{ fontSize: 10.5, color: 'var(--tx-muted)' }}>
-                {String(h).padStart(2, '0')}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
+      <HeatGrid
+        cells={cells}
+        top={max}
+        ariaLabel="Media dei giocatori online per giorno della settimana e ora"
+        tipOf={(weekday, hour, value) => ({
+          title: `${weekday} ${String(hour).padStart(2, '0')}:00`,
+          detail: value === null ? 'dati non presenti' : `${numberFmt.format(Math.round(value))} giocatori`,
+        })}
+      />
     </section>
   );
 }

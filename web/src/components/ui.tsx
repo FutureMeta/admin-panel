@@ -470,6 +470,11 @@ export const ICONS = {
   globe: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z',
   shield: 'M12 21s7-3.2 7-9V5.6L12 3 5 5.6V12c0 5.8 7 9 7 9z',
   mail: 'M3 7h18v11H3zM3 7l9 6 9-6',
+  // Il gruppo Duels, dai mockup: `I.trend`, `I.star` e `I.cfg` di
+  // `frontend/metamc-shared.js`.
+  trend: 'M3 17l5-7 4 4 9-11',
+  star: 'M12 3.5l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6-4.4-4.2 6-.8z',
+  cfg: 'M4.5 7h15M4.5 12h15M4.5 17h15M8 5v4M16 10v4M11 15v4',
 } as const;
 
 /**

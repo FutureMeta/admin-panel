@@ -24,6 +24,7 @@ import { rangeSearch } from './lib/range.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
+import { DuelsTrendsRoute as DuelsTrendsPage } from './routes/duels-trends.tsx';
 import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { ModeDetailPage } from './routes/mode-detail.tsx';
@@ -110,6 +111,16 @@ function AppShell() {
             label: 'Vai a Utenti & Ruoli',
             hint: 'g u',
             run: () => void navigate({ to: '/utenti' }),
+          },
+        ]
+      : []),
+    ...(data.modules.includes('duels')
+      ? [
+          {
+            id: 'duels-trends',
+            label: 'Vai a Duels · Trends',
+            hint: 'andamento delle partite',
+            run: () => void navigate({ to: '/duels/trends' }),
           },
         ]
       : []),
@@ -232,6 +243,13 @@ function ModeEntryRoute() {
   return <ModeEntryPage me={me.data} />;
 }
 
+function DuelsTrendsRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!me.data.modules.includes('duels')) return <ForbiddenPage />;
+  return <DuelsTrendsPage />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -303,6 +321,11 @@ const modeEntryRoute = createRoute({
   path: '/dettaglio-modalita',
   component: ModeEntryRoute,
 });
+const duelsTrendsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/duels/trends',
+  component: DuelsTrendsRoute,
+});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -314,7 +337,15 @@ const routeTree = rootRoute.addChildren([
   acceptRoute,
   forgotRoute,
   resetRoute,
-  shellRoute.addChildren([homeRoute, usersRoute, overviewRoute, modeEntryRoute, modeDetailRoute, auditRoute]),
+  shellRoute.addChildren([
+    homeRoute,
+    usersRoute,
+    overviewRoute,
+    modeEntryRoute,
+    modeDetailRoute,
+    duelsTrendsRoute,
+    auditRoute,
+  ]),
 ]);
 
 const router = createRouter({ routeTree, defaultPreload: false });

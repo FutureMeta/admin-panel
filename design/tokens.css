@@ -39,6 +39,12 @@
   --blu: #2478a1;
   --blu-viz: #3fa3d4;
   --blu-soft: rgba(63, 163, 212, 0.12);
+  /* Secondo colore data-viz, per la seconda serie di una schermata che ne ha
+     due fisse — oggi «mappe più giocate» accanto a «modalità più giocate».
+     Non è il colore di una modalità: quello vive nel dato. È il compagno di
+     --blu-viz, e serve perché due card gemelle non possono avere la stessa
+     barra. */
+  --vio-viz: #9b8fd9;
 
   /* Semantici */
   --ok: #22c55e;
@@ -114,6 +120,9 @@
   --blu: #1f6e95;
   --blu-viz: #1f6e95;
   --blu-soft: rgba(31, 110, 149, 0.1);
+  /* Sul fondo chiaro il violetto va scurito: #9b8fd9 sta a 2,1:1 e una barra
+     da cinque pixel sparisce. */
+  --vio-viz: #5d4fa8;
 
   --ok: #15803d;
   --ok-soft: rgba(21, 128, 61, 0.1);

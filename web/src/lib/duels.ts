@@ -185,7 +185,8 @@ export type DuelsRatings = {
   builtAt: number;
 };
 
-export type DialogTurn = { role: string; content: string };
+/** Come arriva sul filo: il pannello non parla di «role». */
+export type DialogTurn = { speaker: string; text: string };
 
 export type DuelsRatingRow = {
   id: string;
@@ -316,4 +317,21 @@ export function ratingsSearch(search: Record<string, unknown>): RatingsSearch {
   if (isCommentFilter(search['comment']) && search['comment'] !== 'all') out.comment = search['comment'];
   if (isRecentSort(search['sort']) && search['sort'] !== 'recent') out.sort = search['sort'];
   return out;
+}
+
+/**
+ * Il prossimo stato della URL, con i parametri vuoti TOLTI invece che nulli.
+ *
+ * `?sort=` o `?q=` senza valore sono chiavi che non significano niente e
+ * riempiono gli indirizzi che si incollano in chat. E toglierli non e' solo
+ * estetica: la differenza fra «non ha scelto» e «ha scelto il predefinito» e'
+ * quella per cui un predefinito si puo' cambiare senza rompere i collegamenti
+ * gia' in giro.
+ */
+export function omitEmpty<T extends Record<string, unknown>>(base: T, patch: Record<string, unknown>): T {
+  const next: Record<string, unknown> = { ...base, ...patch };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined || value === '') delete next[key];
+  }
+  return next as T;
 }

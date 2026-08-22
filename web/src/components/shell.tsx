@@ -83,6 +83,15 @@ const NAV: NavItem[] = [
     area: 'Duels',
     icon: ICONS.trend,
   },
+  // `duels_feedback` e non `duels`: qui ci sono i nomi dei giocatori e il
+  // testo che hanno scritto loro, ed è una domanda diversa su chi può vederli.
+  {
+    modules: ['duels_feedback'],
+    label: 'Ratings',
+    to: '/duels/ratings',
+    area: 'Duels',
+    icon: ICONS.star,
+  },
   {
     modules: ['utenti', 'ruoli', 'inviti'],
     label: 'Utenti & Ruoli',

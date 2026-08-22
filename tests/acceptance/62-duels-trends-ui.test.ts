@@ -19,7 +19,21 @@
 
 import { describe, expect, it } from 'vitest';
 import { gaps, niceScale, segments } from '#web/lib/chart.ts';
-import { ALL, combineCombos, comboFilters, ranked, shareLabel, spacingOf } from '#web/lib/duels.ts';
+import {
+  ALL,
+  avgLabel,
+  combineCombos,
+  comboFilters,
+  distributionBars,
+  filterKey,
+  omitEmpty,
+  pctLabel,
+  ranked,
+  ratingsSearch,
+  shareLabel,
+  spacingOf,
+  starsFilled,
+} from '#web/lib/duels.ts';
 
 describe('le tab sommano senza chiudere i buchi', () => {
   const combos = [
@@ -138,5 +152,74 @@ describe('le funzioni del grafico sono le stesse delle statistiche', () => {
   it('l`asse verticale arrotonda a tacche che si sommano a mente', async () => {
     expect(niceScale(823).values).toEqual([0, 250, 500, 750, 1000]);
     expect(niceScale(0).values, 'niente asse che si ripete').toEqual([0, 1]);
+  });
+});
+
+describe('i conti della schermata Ratings', () => {
+  it('le barre sono SEMPRE cinque, anche a zero voti', async () => {
+    // Una distribuzione con quattro colonne suggerirebbe che quel voto non si
+    // possa dare.
+    const bars = distributionBars([0, 0, 0, 0, 0], 0);
+    expect(bars.map((b) => b.stars)).toEqual([1, 2, 3, 4, 5]);
+    expect(bars.every((b) => b.share === 0)).toBe(true);
+  });
+
+  it('la scala va dall`errore all`ok, non al contrario', async () => {
+    // Il mockup assegna i colori nell'ordine sbagliato e cinque stelle
+    // finiscono rosse. Uno e cinque sono l'errore e l'ok del pannello.
+    const bars = distributionBars([1, 1, 1, 1, 1], 5);
+    expect(bars[0]?.color).toBe('var(--r1)');
+    expect(bars[4]?.color).toBe('var(--r5)');
+  });
+
+  it('le quote si calcolano sul totale, non sulla barra piu` alta', async () => {
+    const bars = distributionBars([1, 0, 0, 1, 2], 4);
+    expect(bars.map((b) => Math.round(b.share))).toEqual([25, 0, 0, 25, 50]);
+  });
+
+  it('le stelle si arrotondano, e il numero resta accanto', async () => {
+    // 3,50 disegna quattro stelle piene: il difetto e` noto e tollerato solo
+    // perche` la cifra sta sempre di fianco.
+    expect(starsFilled(3.5)).toBe(4);
+    expect(starsFilled(4.49)).toBe(4);
+    expect(starsFilled(0)).toBe(0);
+    expect(starsFilled(9)).toBe(5);
+    expect(avgLabel(4.2)).toBe('4,20');
+  });
+
+  it('«N di M» non si divide per zero', async () => {
+    expect(pctLabel(0, 0)).toBe('0%');
+    expect(pctLabel(38, 100)).toBe('38%');
+  });
+
+  it('la chiave dei filtri cambia quando cambia una domanda', async () => {
+    // E` cio` che azzera il cursore: senza, la pagina due di una ricerca
+    // finirebbe sotto un'altra ricerca.
+    const base = { mode: null, q: '', comment: 'all', sort: 'recent', range: '7d' } as const;
+    expect(filterKey(base)).toBe(filterKey({ ...base }));
+    expect(filterKey({ ...base, q: 'Vally' })).not.toBe(filterKey(base));
+    expect(filterKey({ ...base, mode: 1 })).not.toBe(filterKey(base));
+    expect(filterKey({ ...base, sort: 'worst' })).not.toBe(filterKey(base));
+    expect(filterKey({ ...base, range: '30d' })).not.toBe(filterKey(base));
+  });
+
+  it('un parametro tolto SPARISCE dalla URL invece di restare vuoto', async () => {
+    expect(omitEmpty({ range: '7d', q: 'x' }, { q: undefined })).toEqual({ range: '7d' });
+    expect(omitEmpty({ range: '7d' }, { sort: 'worst' })).toEqual({ range: '7d', sort: 'worst' });
+    expect(omitEmpty({ range: '7d', q: 'x' }, { q: '' })).toEqual({ range: '7d' });
+  });
+
+  it('un valore impossibile nella URL si toglie, non si tiene', async () => {
+    // Lasciare in barra un `?sort=migliori` che non ha effetto fa credere che
+    // l'abbia avuto.
+    expect(ratingsSearch({ sort: 'migliori', comment: 'boh', mode: 'x' })).toEqual({});
+    expect(ratingsSearch({ sort: 'worst', comment: 'with', mode: 3, q: 'Vally' })).toEqual({
+      sort: 'worst',
+      comment: 'with',
+      mode: 3,
+      q: 'Vally',
+    });
+    // Il predefinito non si scrive: una URL nuda vale «piu` recenti».
+    expect(ratingsSearch({ sort: 'recent', comment: 'all' })).toEqual({});
   });
 });

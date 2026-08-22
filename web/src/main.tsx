@@ -20,10 +20,12 @@ import { createRoot } from 'react-dom/client';
 import { type Command, CommandPalette, Sidebar, Topbar } from './components/shell.tsx';
 import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
+import { ratingsSearch } from './lib/duels.ts';
 import { rangeSearch } from './lib/range.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
+import { DuelsRatingsRoute as DuelsRatingsPage } from './routes/duels-ratings.tsx';
 import { DuelsTrendsRoute as DuelsTrendsPage } from './routes/duels-trends.tsx';
 import { InvitesPage } from './routes/invites.tsx';
 import { LoginPage } from './routes/login.tsx';
@@ -121,6 +123,16 @@ function AppShell() {
             label: 'Vai a Duels · Trends',
             hint: 'andamento delle partite',
             run: () => void navigate({ to: '/duels/trends' }),
+          },
+        ]
+      : []),
+    ...(data.modules.includes('duels_feedback')
+      ? [
+          {
+            id: 'duels-ratings',
+            label: 'Vai a Duels · Ratings',
+            hint: 'feedback dei giocatori',
+            run: () => void navigate({ to: '/duels/ratings' }),
           },
         ]
       : []),
@@ -250,6 +262,13 @@ function DuelsTrendsRoute() {
   return <DuelsTrendsPage />;
 }
 
+function DuelsRatingsRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!me.data.modules.includes('duels_feedback')) return <ForbiddenPage />;
+  return <DuelsRatingsPage />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -326,6 +345,15 @@ const duelsTrendsRoute = createRoute({
   path: '/duels/trends',
   component: DuelsTrendsRoute,
 });
+const duelsRatingsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/duels/ratings',
+  // I filtri della lista vivono nella URL insieme al periodo: senza, la vista
+  // filtrata non e' condivisibile e chi manda il collegamento a «le peggiori
+  // valutazioni di Sumo» manda la lista di tutto.
+  validateSearch: ratingsSearch,
+  component: DuelsRatingsRoute,
+});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -344,6 +372,7 @@ const routeTree = rootRoute.addChildren([
     modeEntryRoute,
     modeDetailRoute,
     duelsTrendsRoute,
+    duelsRatingsRoute,
     auditRoute,
   ]),
 ]);

@@ -195,6 +195,10 @@ export function uuidOrNull(value: unknown): string | null {
 }
 
 /** Un turno della conversazione post-valutazione. */
+/**
+ * Un turno come lo scrive il gioco. Sul filo diventa `{speaker, text}`: vedi
+ * `DialogTurn` in `contract.ts`.
+ */
 export type DialogTurn = { role: string; content: string };
 
 /**

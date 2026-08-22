@@ -141,7 +141,20 @@ export type DuelsRatings = {
   builtAt: number;
 };
 
-export type DialogTurn = { role: string; content: string };
+/**
+ * Un turno della conversazione post-valutazione, SUL FILO.
+ *
+ * All'origine — e nel `jsonb` che conserviamo — i campi si chiamano `role` e
+ * `content`, com'e' scritto il vocabolario del gioco. Sul filo verso il
+ * browser si chiamano `speaker` e `text`, e la ragione non e' estetica: il
+ * pannello ha una guardia di build che vieta di leggere un campo `role`,
+ * perche' nel suo modello quella parola significa il ruolo di un utente, e la
+ * colonna `role` di better-auth non esiste. Un campo che si chiama come una
+ * cosa che non c'e' e' un invito a confonderle.
+ *
+ * La conversione si fa QUI, una volta, al confine.
+ */
+export type DialogTurn = { speaker: string; text: string };
 
 export type DuelsRatingRow = {
   /** `bigint` all'origine: viaggia come stringa o perde cifre in JavaScript. */

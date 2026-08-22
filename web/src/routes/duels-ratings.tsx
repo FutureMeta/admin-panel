@@ -44,11 +44,9 @@ import {
   omitEmpty,
   pctLabel,
   type RecentSort,
-  spacingOf,
   starsFilled,
 } from '../lib/duels.ts';
 import { labelOf, useRange } from '../lib/range.ts';
-import { axisLabel, bucketLabel } from '../lib/when.ts';
 
 /** L'altezza del tracciato. Il telaio ci aggiunge la banda delle etichette. */
 const PLOT = 214;
@@ -326,7 +324,6 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
   const { t, avg, n } = data.trend;
   const points = Math.max(1, t.length);
   const maxN = Math.max(1, ...n.filter((v): v is number => v !== null));
-  const spacing = spacingOf(t);
   const drawn = avg.filter((v) => v !== null).length;
   const singleAt = avg.findIndex((v) => v !== null);
 
@@ -351,19 +348,14 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
       <ChartFrame
         plot={PLOT}
         top={MAX_STARS}
-        points={points}
+        t={t}
         yTicks={[0, 1, 2, 3, 4, 5].map((v) => ({ value: v, label: `${v}★` }))}
-        xLabelOf={(i) => axisLabel(t[i] ?? 0, spacing)}
         ariaLabel="Andamento del voto medio nel tempo"
-        tipOf={(i) => {
+        detailOf={(i) => {
           const v = avg[i];
-          return {
-            title: bucketLabel(t[i] ?? 0, spacing),
-            detail:
-              v === null || v === undefined
-                ? 'nessuna valutazione'
-                : `${avgLabel(v)}★ su ${numberFmt.format(n[i] ?? 0)} valutazioni`,
-          };
+          return v === null || v === undefined
+            ? 'nessuna valutazione'
+            : `${avgLabel(v)}★ su ${numberFmt.format(n[i] ?? 0)} valutazioni`;
         }}
       >
         {(scales, hovered) => {

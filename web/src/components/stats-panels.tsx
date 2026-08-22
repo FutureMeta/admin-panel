@@ -17,7 +17,6 @@ import { gaps, niceScale, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
 import { numberFmt, shareLabel } from '../lib/format.ts';
-import { axisLabel, bucketLabel } from '../lib/when.ts';
 import { CHART, ChartFrame } from './chart-frame.tsx';
 import { HeatGrid, HeatLegend } from './heat-grid.tsx';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
@@ -228,7 +227,6 @@ export function OnlineChart({
     ...data.online.peak.filter((v): v is number => v !== null),
   );
   const scale = niceScale(observed);
-  const spacing = data.bucketSec * Math.max(1, Math.round(points / 8));
 
   return (
     // LO STESSO TELAIO DEI GRAFICI DUELS. Prima questo componente disegnava il
@@ -240,17 +238,14 @@ export function OnlineChart({
     <ChartFrame
       plot={BOTTOM}
       top={scale.top}
-      points={points}
+      t={data.online.t}
       yTicks={scale.values.map((v) => ({ value: v, label: numberFmt.format(Math.round(v)) }))}
-      xLabelOf={(i) => axisLabel(data.online.t[i] ?? 0, spacing)}
       ariaLabel="Andamento dei giocatori online nel tempo"
-      tipOf={(i) => {
+      detailOf={(i) => {
         const v = values[i];
-        return {
-          title: bucketLabel(data.online.t[i] ?? 0, data.bucketSec),
-          detail:
-            v === null || v === undefined ? 'non rilevato' : `${numberFmt.format(Math.round(v))} giocatori`,
-        };
+        return v === null || v === undefined
+          ? 'non rilevato'
+          : `${numberFmt.format(Math.round(v))} giocatori`;
       }}
     >
       {({ x, y, bottom }, hovered) => {

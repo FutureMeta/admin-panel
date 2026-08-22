@@ -165,6 +165,41 @@ export function bandAt(scales: ChartScales, points: number, index: number): { x:
   return { x: from, width: Math.max(1, to - from) };
 }
 
+/**
+ * La distanza fra due bucket, in secondi.
+ *
+ * SI MISURA SULLA GRIGLIA invece di dedurla dal nome del periodo: un mese non
+ * dura sempre lo stesso e un giorno di cambio ora dura 23 o 25 ore. La
+ * differenza fra i primi due punti è il dato vero.
+ */
+export function spacingOf(t: number[]): number {
+  if (t.length < 2) return 3_600;
+  return Math.max(1, (t[1] as number) - (t[0] as number));
+}
+
+/**
+ * La distanza fra due ETICHETTE, che non è quella fra due bucket.
+ *
+ * È il numero che decide come si scrive un'etichetta d'asse — solo l'ora, il
+ * giorno con l'ora, o la data — e confonderlo con il passo dei bucket è
+ * costato due difetti visibili insieme: sul 7g dei duels le etichette dicevano
+ * «14:00» senza il giorno (bucket da un'ora), e sul 30g dicevano «gio 00»
+ * (bucket da un giorno). Sulla panoramica, che passava il passo giusto, le
+ * stesse due schermate erano corrette.
+ *
+ * Non è deducibile da chi disegna, perché quante tacche stanno sull'asse lo
+ * decide la LARGHEZZA misurata del riquadro: la sa solo il telaio.
+ */
+export function tickSpacing(t: number[], ticks: XTick[]): number {
+  const first = ticks[0];
+  const second = ticks[1];
+  if (!first || !second) return spacingOf(t);
+  const a = t[first.at];
+  const b = t[second.at];
+  if (a === undefined || b === undefined) return spacingOf(t);
+  return Math.max(1, b - a);
+}
+
 /** Quanti pixel serve riservare a un'etichetta perché non tocchi la vicina. */
 const LABEL_ROOM = 130;
 

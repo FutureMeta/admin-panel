@@ -146,18 +146,6 @@ export function ranked<T extends { matches: number }>(
   return { rows: out, total, max };
 }
 
-/**
- * La distanza fra due bucket, in secondi, per decidere l'etichetta dell'asse.
- *
- * Si MISURA sulla griglia invece di dedurla dal nome del bucket: un mese non
- * dura sempre lo stesso, e un giorno di cambio ora dura 23 o 25 ore. La
- * differenza fra i primi due punti è il dato vero.
- */
-export function spacingOf(t: number[]): number {
-  if (t.length < 2) return 3_600;
-  return Math.max(1, (t[1] as number) - (t[0] as number));
-}
-
 // ---------------------------------------------------------------------------
 // Ratings
 // ---------------------------------------------------------------------------
@@ -325,6 +313,10 @@ export function omitEmpty<T extends Record<string, unknown>>(base: T, patch: Rec
   return next as T;
 }
 
+// `spacingOf` vive in `lib/chart.ts`, accanto alle altre misure della griglia:
+// e' geometria del grafico, non contratto dei duels. Si ri-esporta perche' i
+// test la chiedevano a questo modulo.
+export { spacingOf } from './chart.ts';
 // I formattatori dei numeri stanno in `lib/format.ts`: ce n'e' una copia sola
 // per tutto il pannello. Si ri-esportano qui perche' le schermate duels li
 // chiedevano a questo modulo prima che esistesse quell'altro.

@@ -18,7 +18,17 @@
 //     conteggio devono avere lo stesso rango.
 
 import { describe, expect, it } from 'vitest';
-import { bandAt, CHART, chartScales, everyNth, gaps, niceScale, segments, slotsFor } from '#web/lib/chart.ts';
+import {
+  bandAt,
+  CHART,
+  chartScales,
+  everyNth,
+  gaps,
+  niceScale,
+  segments,
+  slotsFor,
+  tickSpacing,
+} from '#web/lib/chart.ts';
 import {
   ALL,
   avgLabel,
@@ -35,6 +45,7 @@ import {
   starsFilled,
 } from '#web/lib/duels.ts';
 import { heatColour, heatPosition } from '#web/lib/heat.ts';
+import { axisLabel, bucketLabel } from '#web/lib/when.ts';
 
 describe('le tab sommano senza chiudere i buchi', () => {
   const combos = [
@@ -365,5 +376,48 @@ describe('le barre di fondo non escono dal tracciato', () => {
     const only = bandAt(scales, 1, 0);
     expect(only.width).toBeGreaterThan(0);
     expect(Number.isFinite(only.x)).toBe(true);
+  });
+});
+
+describe('l`etichetta dell`asse la decide la distanza fra le TACCHE', () => {
+  /** 168 bucket da un'ora, come il 7g. */
+  const hourly = Array.from({ length: 168 }, (_, i) => 1_787_000_000 + i * 3_600);
+  /** 30 bucket da un giorno, come il 30g. */
+  const daily = Array.from({ length: 30 }, (_, i) => 1_787_000_000 + i * 86_400);
+
+  it('sul 7g le tacche distano ORE, ma abbastanza da volere il giorno', async () => {
+    // IL DIFETTO: passando il passo dei BUCKET (un'ora) l'etichetta diventava
+    // «14:00» senza il giorno, e su sette giorni quell'ora indica sette
+    // istanti diversi. La panoramica passava il passo giusto ed era corretta:
+    // stessa figura, due risposte, perche' il numero lo sceglieva ogni
+    // grafico per conto suo.
+    const ticks = everyNth(hourly.length, () => '', slotsFor(1050));
+    const step = tickSpacing(hourly, ticks);
+
+    expect(step).toBeGreaterThanOrEqual(6 * 3_600);
+    expect(step).toBeLessThan(48 * 3_600);
+    expect(axisLabel(hourly[0] as number, step)).toMatch(/\d{1,2}:\d{2}|\s\d{1,2}$/);
+    expect(axisLabel(hourly[0] as number, step)).not.toBe(axisLabel(hourly[0] as number, 3_600));
+  });
+
+  it('sul 30g le tacche distano giorni, e l`ora sparisce', async () => {
+    // Col passo dei bucket (un giorno) usciva «gio 00», cioe` il giorno con
+    // un'ora che non significa niente.
+    const ticks = everyNth(daily.length, () => '', slotsFor(1050));
+    const step = tickSpacing(daily, ticks);
+
+    expect(step).toBeGreaterThanOrEqual(48 * 3_600);
+    expect(axisLabel(daily[0] as number, step)).not.toMatch(/\d{1,2}:\d{2}/);
+  });
+
+  it('con una tacca sola si ripiega sul passo dei bucket', async () => {
+    expect(tickSpacing(hourly, [])).toBe(3_600);
+    expect(tickSpacing(daily, [{ at: 0, label: '' }])).toBe(86_400);
+  });
+
+  it('un bucket giornaliero nel tooltip non dice «alle 00:00»', async () => {
+    expect(bucketLabel(daily[0] as number, 86_400)).not.toMatch(/alle/);
+    expect(bucketLabel(daily[0] as number, 7 * 86_400)).toMatch(/^settimana del /);
+    expect(bucketLabel(hourly[0] as number, 3_600)).toMatch(/alle/);
   });
 });

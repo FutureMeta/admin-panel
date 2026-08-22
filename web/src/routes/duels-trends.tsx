@@ -28,10 +28,8 @@ import {
   type DuelsTrends,
   ranked,
   shareLabel,
-  spacingOf,
 } from '../lib/duels.ts';
 import { useRange } from '../lib/range.ts';
-import { axisLabel, bucketLabel } from '../lib/when.ts';
 
 /** L'altezza del tracciato. Il telaio ci aggiunge la banda delle etichette. */
 const PLOT = 236;
@@ -175,7 +173,6 @@ function MatchesPanel({
   const points = Math.max(1, values.length);
   const observed = Math.max(1, ...values.filter((v): v is number => v !== null));
   const scale = niceScale(observed);
-  const spacing = spacingOf(data.t);
   const shown = values.reduce((a: number, v) => a + (v ?? 0), 0);
 
   return (
@@ -220,17 +217,14 @@ function MatchesPanel({
       <ChartFrame
         plot={PLOT}
         top={scale.top}
-        points={points}
+        t={data.t}
         yTicks={scale.values.map((v) => ({ value: v, label: numberFmt.format(v) }))}
-        xLabelOf={(i) => axisLabel(data.t[i] ?? 0, spacing)}
         ariaLabel="Partite avviate nel tempo"
-        tipOf={(i) => {
+        detailOf={(i) => {
           const v = values[i];
-          return {
-            title: bucketLabel(data.t[i] ?? 0, spacing),
-            detail:
-              v === null || v === undefined ? 'dato non ancora raccolto' : `${numberFmt.format(v)} partite`,
-          };
+          return v === null || v === undefined
+            ? 'dato non ancora raccolto'
+            : `${numberFmt.format(v)} partite`;
         }}
       >
         {({ x, y, bottom }, hovered) => {

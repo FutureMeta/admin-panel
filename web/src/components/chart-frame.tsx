@@ -25,7 +25,16 @@
 import type React from 'react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import { CHART, type ChartScales, chartScales, everyNth, slotsFor } from '../lib/chart.ts';
+import {
+  CHART,
+  type ChartScales,
+  chartScales,
+  everyNth,
+  slotsFor,
+  spacingOf,
+  tickSpacing,
+} from '../lib/chart.ts';
+import { axisLabel, bucketLabel } from '../lib/when.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
 export type YTick = { value: number; label: string };
@@ -33,24 +42,37 @@ export type YTick = { value: number; label: string };
 export function ChartFrame({
   plot,
   top,
-  points,
+  t,
   yTicks,
-  xLabelOf,
   ariaLabel,
-  tipOf,
+  detailOf,
   children,
 }: {
   /** Altezza del tracciato in unita' del viewBox. */
   plot: number;
   /** Il massimo dell'asse verticale: la scala la decide chi disegna. */
   top: number;
-  points: number;
+  /**
+   * L'inizio di ogni bucket, epoch secondi. Da qui il telaio ricava TUTTO
+   * l'asse orizzontale: quanti punti ci sono, quali etichettare, come
+   * scriverle e cosa mettere in testa al tooltip.
+   *
+   * PRIMA LO DECIDEVA OGNI GRAFICO, e i tre passavano tre numeri diversi come
+   * «distanza fra le etichette»: la panoramica quella giusta, i due dei duels
+   * il passo dei BUCKET. Da lì «14:00» senza il giorno sul 7g e «gio 00» sul
+   * 30g. Non era deducibile da chi disegna — quante tacche stiano sull'asse lo
+   * decide la larghezza misurata, che la sa solo questo componente.
+   */
+  t: number[];
   yTicks: YTick[];
-  /** L`etichetta di un bucket. Quali mostrarne lo decide la LARGHEZZA. */
-  xLabelOf: (index: number) => string;
   ariaLabel: string;
-  /** Il contenuto del tooltip per un indice. `null` per non mostrarlo. */
-  tipOf?: (index: number) => { title: string; detail: string } | null;
+  /**
+   * La seconda riga del tooltip: il valore in quel bucket, con la sua unità.
+   *
+   * La PRIMA riga — quando — la scrive il telaio, perché è la stessa domanda
+   * per tutti e tre i grafici e dipende dal passo dei bucket, non dai dati.
+   */
+  detailOf?: (index: number) => string;
   /**
    * Il disegno vero. Riceve le scale e QUALE BUCKET è sotto il cursore, così
    * ogni grafico può marcare il proprio punto: il telaio conosce la posizione
@@ -85,8 +107,18 @@ export function ChartFrame({
     return () => observer.disconnect();
   }, []);
 
+  const points = Math.max(1, t.length);
   const scales = chartScales(points, top, plot, width);
   const height = plot + CHART.AXIS_BAND;
+
+  // L'ASSE ORIZZONTALE, TUTTO QUI DENTRO. Le tacche le sceglie la larghezza; la
+  // forma dell'etichetta la decide la distanza fra le tacche SCELTE, non quella
+  // fra i bucket. Sono due numeri diversi e confonderli si vede: un'etichetta
+  // ogni ventun ore vuole il giorno accanto all'ora, una ogni novanta vuole la
+  // data.
+  const xTicks = everyNth(points, () => '', slotsFor(width));
+  const labelStep = tickSpacing(t, xTicks);
+  const bucketStep = spacingOf(t);
 
   const leave = () => {
     hover.clear();
@@ -110,33 +142,36 @@ export function ChartFrame({
             const at = Math.round((((e.clientX - rect.left) / rect.width) * width - CHART.LEFT) / step);
             const index = Math.min(points - 1, Math.max(0, at));
             setHovered(index);
-            const tip = tipOf?.(index);
-            if (tip) hover.at(e, tip.title, tip.detail);
+            // Il QUANDO lo scrive il telaio: è la stessa domanda per tutti e
+            // tre i grafici, e su un bucket giornaliero «20 gennaio alle
+            // 00:00» è falso due volte — l'ora non significa niente e
+            // suggerisce che il valore appartenga a quel minuto.
+            if (detailOf) hover.at(e, bucketLabel(t[index] ?? 0, bucketStep), detailOf(index));
           }}
         >
           <g stroke="var(--grid)" strokeWidth={1}>
-            {yTicks.map((t) => (
+            {yTicks.map((yt) => (
               <line
-                key={t.value}
+                key={yt.value}
                 x1={CHART.LEFT}
                 x2={scales.right}
-                y1={scales.y(t.value)}
-                y2={scales.y(t.value)}
+                y1={scales.y(yt.value)}
+                y2={scales.y(yt.value)}
               />
             ))}
           </g>
-          {yTicks.map((t) => (
+          {yTicks.map((yt) => (
             <text
-              key={t.label}
+              key={yt.label}
               x={CHART.LEFT - 10}
-              y={scales.y(t.value)}
+              y={scales.y(yt.value)}
               textAnchor="end"
               dominantBaseline="middle"
               fill="var(--tx-muted)"
               fontSize="11"
               fontFamily={CHART.FONT}
             >
-              {t.label}
+              {yt.label}
             </text>
           ))}
 
@@ -160,17 +195,17 @@ export function ChartFrame({
 
           {children(scales, hovered)}
 
-          {everyNth(points, xLabelOf, slotsFor(width)).map((t) => (
+          {xTicks.map((tick) => (
             <text
-              key={`${t.at}-${t.label}`}
-              x={scales.x(t.at)}
+              key={tick.at}
+              x={scales.x(tick.at)}
               y={plot + CHART.LABEL_DY}
               textAnchor="middle"
               fill="var(--tx-muted)"
               fontSize="11"
               fontFamily={CHART.FONT}
             >
-              {t.label}
+              {axisLabel(t[tick.at] ?? 0, labelStep)}
             </text>
           ))}
         </svg>

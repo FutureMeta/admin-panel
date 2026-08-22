@@ -25,6 +25,8 @@ import { rangeSearch } from './lib/range.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
+import { DuelsMapsRoute as DuelsMapsPage } from './routes/duels-maps.tsx';
+import { DuelsModesRoute as DuelsModesPage } from './routes/duels-modes.tsx';
 import { DuelsRatingsRoute as DuelsRatingsPage } from './routes/duels-ratings.tsx';
 import { DuelsTrendsRoute as DuelsTrendsPage } from './routes/duels-trends.tsx';
 import { InvitesPage } from './routes/invites.tsx';
@@ -175,6 +177,8 @@ function AppShell() {
         ['/dettaglio-modalita', 'Dettaglio modalità'],
         ['/duels/trends', 'Duels · Trends'],
         ['/duels/ratings', 'Duels · Ratings'],
+        ['/duels/modes', 'Duels · Modes'],
+        ['/duels/maps', 'Duels · Maps'],
       ] as const
     ).find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Console';
 
@@ -283,6 +287,22 @@ function DuelsRatingsRoute() {
   return <DuelsRatingsPage />;
 }
 
+// LE DUE DI CONFIGURAZIONE CHIEDONO IL LIVELLO, non il modulo. `duels` a 1
+// apre i grafici; a 3 si cambia come si gioca, ed e' un'altra domanda.
+function DuelsModesRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if ((me.data.permissions.duels ?? 0) < 3) return <ForbiddenPage />;
+  return <DuelsModesPage me={me.data} />;
+}
+
+function DuelsMapsRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if ((me.data.permissions.duels ?? 0) < 3) return <ForbiddenPage />;
+  return <DuelsMapsPage me={me.data} />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -368,6 +388,16 @@ const duelsRatingsRoute = createRoute({
   validateSearch: ratingsSearch,
   component: DuelsRatingsRoute,
 });
+const duelsModesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/duels/modes',
+  component: DuelsModesRoute,
+});
+const duelsMapsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/duels/maps',
+  component: DuelsMapsRoute,
+});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -387,6 +417,8 @@ const routeTree = rootRoute.addChildren([
     modeDetailRoute,
     duelsTrendsRoute,
     duelsRatingsRoute,
+    duelsModesRoute,
+    duelsMapsRoute,
     auditRoute,
   ]),
 ]);

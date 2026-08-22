@@ -37,6 +37,16 @@ type NavItem = {
   area: string;
   icon: string;
   /**
+   * Il livello minimo, quando avere il modulo non basta.
+   *
+   * QUASI TUTTE le voci compaiono a chi ha il modulo, perche' il livello 1 e'
+   * gia' «puoi vedere questa schermata». Modes e Maps no: `duels` a 1 apre i
+   * grafici, a 3 si cambia come si gioca, e sono due domande diverse. Senza
+   * questo campo la voce comparirebbe a chi poi prende un 403 — cioe' un menu
+   * che promette una schermata che non si apre.
+   */
+  minLevel?: 1 | 2 | 3;
+  /**
    * Da chiamare al passaggio del mouse. §8.9
    *
    * Il file dei contorni pesa 108 kB e serve a una schermata sola: scaricarlo
@@ -102,6 +112,23 @@ const NAV: NavItem[] = [
     area: 'Duels',
     icon: ICONS.star,
   },
+  // Le due di configurazione: stesso modulo delle altre due, livello diverso.
+  {
+    modules: ['duels'],
+    minLevel: 3,
+    label: 'Modes',
+    to: '/duels/modes',
+    area: 'Duels',
+    icon: ICONS.cfg,
+  },
+  {
+    modules: ['duels'],
+    minLevel: 3,
+    label: 'Maps',
+    to: '/duels/maps',
+    area: 'Duels',
+    icon: ICONS.grid,
+  },
   {
     modules: ['utenti', 'ruoli', 'inviti'],
     label: 'Utenti & Ruoli',
@@ -124,7 +151,14 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
   // `me.modules` arriva già filtrato dal server: il client non decide chi vede
   // cosa, lo disegna e basta.
   const groups = useMemo(() => {
-    const visible = NAV.filter((n) => n.modules.some((m) => me.modules.includes(m)));
+    // Il livello si guarda SOLO quando la voce lo chiede: `me.modules` porta
+    // gia' cio' a cui si ha accesso, e ricontrollarlo ovunque duplicherebbe
+    // una decisione che il server ha gia' preso.
+    const visible = NAV.filter((n) =>
+      n.modules.some(
+        (m) => me.modules.includes(m) && (n.minLevel === undefined || (me.permissions[m] ?? 0) >= n.minLevel),
+      ),
+    );
     const map = new Map<string, typeof visible>();
     for (const item of visible) {
       const list = map.get(item.area) ?? [];

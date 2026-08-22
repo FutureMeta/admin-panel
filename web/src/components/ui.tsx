@@ -6,7 +6,7 @@
 // user agent e payload jsonb, cioè stringhe controllate da terzi.
 
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from 'react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 // ---------------------------------------------------------------------------
 
@@ -529,5 +529,141 @@ export function StrengthMeter({ password }: { password: string }) {
         <span style={{ color, fontWeight: 600 }}>{label}</span>
       </div>
     </>
+  );
+}
+
+/**
+ * Modale centrato da 460px, come il prototipo — non un drawer laterale.
+ *
+ * STAVA DENTRO `users.tsx`, privato, ed era uno di tre modali quasi uguali
+ * sparsi per il pannello. Lo usa anche Maps, e con una copia in piu' la
+ * differenza non l'avrebbe notata nessuno: uno con l'ombra, uno senza, uno che
+ * non si chiude cliccando fuori.
+ */
+export function Modal({
+  title,
+  subtitle,
+  width = 460,
+  onClose,
+  footer,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  width?: number;
+  onClose: () => void;
+  footer?: ReactNode;
+  children: ReactNode;
+}) {
+  // ESC CHIUDE, e prima non lo faceva. Spostandolo qui la regola di
+  // accessibilita' che i due file di prima tenevano spenta si e' riaccesa, e
+  // aveva ragione: un riquadro che si chiude solo cliccando fuori non si
+  // chiude affatto per chi sta usando la tastiera.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  return (
+    // Il clic sullo sfondo e' una scorciatoia, non l'unico modo di chiudere:
+    // ci sono il pulsante di chiusura e il tasto Esc qui sopra.
+    // biome-ignore lint/a11y/noStaticElementInteractions: chiudere cliccando fuori non e' l'unico modo
+    <div
+      role="presentation"
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 80,
+        background: 'rgba(4,10,14,.66)',
+        backdropFilter: 'blur(3px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 40,
+      }}
+    >
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: ferma il clic, non e un comando */}
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width,
+          maxWidth: '100%',
+          maxHeight: '88vh',
+          overflowY: 'auto',
+          border: '1px solid var(--bd-strong)',
+          borderRadius: 'var(--r-lg)',
+          background: 'var(--s-elevated)',
+          boxShadow: 'var(--e3)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            gap: 16,
+            padding: '20px 22px 16px',
+            borderBottom: '1px solid var(--bd-subtle)',
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: 'var(--font-display)',
+                fontSize: 17,
+                fontWeight: 700,
+                letterSpacing: '-.01em',
+              }}
+            >
+              {title}
+            </div>
+            {subtitle ? (
+              <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 4 }}>{subtitle}</div>
+            ) : null}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Chiudi"
+            style={{
+              width: 28,
+              height: 28,
+              border: '1px solid var(--bd-subtle)',
+              borderRadius: 'var(--r-sm)',
+              background: 'transparent',
+              color: 'var(--tx-muted)',
+              cursor: 'pointer',
+              fontSize: 14,
+              lineHeight: 1,
+              flex: 'none',
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ padding: '20px 22px' }}>{children}</div>
+        {footer ? (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              gap: 8,
+              padding: '16px 22px',
+              borderTop: '1px solid var(--bd-subtle)',
+              background: 'var(--s-inset)',
+            }}
+          >
+            {footer}
+          </div>
+        ) : null}
+      </div>
+    </div>
   );
 }

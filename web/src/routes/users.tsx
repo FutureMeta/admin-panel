@@ -10,7 +10,7 @@
 // dominanza del §7), il client non lo ricalcola.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Fragment, type ReactNode, useState } from 'react';
+import { Fragment, useState } from 'react';
 import {
   Chip,
   FilterSelect,
@@ -24,7 +24,16 @@ import {
   SelectField,
   StatusChip,
 } from '../components/page.tsx';
-import { Avatar, Button, DateTime, EmptyState, Field, Notice, SkeletonRows } from '../components/ui.tsx';
+import {
+  Avatar,
+  Button,
+  DateTime,
+  EmptyState,
+  Field,
+  Modal,
+  Notice,
+  SkeletonRows,
+} from '../components/ui.tsx';
 import { ApiError, api, type Me, type RolesMatrix, type UserDetail, type UserRow } from '../lib/api.ts';
 import { areaOfModule, MODULE_TOTAL } from '../lib/modules.ts';
 
@@ -264,119 +273,6 @@ export function UsersPage({ me }: { me: Me }) {
 }
 
 // ---------------------------------------------------------------------------
-
-/** Modale centrato da 460px, come il prototipo — non un drawer laterale. */
-function Modal({
-  title,
-  subtitle,
-  width = 460,
-  onClose,
-  footer,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  width?: number;
-  onClose: () => void;
-  footer?: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      role="presentation"
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 80,
-        background: 'rgba(4,10,14,.66)',
-        backdropFilter: 'blur(3px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 40,
-      }}
-    >
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width,
-          maxWidth: '100%',
-          maxHeight: '88vh',
-          overflowY: 'auto',
-          border: '1px solid var(--bd-strong)',
-          borderRadius: 'var(--r-lg)',
-          background: 'var(--s-elevated)',
-          boxShadow: 'var(--e3)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 16,
-            padding: '20px 22px 16px',
-            borderBottom: '1px solid var(--bd-subtle)',
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 17,
-                fontWeight: 700,
-                letterSpacing: '-.01em',
-              }}
-            >
-              {title}
-            </div>
-            {subtitle ? (
-              <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 4 }}>{subtitle}</div>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Chiudi"
-            style={{
-              width: 28,
-              height: 28,
-              border: '1px solid var(--bd-subtle)',
-              borderRadius: 'var(--r-sm)',
-              background: 'transparent',
-              color: 'var(--tx-muted)',
-              cursor: 'pointer',
-              fontSize: 14,
-              lineHeight: 1,
-              flex: 'none',
-            }}
-          >
-            ×
-          </button>
-        </div>
-        <div style={{ padding: '20px 22px' }}>{children}</div>
-        {footer ? (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'flex-end',
-              gap: 8,
-              padding: '16px 22px',
-              borderTop: '1px solid var(--bd-subtle)',
-              background: 'var(--s-inset)',
-            }}
-          >
-            {footer}
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 

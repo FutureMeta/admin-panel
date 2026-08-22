@@ -13,8 +13,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { ChartFrame, everyNth } from '../components/chart-frame.tsx';
 import { HeatGrid, HeatLegend } from '../components/heat-grid.tsx';
-import { HoverTip, useHoverTip } from '../components/hover-tip.tsx';
 import { PageHeader, Panel, PanelBar } from '../components/page.tsx';
 import { numberFmt, StatsPanelsSkeleton } from '../components/stats-panels.tsx';
 import { EmptyState, Notice } from '../components/ui.tsx';
@@ -33,13 +33,8 @@ import {
 import { useRange } from '../lib/range.ts';
 import { axisLabel, dayAndTime } from '../lib/when.ts';
 
-/** Le stesse misure del grafico delle statistiche: due grafici, un disegno. */
-const W = 1120;
-const H = 268;
-const LEFT = 56;
-const RIGHT = 1108;
-const TOP = 16;
-const BOTTOM = 250;
+/** L'altezza del tracciato. Il telaio ci aggiunge la banda delle etichette. */
+const PLOT = 236;
 
 const GRANULARITY: Record<DuelsBucket, string> = {
   hour: 'Volume orario',
@@ -160,22 +155,13 @@ function MatchesPanel({
   onType: (v: string) => void;
   onContext: (v: string) => void;
 }) {
-  const hover = useHoverTip();
   const filters = useMemo(() => comboFilters(data.combos), [data.combos]);
   const values = useMemo(() => combineCombos(data.combos, type, context), [data.combos, type, context]);
 
-  const n = Math.max(1, values.length);
+  const points = Math.max(1, values.length);
   const observed = Math.max(1, ...values.filter((v): v is number => v !== null));
   const scale = niceScale(observed);
-  const x = (i: number) => LEFT + ((RIGHT - LEFT) * i) / Math.max(1, n - 1);
-  const y = (v: number) => BOTTOM - ((BOTTOM - TOP) * v) / scale.top;
-
-  const lines = segments(values, x, y);
-  const area =
-    lines.length > 0 ? `${lines[0]} L${x(n - 1).toFixed(1)},${BOTTOM} L${x(0).toFixed(1)},${BOTTOM} Z` : '';
-
   const spacing = spacingOf(data.t);
-  const tickEvery = Math.max(1, Math.round(n / 8));
   const shown = values.reduce((a: number, v) => a + (v ?? 0), 0);
 
   return (
@@ -189,7 +175,18 @@ function MatchesPanel({
             {GRANULARITY[data.bucket]} · Europe/Rome · {numberFmt.format(shown)} partite
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        {/* A DESTRA, come nel mockup: `PanelBar` allinea a sinistra e spinge
+            l'ultimo blocco con il margine automatico — e' la stessa forma di
+            «N risultati» nelle altre schermate. */}
+        <div
+          style={{
+            marginLeft: 'auto',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+          }}
+        >
           <Tabs
             value={type}
             onChange={onType}
@@ -206,81 +203,52 @@ function MatchesPanel({
           />
         </div>
       </PanelBar>
-      <div ref={hover.boxRef} onPointerLeave={hover.clear} style={{ position: 'relative' }}>
-        <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-          style={{ width: '100%', height: 260, display: 'block' }}
-          role="img"
-          aria-label="Partite avviate nel tempo"
-          onPointerMove={(e) => {
-            const box = e.currentTarget.getBoundingClientRect();
-            const at = Math.round(
-              (((e.clientX - box.left) / box.width) * W - LEFT) / ((RIGHT - LEFT) / Math.max(1, n - 1)),
-            );
-            const i = Math.min(n - 1, Math.max(0, at));
-            const v = values[i];
-            hover.at(
-              e,
-              dayAndTime(data.t[i] ?? 0),
+      <ChartFrame
+        plot={PLOT}
+        top={scale.top}
+        points={points}
+        yTicks={scale.values.map((v) => ({ value: v, label: numberFmt.format(v) }))}
+        xTicks={everyNth(points, (i) => axisLabel(data.t[i] ?? 0, spacing))}
+        ariaLabel="Partite avviate nel tempo"
+        tipOf={(i) => {
+          const v = values[i];
+          return {
+            title: dayAndTime(data.t[i] ?? 0),
+            detail:
               v === null || v === undefined ? 'dato non ancora raccolto' : `${numberFmt.format(v)} partite`,
-            );
-          }}
-        >
-          <defs>
-            <linearGradient id="duelsArea" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--blu-viz)" stopOpacity="0.16" />
-              <stop offset="100%" stopColor="var(--blu-viz)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <g stroke="var(--grid)" strokeWidth={1}>
-            {scale.values.map((v) => (
-              <line key={v} x1={LEFT} y1={y(v)} x2={RIGHT} y2={y(v)} />
-            ))}
-          </g>
-          {scale.values.map((v) => (
-            <text
-              key={`l${v}`}
-              x={LEFT - 10}
-              y={y(v) + 4}
-              textAnchor="end"
-              fill="var(--tx-muted)"
-              fontSize={11}
-              fontFamily="var(--font-mono)"
-            >
-              {numberFmt.format(v)}
-            </text>
-          ))}
-          {area ? <path d={area} fill="url(#duelsArea)" /> : null}
-          {lines.map((d) => (
-            <path
-              key={d}
-              d={d}
-              fill="none"
-              stroke="var(--blu-viz)"
-              strokeWidth={2.2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-          {data.t.map((t, i) =>
-            i % tickEvery === 0 || i === n - 1 ? (
-              <text
-                key={t}
-                x={x(i)}
-                y={266}
-                textAnchor="middle"
-                fill="var(--tx-muted)"
-                fontSize={11}
-                fontFamily="var(--font-mono)"
-              >
-                {axisLabel(t, spacing)}
-              </text>
-            ) : null,
-          )}
-        </svg>
-      </div>
+          };
+        }}
+      >
+        {({ x, y, bottom }) => {
+          const lines = segments(values, x, y);
+          const area =
+            lines.length > 0
+              ? `${lines[0]} L${x(points - 1).toFixed(1)},${bottom} L${x(0).toFixed(1)},${bottom} Z`
+              : '';
+          return (
+            <>
+              <defs>
+                <linearGradient id="duelsArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--blu-viz)" stopOpacity="0.16" />
+                  <stop offset="100%" stopColor="var(--blu-viz)" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {area ? <path d={area} fill="url(#duelsArea)" /> : null}
+              {lines.map((d) => (
+                <path
+                  key={d}
+                  d={d}
+                  fill="none"
+                  stroke="var(--blu-viz)"
+                  strokeWidth={2.2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ))}
+            </>
+          );
+        }}
+      </ChartFrame>
     </Panel>
   );
 }

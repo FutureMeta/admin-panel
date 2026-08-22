@@ -70,3 +70,69 @@ export function gaps(values: (number | null)[]): Array<[number, number]> {
   if (start !== null) out.push([start, values.length - 1]);
   return out;
 }
+
+// ---------------------------------------------------------------------------
+// La geometria, condivisa da TUTTI i grafici a linea del pannello
+// ---------------------------------------------------------------------------
+
+export const CHART = {
+  /** Larghezza del sistema di coordinate. La resa e' sempre a piena larghezza. */
+  W: 1120,
+  /** Margine sinistro: ci stanno le etichette dell'asse verticale. */
+  LEFT: 56,
+  RIGHT: 1108,
+  TOP: 16,
+  /**
+   * Quanto sta SOTTO il tracciato: venti unita' fino alla linea di base delle
+   * etichette, dodici di respiro fino al bordo. Senza questa banda le ore
+   * finiscono appiccicate al bordo della scheda — che e' come si e' scoperto
+   * che i telai erano tre.
+   */
+  AXIS_BAND: 32,
+  LABEL_DY: 20,
+  /** `var()` non si risolve negli attributi SVG: il nome va per esteso. */
+  FONT: 'JetBrains Mono',
+} as const;
+
+export type XTick = { at: number; label: string };
+
+export type ChartScales = {
+  /** Da indice del bucket a coordinata orizzontale. */
+  x: (i: number) => number;
+  /** Da valore a coordinata verticale. */
+  y: (v: number) => number;
+  /** Il fondo del tracciato, dove si chiudono le aree. */
+  bottom: number;
+};
+
+/**
+ * Le due scale del grafico.
+ *
+ * `plot` e' l'altezza del TRACCIATO in unita' del viewBox; l'altezza totale e'
+ * `plot + AXIS_BAND`, cosi' la banda delle etichette non puo' essere
+ * dimenticata da chi disegna.
+ */
+export function chartScales(n: number, top: number, plot: number): ChartScales {
+  const points = Math.max(1, n);
+  return {
+    x: (i) => CHART.LEFT + ((CHART.RIGHT - CHART.LEFT) * i) / Math.max(1, points - 1),
+    y: (v) => plot - ((plot - CHART.TOP) * v) / Math.max(1, top),
+    bottom: plot,
+  };
+}
+
+/**
+ * Le tacche orizzontali da mostrare: una ogni `n / 8`, e sempre l'ultima.
+ *
+ * Otto e' il numero che sta su mille pixel senza sovrapporsi; l'ultima si
+ * aggiunge sempre perche' e' l'unica che dice DOVE FINISCE il periodo, ed e'
+ * la domanda che si fa guardando il bordo destro di un grafico.
+ */
+export function everyNth(points: number, labelOf: (index: number) => string): XTick[] {
+  const step = Math.max(1, Math.round(points / 8));
+  const out: XTick[] = [];
+  for (let i = 0; i < points; i += 1) {
+    if (i % step === 0 || i === points - 1) out.push({ at: i, label: labelOf(i) });
+  }
+  return out;
+}

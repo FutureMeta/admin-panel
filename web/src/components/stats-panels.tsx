@@ -17,6 +17,7 @@ import { gaps, niceScale, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
 import { axisLabel } from '../lib/when.ts';
+import { CHART } from './chart-frame.tsx';
 import { HeatGrid, HeatLegend } from './heat-grid.tsx';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
@@ -185,12 +186,17 @@ export function KpiCard({ card }: { card: Card }) {
 // 3 — andamento online nel tempo
 // ---------------------------------------------------------------------------
 
-const W = 1120;
-const H = 300;
-const LEFT = 56;
-const RIGHT = 1108;
-const TOP = 16;
+// LE MISURE VENGONO DAL TELAIO CONDIVISO, non da qui.
+//
+// Per un po' questo file le teneva per sé e i grafici dei duels ne avevano
+// altre due: stessa figura, tre geometrie, e le etichette dell'asse orizzontale
+// finivano appiccicate al bordo della scheda su due schermate su tre. Adesso
+// il margine sinistro, la larghezza e la banda sotto il tracciato stanno in un
+// posto solo, e cambiarli li cambia ovunque.
+const { W, LEFT, RIGHT, TOP } = CHART;
+/** Il fondo del tracciato. Sotto ci sono le 32 unità della banda dell'asse. */
 const BOTTOM = 268;
+const H = BOTTOM + CHART.AXIS_BAND;
 
 export function OnlineChart({
   data,
@@ -261,7 +267,7 @@ export function OnlineChart({
             dominantBaseline="middle"
             fill="var(--tx-muted)"
             fontSize="11"
-            fontFamily="JetBrains Mono"
+            fontFamily={CHART.FONT}
           >
             {numberFmt.format(Math.round(t.v))}
           </text>
@@ -326,11 +332,11 @@ export function OnlineChart({
           <text
             key={t}
             x={x(i)}
-            y={288}
+            y={BOTTOM + CHART.LABEL_DY}
             textAnchor="middle"
             fill="var(--tx-muted)"
             fontSize="11"
-            fontFamily="JetBrains Mono"
+            fontFamily={CHART.FONT}
           >
             {axisLabel(t, data.bucketSec * xTickEvery)}
           </text>
@@ -671,7 +677,7 @@ export function DailyUniques({ data, label }: { data: Overview; label: string })
                   textAnchor="end"
                   fill="var(--tx-muted)"
                   fontSize="11"
-                  fontFamily="JetBrains Mono"
+                  fontFamily={CHART.FONT}
                 >
                   {numberFmt.format(tick)}
                 </text>
@@ -718,7 +724,7 @@ export function DailyUniques({ data, label }: { data: Overview; label: string })
               ),
             )}
 
-            <text x={L2} y={232} fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">
+            <text x={L2} y={232} fill="var(--tx-muted)" fontSize="11" fontFamily={CHART.FONT}>
               {t.length > 0 ? DAY_MONTH.format(new Date((t[0] as number) * 1000)) : ''}
             </text>
             <text
@@ -727,7 +733,7 @@ export function DailyUniques({ data, label }: { data: Overview; label: string })
               textAnchor="end"
               fill="var(--tx-muted)"
               fontSize="11"
-              fontFamily="JetBrains Mono"
+              fontFamily={CHART.FONT}
             >
               {t.length > 0 ? DAY_MONTH.format(new Date((t[t.length - 1] as number) * 1000)) : ''}
             </text>

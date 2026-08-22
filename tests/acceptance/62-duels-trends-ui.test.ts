@@ -18,7 +18,7 @@
 //     conteggio devono avere lo stesso rango.
 
 import { describe, expect, it } from 'vitest';
-import { gaps, niceScale, segments } from '#web/lib/chart.ts';
+import { CHART, chartScales, everyNth, gaps, niceScale, segments } from '#web/lib/chart.ts';
 import {
   ALL,
   avgLabel,
@@ -221,5 +221,47 @@ describe('i conti della schermata Ratings', () => {
     });
     // Il predefinito non si scrive: una URL nuda vale «piu` recenti».
     expect(ratingsSearch({ sort: 'recent', comment: 'all' })).toEqual({});
+  });
+});
+
+describe('la geometria dei grafici e` UNA SOLA', () => {
+  it('la banda sotto il tracciato lascia respiro alle etichette', async () => {
+    // E` il difetto che si e` visto a occhio: con la banda a due unita` le ore
+    // finiscono appiccicate al bordo della scheda. Venti unita` fino alla
+    // linea di base, dodici di respiro sotto — e sono le stesse per tutti e
+    // tre i grafici, o tornano a divergere.
+    expect(CHART.AXIS_BAND - CHART.LABEL_DY).toBeGreaterThanOrEqual(10);
+  });
+
+  it('il carattere delle etichette e` un NOME, non una variabile CSS', async () => {
+    // Dentro un attributo di presentazione SVG `var(--font-mono)` non si
+    // risolve: non fallisce, ripiega sul font di sistema, e l'unico modo di
+    // accorgersene e` guardare due assi vicini e vedere che uno e` diverso.
+    expect(CHART.FONT).not.toMatch(/var\(/);
+  });
+
+  it('le scale toccano i due bordi del tracciato, non uno solo', async () => {
+    const s = chartScales(24, 100, 236);
+    expect(s.x(0)).toBe(CHART.LEFT);
+    expect(s.x(23)).toBe(CHART.RIGHT);
+    expect(s.y(0)).toBe(236);
+    expect(s.y(100)).toBe(CHART.TOP);
+    expect(s.bottom).toBe(236);
+  });
+
+  it('un punto solo non divide per zero', async () => {
+    const s = chartScales(1, 0, 236);
+    expect(Number.isFinite(s.x(0))).toBe(true);
+    expect(Number.isFinite(s.y(0))).toBe(true);
+  });
+
+  it('l`ultima tacca c`e` SEMPRE: e` quella che dice dove finisce il periodo', async () => {
+    const ticks = everyNth(30, (i) => String(i));
+    expect(ticks.at(-1)?.at).toBe(29);
+    expect(ticks.length).toBeLessThanOrEqual(10);
+
+    // Anche quando l'ultimo indice cade su un multiplo, non si duplica.
+    const esatte = everyNth(9, (i) => String(i));
+    expect(esatte.map((t) => t.at)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
   });
 });

@@ -16,6 +16,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { CHART, ChartFrame, everyNth } from '../components/chart-frame.tsx';
 import { HoverTip, useHoverTip } from '../components/hover-tip.tsx';
 import { FilterSelect, PageHeader, Panel, PanelBar, SearchBox } from '../components/page.tsx';
 import { numberFmt, StatsPanelsSkeleton } from '../components/stats-panels.tsx';
@@ -34,17 +35,14 @@ import {
   omitEmpty,
   pctLabel,
   type RecentSort,
+  spacingOf,
   starsFilled,
 } from '../lib/duels.ts';
 import { labelOf, useRange } from '../lib/range.ts';
-import { dayAndTime } from '../lib/when.ts';
+import { axisLabel, dayAndTime } from '../lib/when.ts';
 
-const W = 1120;
-const H = 246;
-const LEFT = 56;
-const RIGHT = 1108;
-const TOP = 16;
-const BOTTOM = 230;
+/** L'altezza del tracciato. Il telaio ci aggiunge la banda delle etichette. */
+const PLOT = 214;
 
 /** L'asse del voto è FISSO 0..5, come dev'essere una scala 1-5. */
 const MAX_STARS = 5;
@@ -302,16 +300,11 @@ function DistributionPanel({ data }: { data: DuelsRatings }) {
 }
 
 function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
-  const hover = useHoverTip();
   const { t, avg, n } = data.trend;
-  const count = Math.max(1, t.length);
-  const x = (i: number) => LEFT + ((RIGHT - LEFT) * i) / Math.max(1, count - 1);
-  const y = (v: number) => BOTTOM - ((BOTTOM - TOP) * v) / MAX_STARS;
-
-  const lines = segments(avg, x, y);
+  const points = Math.max(1, t.length);
   const maxN = Math.max(1, ...n.filter((v): v is number => v !== null));
-  const barWidth = Math.max(1, (RIGHT - LEFT) / count - 1);
-  const single = avg.filter((v) => v !== null).length === 1;
+  const spacing = spacingOf(t);
+  const drawn = avg.filter((v) => v !== null).length;
   const singleAt = avg.findIndex((v) => v !== null);
 
   return (
@@ -329,92 +322,84 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
       <div style={{ fontSize: 12, color: 'var(--tx-muted)', marginBottom: 6 }}>
         {range} · le barre di fondo sono quante valutazioni, la linea la loro media
       </div>
-      <div ref={hover.boxRef} onPointerLeave={hover.clear} style={{ position: 'relative' }}>
-        <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
-        <svg
-          viewBox={`0 0 ${W} ${H}`}
-          preserveAspectRatio="none"
-          style={{ width: '100%', height: 230, display: 'block' }}
-          role="img"
-          aria-label="Andamento del voto medio nel tempo"
-          onPointerMove={(e) => {
-            const box = e.currentTarget.getBoundingClientRect();
-            const at = Math.round(
-              (((e.clientX - box.left) / box.width) * W - LEFT) / ((RIGHT - LEFT) / Math.max(1, count - 1)),
-            );
-            const i = Math.min(count - 1, Math.max(0, at));
-            const v = avg[i];
-            hover.at(
-              e,
-              dayAndTime(t[i] ?? 0),
+      {/* Lo STESSO telaio del grafico delle partite e di quello online: stessi
+          margini, stessa banda per le etichette, stesso carattere. Tre telai
+          separati erano tre geometrie che divergevano senza che si vedesse. */}
+      <ChartFrame
+        plot={PLOT}
+        top={MAX_STARS}
+        points={points}
+        yTicks={[0, 1, 2, 3, 4, 5].map((v) => ({ value: v, label: `${v}★` }))}
+        xTicks={everyNth(points, (i) => axisLabel(t[i] ?? 0, spacing))}
+        ariaLabel="Andamento del voto medio nel tempo"
+        tipOf={(i) => {
+          const v = avg[i];
+          return {
+            title: dayAndTime(t[i] ?? 0),
+            detail:
               v === null || v === undefined
                 ? 'nessuna valutazione'
                 : `${avgLabel(v)}★ su ${numberFmt.format(n[i] ?? 0)} valutazioni`,
-            );
-          }}
-        >
-          <g stroke="var(--grid)" strokeWidth={1}>
-            {[0, 1, 2, 3, 4, 5].map((v) => (
-              <line key={v} x1={LEFT} y1={y(v)} x2={RIGHT} y2={y(v)} />
-            ))}
-          </g>
-          <text x={46} y={y(5) + 4} textAnchor="end" fill="var(--tx-muted)" fontSize={11}>
-            5★
-          </text>
-          <text x={46} y={y(0) + 4} textAnchor="end" fill="var(--tx-muted)" fontSize={11}>
-            0★
-          </text>
+          };
+        }}
+      >
+        {({ x, y, bottom }) => {
+          const lines = segments(avg, x, y);
+          const barWidth = Math.max(1, (CHART.RIGHT - CHART.LEFT) / points - 1);
+          return (
+            <>
+              {/* LA NUMEROSITA' SI DISEGNA. Il legacy la trasporta e non la usa
+                  mai: un giorno con UN voto da cinque stelle è indistinguibile
+                  da uno con quattrocento voti a 5,00, e la media sembra un
+                  fatto quando è rumore. */}
+              {n.map((value, i) =>
+                value === null || value === 0 ? null : (
+                  <rect
+                    key={t[i]}
+                    x={x(i) - barWidth / 2}
+                    y={bottom - ((bottom - CHART.TOP) * value) / maxN}
+                    width={barWidth}
+                    height={((bottom - CHART.TOP) * value) / maxN}
+                    fill="color-mix(in oklab, var(--tx-muted) 20%, transparent)"
+                  />
+                ),
+              )}
 
-          {/* LA NUMEROSITA' SI DISEGNA. Il legacy la trasporta e non la usa
-              mai: un giorno con UN voto da cinque stelle è indistinguibile da
-              uno con quattrocento voti a 5,00, e la media sembra un fatto
-              quando è rumore. */}
-          {n.map((value, i) =>
-            value === null || value === 0 ? null : (
-              <rect
-                key={t[i]}
-                x={x(i) - barWidth / 2}
-                y={BOTTOM - ((BOTTOM - TOP) * value) / maxN}
-                width={barWidth}
-                height={((BOTTOM - TOP) * value) / maxN}
-                fill="color-mix(in oklab, var(--tx-muted) 20%, transparent)"
-              />
-            ),
-          )}
+              {/* La media del periodo, tratteggiata: l'asse fisso 0-5 è corretto
+                  ma schiaccia la differenza fra 4,1 e 4,4, e questa riga la
+                  restituisce senza mentire sulla scala. */}
+              {data.total > 0 ? (
+                <line
+                  x1={CHART.LEFT}
+                  y1={y(data.average)}
+                  x2={CHART.RIGHT}
+                  y2={y(data.average)}
+                  stroke="var(--tx-muted)"
+                  strokeWidth={1}
+                  strokeDasharray="4 4"
+                />
+              ) : null}
 
-          {/* La media del periodo, tratteggiata: l'asse fisso 0-5 è corretto
-              ma schiaccia la differenza fra 4,1 e 4,4, e questa riga la
-              restituisce senza mentire sulla scala. */}
-          {data.total > 0 ? (
-            <line
-              x1={LEFT}
-              y1={y(data.average)}
-              x2={RIGHT}
-              y2={y(data.average)}
-              stroke="var(--tx-muted)"
-              strokeWidth={1}
-              strokeDasharray="4 4"
-            />
-          ) : null}
-
-          {lines.map((d) => (
-            <path
-              key={d}
-              d={d}
-              fill="none"
-              stroke="var(--warn)"
-              strokeWidth={2.2}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          ))}
-          {/* Un punto solo non fa una linea: senza il cerchio la serie
-              sarebbe invisibile e il riquadro sembrerebbe vuoto. */}
-          {single && singleAt >= 0 ? (
-            <circle cx={x(singleAt)} cy={y(avg[singleAt] as number)} r={3} fill="var(--warn)" />
-          ) : null}
-        </svg>
-      </div>
+              {lines.map((d) => (
+                <path
+                  key={d}
+                  d={d}
+                  fill="none"
+                  stroke="var(--warn)"
+                  strokeWidth={2.2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              ))}
+              {/* Un punto solo non fa una linea: senza il cerchio la serie
+                  sarebbe invisibile e il riquadro sembrerebbe vuoto. */}
+              {drawn === 1 && singleAt >= 0 ? (
+                <circle cx={x(singleAt)} cy={y(avg[singleAt] as number)} r={3} fill="var(--warn)" />
+              ) : null}
+            </>
+          );
+        }}
+      </ChartFrame>
     </section>
   );
 }

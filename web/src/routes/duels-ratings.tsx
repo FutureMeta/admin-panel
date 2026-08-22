@@ -118,7 +118,21 @@ export function DuelsRatingsRoute() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, opacity: refreshing ? 0.55 : 1 }}>
+    <main
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 24,
+        // LE STESSE MISURE DELLA PANORAMICA, e non e' pedanteria: due
+        // schermate sotto lo stesso selettore devono reagire allo stesso modo,
+        // o cambiare periodo sembra funzionare diversamente a seconda di dove
+        // ci si trova. Qui mancava la transizione, quindi lo smorzamento
+        // scattava di colpo invece di sfumare.
+        opacity: refreshing ? 0.5 : 1,
+        transition: 'opacity var(--dur) var(--ease)',
+      }}
+      aria-busy={refreshing}
+    >
       <PageHeader
         title="Duels · Ratings"
         sub={`Feedback dei giocatori a fine partita · ${labelOf(range)}${modeName ? ` · ${modeName}` : ''}`}
@@ -159,7 +173,7 @@ export function DuelsRatingsRoute() {
       </div>
 
       <RecentPanel range={range} mode={mode} />
-    </div>
+    </main>
   );
 }
 
@@ -352,7 +366,7 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
           };
         }}
       >
-        {({ x, y, bottom }) => {
+        {({ x, y, bottom }, hovered) => {
           const lines = segments(avg, x, y);
           const barWidth = Math.max(1, (CHART.RIGHT - CHART.LEFT) / points - 1);
           return (
@@ -404,6 +418,10 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
                   sarebbe invisibile e il riquadro sembrerebbe vuoto. */}
               {drawn === 1 && singleAt >= 0 ? (
                 <circle cx={x(singleAt)} cy={y(avg[singleAt] as number)} r={3} fill="var(--warn)" />
+              ) : null}
+              {/* Il punto sotto il cursore, solo dove un voto c'e' davvero. */}
+              {hovered !== null && avg[hovered] !== null && avg[hovered] !== undefined ? (
+                <circle cx={x(hovered)} cy={y(avg[hovered] as number)} r={3.5} fill="var(--warn)" />
               ) : null}
             </>
           );

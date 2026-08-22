@@ -28,7 +28,7 @@ import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import type { StatsCache } from '#src/stats/cache.ts';
 import { hotOf, markHotAt, ttlOf } from '#src/stats/warm.ts';
-import { DK, DUELS_CLOSED_RANGES, DUELS_LIVE_RANGE, duelsQuality, type Range } from './contract.ts';
+import { DK, DUELS_LIVE_RANGE, DUELS_SLOW_RANGES, duelsQuality, type Range } from './contract.ts';
 import type { DuelsProvider } from './provider.ts';
 
 /** Quanto puo' durare la parte «modalita' calde» di un giro. */
@@ -137,7 +137,7 @@ export function warmDuelsLive(deps: DuelsWarmDeps): Promise<DuelsWarmResult> {
  */
 export async function warmDuelsAllClosed(deps: DuelsWarmDeps): Promise<number> {
   let payloads = 0;
-  for (const range of DUELS_CLOSED_RANGES) {
+  for (const range of DUELS_SLOW_RANGES) {
     try {
       payloads += (await warmDuelsRange(deps, range)).payloads;
     } catch (err) {

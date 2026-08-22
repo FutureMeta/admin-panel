@@ -93,7 +93,21 @@ export function DuelsTrendsRoute() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, opacity: refreshing ? 0.55 : 1 }}>
+    <main
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 24,
+        // LE STESSE MISURE DELLA PANORAMICA, e non e' pedanteria: due
+        // schermate sotto lo stesso selettore devono reagire allo stesso modo,
+        // o cambiare periodo sembra funzionare diversamente a seconda di dove
+        // ci si trova. Qui mancava la transizione, quindi lo smorzamento
+        // scattava di colpo invece di sfumare.
+        opacity: refreshing ? 0.5 : 1,
+        transition: 'opacity var(--dur) var(--ease)',
+      }}
+      aria-busy={refreshing}
+    >
       <PageHeader
         title="Duels · Trends"
         sub={`Traffico partite sul network · ${numberFmt.format(data.totals.matches)} partite nel periodo`}
@@ -117,7 +131,7 @@ export function DuelsTrendsRoute() {
           unit="mappe"
         />
       </div>
-    </div>
+    </main>
   );
 }
 
@@ -219,8 +233,9 @@ function MatchesPanel({
           };
         }}
       >
-        {({ x, y, bottom }) => {
+        {({ x, y, bottom }, hovered) => {
           const lines = segments(values, x, y);
+          const marked = hovered === null ? null : (values[hovered] ?? null);
           const area =
             lines.length > 0
               ? `${lines[0]} L${x(points - 1).toFixed(1)},${bottom} L${x(0).toFixed(1)},${bottom} Z`
@@ -245,6 +260,12 @@ function MatchesPanel({
                   strokeLinejoin="round"
                 />
               ))}
+              {/* Il punto sotto il cursore. Solo se un valore c'è: su un
+                  bucket nullo non si marca niente, o si direbbe che un dato
+                  che non esiste vale zero. */}
+              {hovered !== null && marked !== null ? (
+                <circle cx={x(hovered)} cy={y(marked)} r={3.5} fill="var(--blu-viz)" />
+              ) : null}
             </>
           );
         }}

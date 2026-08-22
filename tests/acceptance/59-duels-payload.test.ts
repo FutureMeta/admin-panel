@@ -43,7 +43,7 @@ const SABATO = '2026-08-29 20:00:00+00';
 /** Meta` pomeriggio di quel lunedi', per la finestra scorrevole del 24h. */
 const NOW_24H = new Date('2026-08-24T15:30:00Z');
 /** Un istante che tiene dentro tutta la settimana seminata. */
-const NOW_7D = new Date('2026-08-31T10:00:00Z');
+const NOW_7D = new Date('2026-08-30T10:00:00Z');
 
 beforeAll(async () => {
   testDb = await createTestDatabase('duelspay');
@@ -151,16 +151,35 @@ describe('la finestra e la griglia, che decide il server', () => {
     expect(new Date((p.t.at(-1) as number) * 1000).toISOString()).toBe('2026-08-24T15:00:00.000Z');
   });
 
-  it('il 7d ha 168 punti orari e finisce a mezzanotte, non a meta` giornata', async () => {
+  it('il 7d ha 168 punti orari e arriva a OGGI, non a ieri sera', async () => {
+    // Prima finiva alla mezzanotte PASSATA, cioe` alle 23 di ieri: e` la prima
+    // cosa che si nota aprendo la schermata, e nessuna spiegazione sul giorno
+    // parziale regge davanti a quel vuoto. Ora la finestra arriva alla
+    // mezzanotte che VERRA', e il parziale si dichiara invece di toglierlo.
     await mode(1, 'classic');
     const p = await duels.trends('7d', NOW_7D);
 
     expect(p.t).toHaveLength(168);
-    expect(p.liveTail).toBe(false);
-    // Mezzanotte di Roma del 31 agosto = 22:00 UTC del 30: oggi si esclude,
-    // perche` oggi e` un giorno parziale e sull'asse si leggerebbe come un
-    // crollo.
+    expect(p.liveTail).toBe(true);
+    // Mezzanotte del 31 agosto a Roma = 30 agosto 22:00 UTC, quindi l'ultimo
+    // bucket comincia alle 21:00 UTC.
     expect(new Date((p.t.at(-1) as number) * 1000).toISOString()).toBe('2026-08-30T21:00:00.000Z');
+  });
+
+  it('le ore che non sono ancora arrivate sono `null`, non zero', async () => {
+    // La finestra contiene ore future per costruzione. Uno zero direbbe
+    // «nessuna partita in quell'ora», che di un'ora non ancora accaduta e`
+    // falso — e sull'area si leggerebbe come un crollo a fondo scala.
+    await mode(1, 'classic');
+    await matches(SABATO, 4);
+    const p = await duels.trends('7d', NOW_7D);
+    const serie = p.combos[0]?.v ?? [];
+    const nowSec = Math.floor(NOW_7D.getTime() / 1000);
+
+    for (let i = 0; i < p.t.length; i += 1) {
+      const future = (p.t[i] as number) >= nowSec;
+      expect(serie[i] === null, `bucket ${i} future=${future}`).toBe(future);
+    }
   });
 
   it('il 30d conta 30 giorni CIVILI, non 720 ore', async () => {
@@ -208,7 +227,7 @@ describe('il buco e` un valore, e non e` uno zero', () => {
     ).toBe(true);
   });
 
-  it('senza `since` non si annulla niente: sono tutti zeri veri', async () => {
+  it('senza `since` non si annulla niente di PASSATO: sono zeri veri', async () => {
     // Il verso opposto. Un annullamento che scattasse sempre svuoterebbe il
     // grafico, e il test qui sopra da solo non lo distinguerebbe.
     await sql.query(`UPDATE stats.duels_ingest_state SET since_day = NULL`);
@@ -217,8 +236,11 @@ describe('il buco e` un valore, e non e` uno zero', () => {
 
     const p = await duels.trends('7d', NOW_7D);
     const serie = p.combos[0]?.v ?? [];
-    expect(serie).not.toHaveLength(0);
-    expect(serie.every((v) => v !== null)).toBe(true);
+    const nowSec = Math.floor(NOW_7D.getTime() / 1000);
+    const past = serie.filter((_, i) => (p.t[i] as number) < nowSec);
+
+    expect(past).not.toHaveLength(0);
+    expect(past.every((v) => v !== null)).toBe(true);
   });
 });
 

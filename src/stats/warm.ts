@@ -443,11 +443,44 @@ export async function warmOnBoot(deps: WarmDeps): Promise<void> {
     }
   }
 
+  // L'EXTRA SI SCALDA ANCHE ALL'AVVIO, e non e' simmetria estetica.
+  //
+  // Il worker periodico non parte subito (`runImmediately: false`) perche'
+  // questo giro ha appena rifatto i cinque range: giusto per le statistiche,
+  // sbagliato per l'extra, che questo giro NON faceva. Il risultato era una
+  // finestra di sessanta secondi dopo ogni riavvio in cui i payload duels dei
+  // periodi chiusi erano quelli rimasti in Redis da prima — e se nel frattempo
+  // i dati erano cambiati (un backfill, una reimportazione), quei byte erano
+  // gia' obsoleti.
+  //
+  // OBSOLETI E' PEGGIO CHE ASSENTI: una chiave assente si ricostruisce e la
+  // richiesta aspetta; una obsoleta si serve com'e' e si rifa' in sottofondo,
+  // quindi la prima persona che apre la schermata vede il vecchio, ricarica, e
+  // vede il nuovo. Sembra un difetto casuale del browser.
+  let extra = 0;
+  if (deps.extra) {
+    try {
+      extra = await deps.extra.run();
+    } catch (err) {
+      deps.logger.warn(
+        { err, extra: deps.extra.name },
+        'warm iniziale dei payload secondari fallito: la prima richiesta paghera` l`aggregazione',
+      );
+    }
+  }
+
   // UNA riga, e non e' rumore: senza, un riempimento riuscito e uno mai
   // partito sono indistinguibili nel log, e il secondo si scopre solo quando
   // qualcuno apre la schermata e aspetta.
   deps.logger.info(
-    { job: 'stats-warm-boot', pronti: done, falliti: failed, ms, totaleMs: Date.now() - t0 },
+    {
+      job: 'stats-warm-boot',
+      pronti: done,
+      falliti: failed,
+      ms,
+      ...(deps.extra ? { [deps.extra.name]: extra } : {}),
+      totaleMs: Date.now() - t0,
+    },
     failed.length === 0
       ? 'cache statistiche riempita: le schermate partono calde'
       : 'cache statistiche riempita solo in parte',

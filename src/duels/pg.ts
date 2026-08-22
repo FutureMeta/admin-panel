@@ -158,11 +158,17 @@ export class PgDuelsProvider implements DuelsProvider {
     // I bucket precedenti a `since` valgono `null`, non zero: prima di quella
     // data il dato NON ESISTE, e uno zero direbbe «nessuna partita».
     const sinceSec = since ? sinceEpoch(since) : null;
-    if (sinceSec !== null) {
-      for (const combo of combos.values()) {
-        for (let i = 0; i < grid.length; i += 1) {
-          if ((grid[i] as number) < sinceSec) combo.v[i] = null;
-        }
+    // E i bucket interamente FUTURI valgono `null` per la stessa ragione: la
+    // finestra arriva alla mezzanotte che verra', quindi le ore di oggi che
+    // non sono ancora arrivate cadono dentro la griglia. Uno zero direbbe
+    // «nessuna partita in quell'ora», che di un'ora non ancora accaduta e'
+    // falso — e sull'area si vedrebbe come un crollo fino a fondo scala.
+    const nowSec = Math.floor(now.getTime() / 1_000);
+    for (const combo of combos.values()) {
+      for (let i = 0; i < grid.length; i += 1) {
+        const at = grid[i] as number;
+        if (at >= nowSec) combo.v[i] = null;
+        else if (sinceSec !== null && at < sinceSec) combo.v[i] = null;
       }
     }
 
@@ -341,13 +347,15 @@ export class PgDuelsProvider implements DuelsProvider {
     // I bucket precedenti a `since` sono `null` su ENTRAMBE le serie: un `n`
     // a zero direbbe «nessuno ha votato», e prima di quella data non c'era
     // nemmeno il sondaggio.
+    // E lo sono anche i bucket interamente futuri: la finestra arriva alla
+    // mezzanotte che verra', quindi contiene ore che non sono ancora accadute.
     const sinceSec = since ? sinceEpoch(since) : null;
-    if (sinceSec !== null) {
-      for (let i = 0; i < grid.length; i += 1) {
-        if ((grid[i] as number) < sinceSec) {
-          n[i] = null;
-          avg[i] = null;
-        }
+    const nowSec = Math.floor(now.getTime() / 1_000);
+    for (let i = 0; i < grid.length; i += 1) {
+      const at = grid[i] as number;
+      if (at >= nowSec || (sinceSec !== null && at < sinceSec)) {
+        n[i] = null;
+        avg[i] = null;
       }
     }
 

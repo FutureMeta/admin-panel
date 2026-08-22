@@ -158,6 +158,31 @@ describe('il giro di warm', () => {
     expect(await t.ctx.cacheRedis.exists(K.md('arena', '7d'))).toBe(0);
   });
 
+  it('warmOnBoot scalda anche l`extra, non solo i cinque range', async () => {
+    // IL DIFETTO CHE HA PRODOTTO QUESTO TEST. Il worker periodico non parte
+    // subito perche` questo giro ha appena rifatto i cinque range: giusto per
+    // le statistiche, sbagliato per l'extra, che questo giro NON faceva.
+    // Restava una finestra di sessanta secondi dopo ogni riavvio in cui i
+    // payload duels erano quelli rimasti in Redis da prima — e se i dati nel
+    // frattempo erano cambiati (una reimportazione), erano gia` obsoleti.
+    //
+    // Obsoleti e` PEGGIO che assenti: una chiave assente si ricostruisce e la
+    // richiesta aspetta; una obsoleta si serve com'e` e si rifa` in sottofondo,
+    // quindi il primo che apre vede il vecchio, ricarica, e vede il nuovo.
+    let chiamate = 0;
+    await warmOnBoot({
+      ...deps(),
+      extra: {
+        name: 'duels',
+        run: async () => {
+          chiamate += 1;
+          return 4;
+        },
+      },
+    });
+    expect(chiamate).toBe(1);
+  });
+
   it('warmOnBoot riempie tutti e cinque i range', async () => {
     await warmOnBoot(deps());
     for (const range of ['24h', '7d', '30d', '90d', '1y'] as const) {

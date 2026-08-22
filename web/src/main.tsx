@@ -158,11 +158,25 @@ function AppShell() {
 
   // Il titolo della pagina corrente, per il breadcrumb della topbar.
   // Sono le etichette di `BREAD` in frontend/metamc-shared.js.
-  const breadcrumb = pathname.startsWith('/utenti')
-    ? 'Utenti & Ruoli'
-    : pathname.startsWith('/registro')
-      ? 'Registro attività'
-      : 'Console';
+  //
+  // ELENCO ESPLICITO, e il ripiego è l'ULTIMA voce, non la prima. Prima erano
+  // due `startsWith` e poi `'Console'` per tutto il resto: ogni schermata
+  // aggiunta dopo — la panoramica, il dettaglio modalità, le due dei duels —
+  // finiva nel ripiego, e la barra in alto scriveva «Console › Console» invece
+  // del nome della pagina. Un ripiego che copre il caso normale non è un
+  // ripiego: è l'unico comportamento, e non fallisce mai abbastanza da farsi
+  // notare.
+  const breadcrumb =
+    (
+      [
+        ['/utenti', 'Utenti & Ruoli'],
+        ['/registro', 'Registro attività'],
+        ['/panoramica', 'Panoramica network'],
+        ['/dettaglio-modalita', 'Dettaglio modalità'],
+        ['/duels/trends', 'Duels · Trends'],
+        ['/duels/ratings', 'Duels · Ratings'],
+      ] as const
+    ).find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Console';
 
   // Il periodo governa solo le schermate che hanno un periodo. Sono le
   // stesse che il design elenca: non «Utenti», non «Registro».

@@ -24,6 +24,7 @@
 
 import type React from 'react';
 import type { ReactNode } from 'react';
+import { useState } from 'react';
 import { CHART, type ChartScales, chartScales, type XTick } from '../lib/chart.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
@@ -49,14 +50,28 @@ export function ChartFrame({
   ariaLabel: string;
   /** Il contenuto del tooltip per un indice. `null` per non mostrarlo. */
   tipOf?: (index: number) => { title: string; detail: string } | null;
-  children: (scales: ChartScales) => ReactNode;
+  /**
+   * Il disegno vero. Riceve le scale e QUALE BUCKET è sotto il cursore, così
+   * ogni grafico può marcare il proprio punto: il telaio conosce la posizione
+   * ma non i valori, che sono di chi disegna.
+   */
+  children: (scales: ChartScales, hovered: number | null) => ReactNode;
 }) {
   const hover = useHoverTip();
+  // QUALE bucket, non dove sta il mouse: il cursore si muove con continuità e
+  // il grafico no. Agganciare la linea al bucket più vicino è ciò che rende
+  // leggibile il valore — una riga a metà fra due punti non indica niente.
+  const [hovered, setHovered] = useState<number | null>(null);
   const scales = chartScales(points, top, plot);
   const height = plot + CHART.AXIS_BAND;
 
+  const leave = () => {
+    hover.clear();
+    setHovered(null);
+  };
+
   return (
-    <div ref={hover.boxRef} onPointerLeave={hover.clear} style={{ position: 'relative' }}>
+    <div ref={hover.boxRef} onPointerLeave={leave} style={{ position: 'relative' }}>
       <HoverTip tip={hover.tip} boxRef={hover.boxRef} />
       <svg
         viewBox={`0 0 ${CHART.W} ${height}`}
@@ -64,18 +79,16 @@ export function ChartFrame({
         style={{ width: '100%', height, display: 'block' }}
         role="img"
         aria-label={ariaLabel}
-        {...(tipOf
-          ? {
-              onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => {
-                const box = e.currentTarget.getBoundingClientRect();
-                const step = (CHART.RIGHT - CHART.LEFT) / Math.max(1, points - 1);
-                const at = Math.round((((e.clientX - box.left) / box.width) * CHART.W - CHART.LEFT) / step);
-                const index = Math.min(points - 1, Math.max(0, at));
-                const tip = tipOf(index);
-                if (tip) hover.at(e, tip.title, tip.detail);
-              },
-            }
-          : {})}
+        onPointerLeave={leave}
+        onPointerMove={(e: React.PointerEvent<SVGSVGElement>) => {
+          const box = e.currentTarget.getBoundingClientRect();
+          const step = (CHART.RIGHT - CHART.LEFT) / Math.max(1, points - 1);
+          const at = Math.round((((e.clientX - box.left) / box.width) * CHART.W - CHART.LEFT) / step);
+          const index = Math.min(points - 1, Math.max(0, at));
+          setHovered(index);
+          const tip = tipOf?.(index);
+          if (tip) hover.at(e, tip.title, tip.detail);
+        }}
       >
         <g stroke="var(--grid)" strokeWidth={1}>
           {yTicks.map((t) => (
@@ -103,7 +116,25 @@ export function ChartFrame({
           </text>
         ))}
 
-        {children(scales)}
+        {/* LA LINEA DI RIFERIMENTO, sotto il tracciato e sopra la griglia: dice
+            DOVE si sta guardando. Senza, il tooltip mostra un numero e non c'è
+            modo di sapere a quale punto del grafico appartiene — su
+            centosessantotto ore la differenza fra due colonne vicine è un
+            pixel. Sta prima di `children` per finire sotto la linea dei dati. */}
+        {hovered !== null ? (
+          <line
+            x1={scales.x(hovered)}
+            x2={scales.x(hovered)}
+            y1={CHART.TOP}
+            y2={plot}
+            stroke="var(--tx-muted)"
+            strokeWidth={1}
+            strokeDasharray="3 3"
+            pointerEvents="none"
+          />
+        ) : null}
+
+        {children(scales, hovered)}
 
         {xTicks.map((t) => (
           <text

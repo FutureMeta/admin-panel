@@ -219,26 +219,26 @@ const HOUR_MS = 3_600_000;
 /**
  * La finestra del periodo, in bucket interi.
  *
- * TRE REGIMI, e ognuno ha una ragione.
+ * OGNI PERIODO ARRIVA A ORA. E' cambiato: prima i periodi a giorni finivano
+ * alla mezzanotte passata, cioe' un grafico di sette giorni si fermava alle 23
+ * di ieri. La ragione era buona — l'ultimo bucket e' parziale e su un'area si
+ * legge come un crollo — ma la conclusione era sbagliata: davanti a quel vuoto
+ * nessuna spiegazione regge, ed e' la prima cosa che si nota aprendo la
+ * schermata.
  *
- * `24h` e' una finestra SCORREVOLE allineata all'ora e INCLUDE l'ora in
- * corso. E' l'unico posto in cui si vede la cadenza da trenta secondi: senza
- * l'ora viva, una partita giocata cinque minuti fa non comparirebbe da nessuna
- * parte fino allo scoccare dell'ora. L'ultimo punto e' parziale per
- * costruzione e il payload lo dichiara con `liveTail`, cosi' la UI lo
- * tratteggia invece di farlo leggere come un crollo.
+ * Il parziale si DICHIARA invece di toglierlo, e sono tre cose insieme:
+ *   * `liveTail` dice che l'ultimo bucket e' in corso, e la UI lo tratteggia;
+ *   * i bucket interamente FUTURI valgono `null`, non zero — un'ora che non e'
+ *     ancora arrivata non e' un'ora senza partite;
+ *   * la finestra si costruisce sui giorni CIVILI di Roma con le stesse due
+ *     funzioni delle statistiche, perche' due implementazioni dei giorni
+ *     civili divergono al primo cambio d'ora e divergono solo in quei due
+ *     giorni all'anno.
  *
- * `7d`, `30d` e `90d` sono GIORNI CIVILI INTERI e oggi si esclude, perche'
- * oggi e' un giorno parziale e sull'asse si leggerebbe come un crollo. E' la
- * stessa scelta di `windowOf` per le statistiche (`src/stats/read.ts`), e
- * usare la stessa funzione non e' pigrizia: due implementazioni dei giorni
- * civili di Roma divergono al primo cambio d'ora, e divergerebbero solo in
- * quei due giorni all'anno.
- *
- * `1y` sono 52 SETTIMANE INTERE che partono di lunedi', e la settimana in
- * corso si esclude per la stessa ragione per cui si esclude oggi. Il prezzo e'
- * che la vista annuale e' vecchia fino a sei giorni; il prezzo dell'altra
- * scelta sarebbe un'ultima colonna sempre bassa, che si legge come un calo.
+ * `24h` resta a se': e' una finestra SCORREVOLE allineata all'ora, non ai
+ * giorni. E' li' che si vede la cadenza da trenta secondi — senza l'ora viva,
+ * una partita giocata cinque minuti fa non comparirebbe da nessuna parte fino
+ * allo scoccare dell'ora.
  */
 export function duelsWindowOf(range: Range, now: Date): DuelsWindow {
   const bucket = DUELS_BUCKET[range];
@@ -249,13 +249,24 @@ export function duelsWindowOf(range: Range, now: Date): DuelsWindow {
   }
 
   if (range === '1y') {
-    const monday = mondayOf(now);
-    return { from: shiftDays(monday, -52 * 7), to: monday, bucket, liveTail: false };
+    // La settimana IN CORSO c'e', e finisce al lunedi' prossimo: e' l'ultima
+    // colonna, parziale, e la UI la tratteggia.
+    const to = shiftDays(mondayOf(now), 7);
+    return { from: shiftDays(to, -52 * 7), to, bucket, liveTail: true };
   }
 
   const days = range === '7d' ? 7 : range === '30d' ? 30 : 90;
-  const to = romeMidnight(now);
-  return { from: shiftDays(to, -days), to, bucket, liveTail: false };
+  // OGGI E' DENTRO, e prima non lo era. La finestra finisce alla mezzanotte
+  // che VERRA', non a quella passata: un grafico di sette giorni che si ferma
+  // alle 23 di ieri e' la prima cosa che si nota aprendolo, e nessuna
+  // spiegazione sul giorno parziale regge davanti a quel vuoto.
+  //
+  // Il motivo per cui oggi era escluso resta vero — l'ultimo bucket e'
+  // parziale e su un'area si legge come un crollo — ma la risposta giusta e'
+  // DICHIARARLO, non toglierlo: `liveTail` lo dice, la UI lo tratteggia, e i
+  // bucket interamente futuri valgono `null` invece di zero.
+  const to = shiftDays(romeMidnight(now), 1);
+  return { from: shiftDays(to, -days), to, bucket, liveTail: true };
 }
 
 /**
@@ -338,16 +349,22 @@ export const DK = {
 };
 
 /**
- * I periodi che, dentro un giorno civile, NON POSSONO cambiare.
+ * I periodi LENTI: cambiano, ma non a ogni ciclo di ingestione.
  *
- * E' il secondo dei tre livelli di cache, ed e' quello che fa il lavoro. La
- * finestra di `7d`, `30d`, `90d` e `1y` finisce a mezzanotte di oggi: una
- * partita giocata adesso cade FUORI da tutti e quattro, quindi il loro payload
- * e' identico per ventiquattro ore e a mezzanotte cambia chiave da solo.
+ * SI CHIAMAVANO «CHIUSI» e non lo sono piu'. Finivano alla mezzanotte passata,
+ * quindi una partita giocata adesso ci cadeva fuori e il loro payload era
+ * identico per ventiquattro ore — il che rendeva la cache quasi gratuita. Ora
+ * arrivano a oggi, quindi si muovono ogni volta che si muove il bucket in
+ * corso.
  *
- * Solo `24h` si muove, ed e' l'unico che il ciclo di ingestione ricostruisce.
+ * COSA RESTA VERO, ed e' cio' che conta per la cache: si muove SOLO l'ultimo
+ * bucket. Su trenta giorni un aggiornamento cambia un trentesimo del disegno,
+ * e sessanta secondi di ritardo su quel trentesimo non si vedono — mentre
+ * ricostruire novanta giorni ogni trenta secondi si vedrebbe eccome. Restano
+ * sul giro di warm da un minuto; solo il `24h`, dove l'ultimo bucket e' un
+ * ventiquattresimo e la cadenza e' il punto, lo rifa' il ciclo che ingerisce.
  */
-export const DUELS_CLOSED_RANGES: readonly Range[] = ['7d', '30d', '90d', '1y'] as const;
+export const DUELS_SLOW_RANGES: readonly Range[] = ['7d', '30d', '90d', '1y'] as const;
 
 /** Il periodo vivo: l'unico la cui finestra si sposta fra un ciclo e l'altro. */
 export const DUELS_LIVE_RANGE: Range = '24h';

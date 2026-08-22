@@ -197,15 +197,28 @@ describe('gli invarianti dei feedback li impone il database', () => {
     ).rejects.toThrow();
   });
 
+  it('una modalita` senza ranking non si scrive', async () => {
+    // In produzione `duels_mode.ranking` e `duels_mode.type` sono due colonne
+    // distinte, entrambe NOT NULL con default. Replicando qui il NOT NULL, il
+    // filtro Tutte/Ranked/Unranked non ha un terzo ramo «sconosciuto» da
+    // disegnare — e la UI non deve indovinare cosa farne.
+    await expect(
+      mig.query(
+        `INSERT INTO stats.duels_mode (mode_id, name, display_name, mode_type)
+         VALUES (30, 'senza', 'Senza', 'DUEL')`,
+      ),
+    ).rejects.toThrow();
+  });
+
   it('un colore di modalita` non valido non entra', async () => {
     await mig.query(
-      `INSERT INTO stats.duels_mode (mode_id, name, display_name, color)
-       VALUES (1, 'classic', 'Classic', '#d34545')`,
+      `INSERT INTO stats.duels_mode (mode_id, name, display_name, ranking, mode_type, color)
+       VALUES (1, 'classic', 'Classic', 'RANKED', 'DUEL', '#d34545')`,
     );
     await expect(
       mig.query(
-        `INSERT INTO stats.duels_mode (mode_id, name, display_name, color)
-         VALUES (2, 'sumo', 'Sumo', 'rosso')`,
+        `INSERT INTO stats.duels_mode (mode_id, name, display_name, ranking, mode_type, color)
+         VALUES (2, 'sumo', 'Sumo', 'UNRANKED', 'DUEL', 'rosso')`,
       ),
     ).rejects.toThrow();
   });
@@ -243,7 +256,6 @@ describe('il ruolo di lettura vede le viste e non le tabelle', () => {
   it('legge le viste', async () => {
     for (const view of [
       'v_duels_hour',
-      'v_duels_day_untimed',
       'v_duels_mode',
       'v_duels_map',
       'v_duels_rating_day',
@@ -274,13 +286,13 @@ describe('il ruolo di lettura vede le viste e non le tabelle', () => {
 
 describe('lo stato dell`ingestione nasce con le sue tre righe', () => {
   it('match, rating e catalog, tutte a zero', async () => {
-    const rows = await mig.query<{ source: string; last_id: string; rejected: string }>(
-      `SELECT source, last_id::text, rejected::text FROM stats.duels_ingest_state ORDER BY source`,
+    const rows = await mig.query<{ source: string; last_id: string; degraded: string }>(
+      `SELECT source, last_id::text, degraded::text FROM stats.duels_ingest_state ORDER BY source`,
     );
     expect(rows.rows).toEqual([
-      { source: 'catalog', last_id: '0', rejected: '0' },
-      { source: 'match', last_id: '0', rejected: '0' },
-      { source: 'rating', last_id: '0', rejected: '0' },
+      { source: 'catalog', last_id: '0', degraded: '0' },
+      { source: 'match', last_id: '0', degraded: '0' },
+      { source: 'rating', last_id: '0', degraded: '0' },
     ]);
   });
 

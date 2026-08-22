@@ -37,7 +37,7 @@ SET LOCAL statement_timeout = '60s';
 -- ---------------------------------------------------------------------------
 CREATE TABLE stats.duels_match_hour (
   bucket_at  timestamptz NOT NULL,
-  mode_id    integer     NOT NULL,
+  mode_id    smallint    NOT NULL,
   map_id     integer     NOT NULL,
   -- `type` e `context` sono VARCHAR liberi in origine, non enum: in
   -- produzione possono esistere valori che il legacy non contempla e che
@@ -49,39 +49,49 @@ CREATE TABLE stats.duels_match_hour (
   PRIMARY KEY (bucket_at, mode_id, map_id, match_type, context)
 ) PARTITION BY RANGE (bucket_at);
 
--- Le partite storiche SENZA orario: hanno il giorno e non l'ora.
+-- NON ESISTE UN GRANO GIORNALIERO, e non e' una semplificazione: e' un fatto
+-- misurato. Su 2.491.686 righe di `duels_match_statistics` in produzione,
+-- `created_at` e' NULL **zero volte** — storico dal 9 marzo al 22 agosto 2026,
+-- 166 giorni. Non c'e' nessuna partita senza orario da mettere da parte.
 --
--- STANNO SEPARATE, e non e' pignoleria. Il legacy fa
--- `COALESCE(created_at, date)`: quelle righe valgono mezzanotte e finiscono
--- TUTTE nella colonna «00» della mappa di attivita', gonfiandola di una
--- quantita' che dipende da quanto e' vecchio lo storico. Qui entrano nel
--- conteggio giornaliero, restano fuori dalla heatmap, e il payload dichiara
--- quante sono perche' chi guarda possa saperlo.
-CREATE TABLE stats.duels_match_day_untimed (
-  day        date     NOT NULL,
-  mode_id    integer  NOT NULL,
-  map_id     integer  NOT NULL,
-  match_type text     NOT NULL,
-  context    text     NOT NULL,
-  matches    integer  NOT NULL CHECK (matches > 0),
-  PRIMARY KEY (day, mode_id, map_id, match_type, context)
-);
+-- Cade quindi tutto il percorso che la specifica costruisce al §6.4: nessuna
+-- tabella a parte per le partite senza orario, nessun campo `untimed` nel
+-- payload, nessuna riga d'interfaccia che lo dichiara. E soprattutto niente
+-- `COALESCE(created_at, date)`, che nel legacy manda quelle righe tutte nella
+-- colonna «00» della mappa di attivita': qui non ci sono righe da mandare da
+-- nessuna parte.
+--
+-- La conseguenza che conta per chi guarda: la mappa di attivita' e' valida su
+-- TUTTO lo storico, senza avvertenze e senza un periodo massimo.
 
 -- ---------------------------------------------------------------------------
 -- 2. CATALOGHI. Poche decine di righe, replicati per intero a ogni giro.
 --
--- `ranking` e' UNA colonna, decisa in ingestione. Il legacy sceglie a runtime
--- fra `m.ranking` e `m.type` interrogando INFORMATION_SCHEMA e memorizza
--- l'esito in una Map di processo SENZA scadenza: dopo una migrazione del
--- gioco il pannello usa la forma vecchia finche' non riparte. Qui la forma si
--- fissa una volta, nel job.
+-- LA FORMA DELLA SORGENTE E' ACCERTATA, non piu' da indovinare. In produzione
+-- `duels_mode` e' post-migrazione: `ranking varchar(50) NOT NULL DEFAULT
+-- 'UNRANKED'` e `type varchar(50) NOT NULL DEFAULT 'DUEL'` sono due colonne
+-- distinte. Si leggono direttamente.
+--
+-- Il legacy sceglieva a runtime fra `m.ranking` e `m.type` interrogando
+-- INFORMATION_SCHEMA e memorizzava l'esito in una Map di processo SENZA
+-- scadenza — dopo una migrazione del gioco avrebbe continuato con la forma
+-- vecchia fino al riavvio. Quel doppio percorso qui non entra: la forma e'
+-- una, ed e' scritta.
+--
+-- Entrambe NOT NULL perche' lo sono all'origine: il filtro
+-- Tutte/Ranked/Unranked non ha quindi un ramo «sconosciuto» da disegnare.
+--
+-- `mode_id` e' smallint: l'AUTO_INCREMENT della sorgente e' a 86. `map_id`
+-- resta integer, sotto, perche' di quello non ho un numero — e un id piu'
+-- grande di 32767 si manifesterebbe come job fallito, non come colonna
+-- stretta.
 -- ---------------------------------------------------------------------------
 CREATE TABLE stats.duels_mode (
-  mode_id      integer  PRIMARY KEY,
+  mode_id      smallint PRIMARY KEY,
   name         text NOT NULL,
   display_name text NOT NULL,
-  ranking      text,
-  mode_type    text,
+  ranking      text NOT NULL,
+  mode_type    text NOT NULL,
   -- Stesso vincolo di `stats.mode.color`: un colore non valido non rompe il
   -- database, rompe il grafico — cioe' si scopre tardi.
   color        text CHECK (color ~ '^#[0-9a-f]{6}$'),
@@ -104,22 +114,37 @@ CREATE TABLE stats.duels_map (
 -- facoltativo. In tutta la schermata non esiste aritmetica oltre COUNT, AVG e
 -- SUM.
 --
--- `rating BETWEEN 1 AND 5` c'e' GIA' all'origine — il DDL del plugin porta
--- `CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5)` — e resta comunque
--- qui: i CHECK di MySQL sono applicati solo dalla 8.0.16 in avanti, e una
--- tabella creata prima li conserva come commento senza farli valere. Un
--- vincolo la cui efficacia dipende dalla versione di un server altrui non e'
--- una garanzia su cui appoggiare la UI, che lo assume ovunque: `colori[r-1]`
--- va fuori array per 0 o 6. L'ingestione scarta i fuori scala e li CONTA,
--- perche' altrimenti la somma delle cinque barre non tornerebbe col totale.
+-- `rating BETWEEN 1 AND 5` E' GARANTITO ALL'ORIGINE: il DDL del plugin ha
+-- `CONSTRAINT chk_rating`, verificato in produzione. Non serve quindi nessuna
+-- contromisura di scarto e conteggio in ingestione — i fuori scala non
+-- possono esistere. Il vincolo resta comunque qui, dove costa nulla: e' il
+-- contratto su cui la UI si appoggia (`colori[r - 1]` va fuori array per 0 o
+-- 6), e un vincolo dichiarato due volte non ha mai fatto danno.
 --
--- `player_name` e' denormalizzato in ingestione: e' cio' che fa sparire il
--- join su `UNHEX(REPLACE(uuid,'-',''))` e le due materializzazioni complete di
--- `duels_replay_participants` che il legacy paga per mostrare quindici righe.
+-- `player_name` e' denormalizzato in ingestione da `duels_userdata.username`
+-- (varchar(32), UNIQUE, NULLABILE). E' NULLABILE anche qui, e per una ragione
+-- che non e' un guasto: essendo UNIQUE, un cambio nome deve liberare il
+-- vecchio valore prima di scrivere il nuovo, quindi i NULL transitori sono
+-- normali. La schermata mostra allora lo uuid o un segnaposto — non si rompe
+-- e non inventa un nome.
 --
--- `dialog` e' jsonb VALIDATO LATO SERVER. Nel legacy e' testo parsato nel
--- browser con un try/catch silenzioso: un JSON malformato sparisce senza
--- traccia ne' log.
+-- `duels_replay_participants` non entra da nessuna parte: in produzione ha
+-- ZERO righe. Il `NAME_LATERAL` del legacy materializzava due volte per
+-- richiesta una tabella senza dati.
+--
+-- `dialog` e' jsonb VALIDATO LATO SERVER, e il contratto e' accertato: array
+-- di turni `{role, content}` con `role` in `bot` | `player`, nessun timestamp
+-- e nessun id — conta solo l'ordine. E' un seguito automatico alla
+-- valutazione, quindi popolato su una minoranza delle righe.
+--
+-- Il testo dei turni `player` e' scritto dai giocatori: vale il divieto di
+-- `innerHTML` gia' imposto dalla guardia, e la retention e' la stessa di
+-- `comment` perche' e' lo stesso genere di dato. Il contenuto e' in inglese
+-- mentre l'interfaccia e' in italiano: si mostra com'e', non si traduce.
+--
+-- All'origine la colonna e' `text` senza vincoli, quindi il parsing e'
+-- DIFENSIVO: un JSON malformato o un ruolo inatteso non fanno fallire il
+-- lotto, si contano e si prosegue.
 -- ---------------------------------------------------------------------------
 -- L'IDENTITA' DEL GIOCATORE VIENE DALL'ORIGINE, e l'origine non ha uno uuid
 -- su questa riga. Il DDL del plugin dice
@@ -146,7 +171,7 @@ CREATE TABLE stats.duels_rating (
   player_id   integer     NOT NULL,
   player_uuid uuid,
   player_name text,
-  mode_id     integer,
+  mode_id     smallint,
   -- L'origine ha gia' `CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5)`.
   -- Questo vincolo resta comunque: i CHECK di MySQL sono applicati solo dalla
   -- 8.0.16 in avanti e una tabella creata prima li porta come commento. Un
@@ -169,7 +194,7 @@ COMMENT ON TABLE stats.duels_rating IS
 -- risolta). Non e' un id valido, quindi non collide.
 CREATE TABLE stats.duels_rating_day (
   day          date     NOT NULL,
-  mode_id      integer  NOT NULL DEFAULT -1,
+  mode_id      smallint NOT NULL DEFAULT -1,
   n            integer  NOT NULL CHECK (n >= 0),
   sum_rating   integer  NOT NULL CHECK (sum_rating >= 0),
   with_comment integer  NOT NULL CHECK (with_comment >= 0),
@@ -201,8 +226,12 @@ CREATE TABLE stats.duels_ingest_state (
   last_id     bigint NOT NULL DEFAULT 0 CHECK (last_id >= 0),
   last_run_at timestamptz,
   since_day   date,
-  -- Fuori scala scartati in ingestione, contati per poterlo dire.
-  rejected    bigint NOT NULL DEFAULT 0 CHECK (rejected >= 0)
+  -- Righe DEGRADATE in ingestione, contate per poterlo dire. Oggi ce n'e' un
+  -- genere solo: un `dialog` che non e' un array di turni {role, content}. Il
+  -- voto fuori scala non entra qui perche' non puo' esistere: il vincolo c'e'
+  -- all'origine. La riga si scrive comunque, con `dialog` nullo — perdere un
+  -- feedback per un seguito malformato sarebbe sproporzionato.
+  degraded    bigint NOT NULL DEFAULT 0 CHECK (degraded >= 0)
 );
 
 INSERT INTO stats.duels_ingest_state (source) VALUES ('match'), ('rating'), ('catalog');
@@ -250,9 +279,6 @@ SELECT h.bucket_at, h.mode_id, h.map_id, h.match_type, h.context, h.matches,
        stats.civil_day(h.bucket_at) AS local_day
 FROM stats.duels_match_hour h;
 
-CREATE VIEW stats.v_duels_day_untimed AS
-SELECT u.day, u.mode_id, u.map_id, u.match_type, u.context, u.matches
-FROM stats.duels_match_day_untimed u;
 
 CREATE VIEW stats.v_duels_mode AS
 SELECT mode_id, name, display_name, ranking, mode_type, color FROM stats.duels_mode;
@@ -273,19 +299,19 @@ FROM stats.duels_rating;
 
 -- `since_day` serve alla schermata per dichiarare da quando esiste il dato.
 CREATE VIEW stats.v_duels_ingest AS
-SELECT source, last_id, last_run_at, since_day, rejected FROM stats.duels_ingest_state;
+SELECT source, last_id, last_run_at, since_day, degraded FROM stats.duels_ingest_state;
 
 -- ---------------------------------------------------------------------------
 -- 7. PRIVILEGI. Scrittura al gruppo, lettura SOLO sulle viste.
 -- ---------------------------------------------------------------------------
 GRANT SELECT, INSERT, UPDATE ON
-  stats.duels_match_hour, stats.duels_match_day_untimed, stats.duels_mode,
+  stats.duels_match_hour, stats.duels_mode,
   stats.duels_map, stats.duels_rating, stats.duels_rating_day,
   stats.duels_ingest_state
   TO metamc_stats_rw;
 
 GRANT SELECT ON
-  stats.v_duels_hour, stats.v_duels_day_untimed, stats.v_duels_mode,
+  stats.v_duels_hour, stats.v_duels_mode,
   stats.v_duels_map, stats.v_duels_rating_day, stats.v_duels_rating,
   stats.v_duels_ingest
   TO metamc_stats;
@@ -337,7 +363,7 @@ CREATE INDEX duels_rating_by_mode  ON stats.duels_rating (mode_id, created_at DE
 -- non a favore.
 -- ---------------------------------------------------------------------------
 REVOKE ALL ON
-  stats.duels_match_hour, stats.duels_match_day_untimed, stats.duels_mode,
+  stats.duels_match_hour, stats.duels_mode,
   stats.duels_map, stats.duels_rating, stats.duels_rating_day,
   stats.duels_ingest_state
   FROM metamc_stats;

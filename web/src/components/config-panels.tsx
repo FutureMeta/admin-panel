@@ -728,6 +728,137 @@ export function prettyKey(key: string): string {
 }
 
 /**
+ * L'interruttore, uno solo per tutto il pannello.
+ *
+ * Lo usano i settings booleani e gli event type di una mappa. Sono due elenchi
+ * di cose che si accendono e si spengono, e disegnarli due volte significa che
+ * fra un mese uno dei due ha il pallino di un colore diverso senza che nessuno
+ * abbia deciso niente.
+ *
+ * SPENTO NON E' LO SFONDO DELLA PAGINA ma `--s-inset`: un interruttore spento
+ * deve restare visibile come interruttore, altrimenti una riga spenta sembra
+ * una riga senza comando.
+ */
+export function Switch({
+  on,
+  label,
+  disabled,
+  onChange,
+}: {
+  on: boolean;
+  /** Che cosa si accende: finisce in `aria-label`, quindi e' la costante. */
+  label: string;
+  disabled?: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled === true}
+      onClick={() => onChange(!on)}
+      style={{
+        justifySelf: 'start',
+        width: 38,
+        height: 22,
+        borderRadius: 'var(--r-full)',
+        border: 'none',
+        background: on ? 'var(--ac)' : 'var(--s-inset)',
+        position: 'relative',
+        cursor: disabled === true ? 'default' : 'pointer',
+        opacity: disabled === true ? 0.55 : 1,
+        flex: 'none',
+        transition: 'background var(--dur-fast) var(--ease)',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: on ? 18 : 2,
+          width: 18,
+          height: 18,
+          borderRadius: '50%',
+          background: on ? ON_ACCENT : 'var(--tx-muted)',
+          transition: 'left var(--dur-fast) var(--ease)',
+        }}
+      />
+    </button>
+  );
+}
+
+/**
+ * La colonna di sinistra di una riga: il nome leggibile e sotto la costante.
+ *
+ * La costante resta scritta perche' e' quella che si cerca nel plugin e nel
+ * database; il nome leggibile e' solo la stessa parola piu' comoda da leggere
+ * in un elenco. Toglierne una delle due sarebbe scegliere fra chi legge la
+ * schermata e chi ci deve lavorare sopra.
+ */
+function RowLabel({ code }: { code: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 13, color: 'var(--tx-primary)' }}>{prettyKey(code)}</div>
+      <div
+        style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10.5,
+          color: 'var(--tx-disabled)',
+          marginTop: 1,
+        }}
+      >
+        {code}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Una riga «acceso / spento» senza altro: gli event type di una mappa.
+ *
+ * E' LA RIGA DEI SETTINGS DI MAPPA meno le colonne che qui non esistono. Un
+ * event type non ha un tipo da mostrare (e' sempre acceso o spento) e non ha
+ * un default da ripristinare: c'e' una riga in `duels_map_event_type`, o non
+ * c'e'. Le due colonne di destra sarebbero due caselle vuote che promettono
+ * un'informazione che non arriva mai, quindi l'interruttore si prende il
+ * fondo della riga.
+ *
+ * Prima erano pastiglie da premere. Una pastiglia accesa e una spenta si
+ * distinguono per il colore e basta: in un elenco di sei si leggeva, ma non
+ * diceva mai quante ce n'erano in tutto ne' quali fossero le altre.
+ */
+export function ToggleRow({
+  code,
+  on,
+  disabled,
+  onChange,
+}: {
+  code: string;
+  on: boolean;
+  /** Obbligatorio: chi disegna la riga sa gia' se chi guarda puo' salvare. */
+  disabled: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr auto',
+        alignItems: 'center',
+        gap: 12,
+        padding: '10px 20px',
+        borderBottom: '1px solid var(--bd-subtle)',
+      }}
+    >
+      <RowLabel code={code} />
+      <Switch on={on} label={code} disabled={disabled} onChange={onChange} />
+    </div>
+  );
+}
+
+/**
  * Una riga di setting, nella griglia del mockup.
  *
  * Le colonne cambiano fra le due schermate — `1fr 56px 190px 100px` sui
@@ -775,19 +906,7 @@ export function SettingRow({
         ...edge,
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: 'var(--tx-primary)' }}>{prettyKey(spec.key)}</div>
-        <div
-          style={{
-            fontFamily: 'var(--font-mono)',
-            fontSize: 10.5,
-            color: 'var(--tx-disabled)',
-            marginTop: 1,
-          }}
-        >
-          {spec.key}
-        </div>
-      </div>
+      <RowLabel code={spec.key} />
 
       {/* Il badge e' il TIPO — bool, int, double, enum — non lo stato. Lo stato
           sta a destra, accanto al ripristino. */}
@@ -804,37 +923,7 @@ export function SettingRow({
       </span>
 
       {spec.kind === 'bool' ? (
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-label={spec.key}
-          onClick={() => onChange(on ? '0' : '1')}
-          style={{
-            justifySelf: 'start',
-            width: 38,
-            height: 22,
-            borderRadius: 'var(--r-full)',
-            border: 'none',
-            background: on ? 'var(--ac)' : 'var(--s-inset)',
-            position: 'relative',
-            cursor: 'pointer',
-            transition: 'background var(--dur-fast) var(--ease)',
-          }}
-        >
-          <span
-            style={{
-              position: 'absolute',
-              top: 2,
-              left: on ? 18 : 2,
-              width: 18,
-              height: 18,
-              borderRadius: '50%',
-              background: on ? ON_ACCENT : 'var(--tx-muted)',
-              transition: 'left var(--dur-fast) var(--ease)',
-            }}
-          />
-        </button>
+        <Switch on={on} label={spec.key} onChange={(next) => onChange(next ? '1' : '0')} />
       ) : spec.kind === 'enum' ? (
         <select
           aria-label={spec.key}

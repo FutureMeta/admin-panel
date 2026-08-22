@@ -6,10 +6,14 @@
 // eventi, i settings della mappa — ed eliminare una mappa NON cancella il suo
 // mondo.
 //
-// LE MISURE VENGONO DAL MOCKUP, non da una sua interpretazione: le quattro tab,
-// il pulsante accento che le chiude a destra, le pastiglie degli event type, le
-// righe delle modalita' con «Rimuovi» in rosso tenue. Vedi il commento in testa
-// a `config-panels.tsx` per come mi era andata la prima volta.
+// LE MISURE VENGONO DAL MOCKUP, non da una sua interpretazione: le tab, il
+// pulsante accento che le chiude a destra, le righe delle modalita' con
+// «Rimuovi» in rosso tenue. Vedi il commento in testa a `config-panels.tsx`
+// per come mi era andata la prima volta.
+//
+// DUE COSE NON VENGONO DAL MOCKUP e sono state chieste dopo: le tab si chiamano
+// Modalita'/Eventi/Settings invece dei nomi lunghi, e gli event type sono righe
+// con un interruttore invece che pastiglie.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -33,6 +37,7 @@ import {
   SettingRow,
   TextField,
   Toast,
+  ToggleRow,
 } from '../components/config-panels.tsx';
 import { PageHeader } from '../components/page.tsx';
 import { Icon, Modal, Notice, SkeletonRows } from '../components/ui.tsx';
@@ -517,42 +522,17 @@ function MapPanel({
           </div>
         ) : null}
 
-        {tab === 'Eventi' ? (
-          <div style={{ padding: '6px 20px 14px' }}>
-            <div style={{ fontSize: 12, color: 'var(--tx-muted)', padding: '10px 0 4px' }}>
-              Righe in duels_map_event_type · elenco indicativo, verifica l’enum EventType del plugin prima di
-              pubblicare
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 6 }}>
-              {vocab.eventTypes.map((eventType) => {
-                const on = events.includes(eventType);
-                return (
-                  <button
-                    key={eventType}
-                    type="button"
-                    aria-pressed={on}
-                    disabled={!canSave}
-                    onClick={() => setEvents(toggleIn(events, eventType))}
-                    style={{
-                      height: 30,
-                      padding: '0 12px',
-                      border: `1px solid ${on ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)'}`,
-                      borderRadius: 'var(--r-full)',
-                      background: on ? 'var(--ac-soft)' : 'transparent',
-                      color: on ? 'var(--ac-text)' : 'var(--tx-secondary)',
-                      fontFamily: 'var(--font-ui)',
-                      fontSize: 12,
-                      fontWeight: 500,
-                      cursor: canSave ? 'pointer' : 'default',
-                    }}
-                  >
-                    {eventType}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        ) : null}
+        {tab === 'Eventi'
+          ? vocab.eventTypes.map((eventType) => (
+              <ToggleRow
+                key={eventType}
+                code={eventType}
+                on={events.includes(eventType)}
+                disabled={!canSave}
+                onChange={() => setEvents(toggleIn(events, eventType))}
+              />
+            ))
+          : null}
 
         {tab === 'Settings'
           ? vocab.mapSettings.map((spec) => (

@@ -26,11 +26,9 @@ import {
 } from '../components/page.tsx';
 import { Avatar, Button, DateTime, EmptyState, Field, Notice, SkeletonRows } from '../components/ui.tsx';
 import { ApiError, api, type Me, type RolesMatrix, type UserDetail, type UserRow } from '../lib/api.ts';
+import { areaOfModule, MODULE_TOTAL } from '../lib/modules.ts';
 
 const LEVELS = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
-
-/** Quanti moduli esistono in tutto: serve a dire «Tutti i moduli». */
-const MODULE_TOTAL = 8;
 
 // ---------------------------------------------------------------------------
 
@@ -784,18 +782,6 @@ function InviteDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
 
 // ---------------------------------------------------------------------------
 
-/** Aree della matrice: lo stesso raggruppamento della sidebar. */
-const MODULE_AREAS: Record<string, string> = {
-  utenti: 'Accessi',
-  ruoli: 'Accessi',
-  inviti: 'Accessi',
-  sessioni: 'Accessi',
-  audit: 'Controllo',
-  impostazioni: 'Sistema',
-  statistiche: 'Analisi',
-  server: 'Sistema',
-};
-
 export function RolesPage({ me }: { me: Me }) {
   const [error, setError] = useState<string | undefined>();
   const [roleId, setRoleId] = useState<number | undefined>();
@@ -841,7 +827,7 @@ export function RolesPage({ me }: { me: Me }) {
     permissions.find((p) => p.role_id === current.id && p.module_id === module)?.level ?? 0;
   const levelOf = (module: number) => draft[module] ?? savedLevelOf(module);
 
-  const areas = [...new Set(modules.map((m) => MODULE_AREAS[m.key] ?? 'Altro'))];
+  const areas = [...new Set(modules.map((m) => areaOfModule(m.key)))];
   const editable = canEdit && current.editable;
   const pending = Object.entries(draft)
     .map(([module, level]) => ({ moduleId: Number(module), level }))
@@ -921,7 +907,7 @@ export function RolesPage({ me }: { me: Me }) {
                     </td>
                   </tr>
                   {modules
-                    .filter((m) => (MODULE_AREAS[m.key] ?? 'Altro') === area)
+                    .filter((m) => areaOfModule(m.key) === area)
                     .map((m) => {
                       const level = levelOf(m.id);
                       return (

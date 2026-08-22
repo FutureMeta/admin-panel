@@ -8,6 +8,8 @@
 // SEC-20 — nessuna destinazione arriva dal client. Le rotte post-login,
 // post-accept e post-reset sono costanti decise dal server.
 
+import type { ModuleKey } from './modules.ts';
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string | undefined;
@@ -125,17 +127,11 @@ export async function apiWithHeaders<T>(
 // `undefined` a runtime.
 // ---------------------------------------------------------------------------
 
-export type ModuleKey =
-  | 'utenti'
-  | 'ruoli'
-  | 'inviti'
-  | 'sessioni'
-  | 'audit'
-  | 'impostazioni'
-  | 'statistiche'
-  | 'server'
-  | 'duels'
-  | 'duels_feedback';
+// Le chiavi stanno in `modules.ts` insieme al loro numero e alla loro area:
+// erano tre elenchi della stessa cosa in tre file, e due dei tre si sono
+// dimenticati quando la 015 ne ha aggiunte due. Si ri-esporta perche' mezzo
+// pannello chiede il tipo a questo modulo.
+export type { ModuleKey };
 
 export type Me = {
   userId: string;

@@ -47,8 +47,11 @@ describe('il vocabolario dei moduli e` uno solo', () => {
         WHERE key IN ('duels', 'duels_feedback') ORDER BY sort_order`,
     );
     expect(res.rows).toEqual([
-      { key: 'duels', name: 'Duels', sort_order: 75 },
-      { key: 'duels_feedback', name: 'Valutazioni Duels', sort_order: 76 },
+      // I nomi sono quelli delle SCHERMATE che aprono (migration 017): nella
+      // matrice si concede l'accesso a una schermata, e un nome che non
+      // coincide con la voce del menu costringe chi concede a indovinare.
+      { key: 'duels', name: 'Trends', sort_order: 75 },
+      { key: 'duels_feedback', name: 'Ratings', sort_order: 76 },
     ]);
   });
 

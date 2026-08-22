@@ -110,7 +110,6 @@ export function DuelsTrendsRoute() {
         title="Duels · Trends"
         sub={`Traffico partite sul network · ${numberFmt.format(data.totals.matches)} partite nel periodo`}
       />
-      <SinceBand since={data.since} first={data.t[0] ?? null} />
       <MatchesPanel data={data} type={type} context={context} onType={setType} onContext={setContext} />
       <HeatPanel data={data} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -130,27 +129,6 @@ export function DuelsTrendsRoute() {
         />
       </div>
     </main>
-  );
-}
-
-/**
- * «La raccolta è cominciata il …», quando il periodo chiesto la precede.
- *
- * Sostituisce il preset «All time» del legacy e dice la verità che quel preset
- * nascondeva: un anno di grafico su centosessantasei giorni di dati non è un
- * anno, e senza questa riga la parte vuota si legge come un anno di calma.
- */
-function SinceBand({ since, first }: { since: string | null; first: number | null }) {
-  if (!since || first === null) return null;
-  const startsAt = Date.parse(`${since}T00:00:00+01:00`) / 1000;
-  if (startsAt <= first) return null;
-  const [y, m, d] = since.split('-');
-  return (
-    <Notice
-      tone="info"
-      title={`Raccolta iniziata il ${d}/${m}/${y}`}
-      description="Prima di quella data il dato non esiste: il grafico lascia il tratto vuoto invece di disegnare uno zero."
-    />
   );
 }
 

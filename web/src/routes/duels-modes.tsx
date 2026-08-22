@@ -33,7 +33,7 @@ import {
 } from '../components/config-panels.tsx';
 import { PageHeader } from '../components/page.tsx';
 import { ICONS, Icon, Notice, SkeletonRows } from '../components/ui.tsx';
-import { api, type Me } from '../lib/api.ts';
+import { ApiError, api, type Me } from '../lib/api.ts';
 import {
   changedSettings,
   effectiveValues,
@@ -212,6 +212,23 @@ export function DuelsModesRoute({ me }: { me: Me }) {
   );
 }
 
+/**
+ * Il messaggio di un salvataggio fallito.
+ *
+ * I PRIVILEGI MANCANTI SI DICONO PER NOME. In produzione il primo salvataggio è
+ * morto con «DELETE command denied» e la schermata ha detto «il database del
+ * gioco ha rifiutato la modifica»: vero, inutile, e indistinguibile da un
+ * valore sbagliato. Chi legge deve capire che nella scheda non c'è niente da
+ * correggere — manca una GRANT sul database del gioco, e la sistema qualcun
+ * altro.
+ */
+function perche(err: unknown): string {
+  if (err instanceof ApiError && err.code === 'privilegi_mancanti') {
+    return 'Al pannello mancano i privilegi di scrittura sul database del gioco. Niente è stato scritto.';
+  }
+  return 'Il database del gioco ha rifiutato la modifica. Niente è stato scritto.';
+}
+
 type CoreDraft = { displayName: string; type: string; ranking: string };
 
 function ModePanel({
@@ -275,7 +292,7 @@ function ModePanel({
       void qc.invalidateQueries({ queryKey: ['duels-config', 'mode', id] });
       onSaved();
     },
-    onError: () => onError('Il database del gioco ha rifiutato la modifica. Niente è stato scritto.'),
+    onError: (err) => onError(perche(err)),
   });
 
   const remove = useMutation({

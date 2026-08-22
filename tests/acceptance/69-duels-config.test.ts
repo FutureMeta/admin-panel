@@ -355,3 +355,76 @@ describe('le mappe', () => {
     expect(my.state.mapEvents).toEqual([]);
   });
 });
+
+describe('quando il database del gioco dice che non si puo`', () => {
+  it('un privilegio mancante e` 503 con il nome del privilegio, non un 500', async () => {
+    // E' successo in produzione: il primo salvataggio e' morto con «DELETE
+    // command denied» ed e' uscito un 500 «errore non gestito». Un 500 manda a
+    // cercare un difetto nel pannello, mentre il pannello aveva fatto la cosa
+    // giusta e mancava una GRANT: sono due cose che si sistemano in due posti
+    // diversi, e la risposta deve dire in quale.
+    //
+    // 503 e non 403: chi sta salvando ha tutti i permessi del pannello, e' il
+    // pannello a non averli sul database del gioco.
+    const actor = capo;
+    my.denyOn('DELETE FROM duels_mode_setting', {
+      errno: 1142,
+      sqlMessage:
+        "DELETE command denied to user 'duelspanel'@'172.20.1.2' for table `duelsdb`.`duels_mode_setting`",
+    });
+
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: '/api/duels/config/modes/1',
+      headers: actor.headers(),
+      payload: { settings: { MOB_TIMER: '10' } },
+    });
+
+    expect(res.statusCode).toBe(503);
+    const body = res.json() as { code: string; detail: string };
+    expect(body.code).toBe('privilegi_mancanti');
+    expect(body.detail).toContain('DELETE');
+    expect(body.detail).toContain('duels_mode_setting');
+  });
+
+  it('e non racconta al client utente e indirizzo del database', async () => {
+    // Il legacy stampava in pagina il testo dell'eccezione di MySQL. Il nome
+    // del privilegio e della tabella servono a chi deve scrivere la GRANT;
+    // l'utente e l'IP no, e restano nel log.
+    const actor = capo;
+    my.denyOn('DELETE FROM duels_mode_setting', {
+      errno: 1142,
+      sqlMessage:
+        "DELETE command denied to user 'duelspanel'@'172.20.1.2' for table `duelsdb`.`duels_mode_setting`",
+    });
+
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: '/api/duels/config/modes/1',
+      headers: actor.headers(),
+      payload: { settings: { MOB_TIMER: '10' } },
+    });
+
+    expect(res.body).not.toContain('duelspanel');
+    expect(res.body).not.toContain('172.20.1.2');
+  });
+
+  it('e la modifica non resta scritta a meta`', async () => {
+    const actor = capo;
+    my.denyOn('DELETE FROM duels_mode_setting', {
+      errno: 1142,
+      sqlMessage:
+        "DELETE command denied to user 'duelspanel'@'172.20.1.2' for table `duelsdb`.`duels_mode_setting`",
+    });
+
+    await t.app.inject({
+      method: 'PATCH',
+      url: '/api/duels/config/modes/1',
+      headers: actor.headers(),
+      payload: { displayName: 'Bed Wars', settings: { MOB_TIMER: '10' } },
+    });
+
+    expect(my.state.modes[0]?.display_name).toBe('BedWars');
+    expect(my.state.modeSettings).toEqual([{ mode_id: 1, type: 'MOB_TIMER', value: '30' }]);
+  });
+});

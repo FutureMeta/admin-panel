@@ -54,6 +54,15 @@ export type FakeConfigMysql = DuelsMysql & {
   log: string[];
   /** Fa lanciare la prossima istruzione che contiene questo pezzo di SQL. */
   breakOn: (fragment: string) => void;
+  /**
+   * Fa rispondere a MySQL «non hai il privilegio» su questa istruzione.
+   *
+   * Serve a provare la strada che in produzione ha prodotto un 500 «errore non
+   * gestito»: un errore con `errno` e `sqlMessage`, cioè la forma vera di
+   * quello che arriva da mysql2, non una `Error` qualunque. Con una `Error`
+   * nuda il test passerebbe senza esercitare il riconoscimento.
+   */
+  denyOn: (fragment: string, error: { errno: number; sqlMessage: string }) => void;
 };
 
 const norm = (sql: string): string => sql.replace(/\s+/g, ' ').trim();
@@ -62,10 +71,18 @@ export function fakeConfigMysql(initial: Partial<ConfigState> = {}): FakeConfigM
   const state: ConfigState = { ...emptyState(), ...initial };
   const log: string[] = [];
   let broken: string | null = null;
+  let denied: { fragment: string; errno: number; sqlMessage: string } | null = null;
 
   const run = (sql: string, params: unknown[]): { rows: unknown[]; affectedRows: number } => {
     const q = norm(sql);
     log.push(q);
+    if (denied && q.includes(denied.fragment)) {
+      const err = new Error(denied.sqlMessage) as Error & { errno: number; sqlMessage: string };
+      err.errno = denied.errno;
+      err.sqlMessage = denied.sqlMessage;
+      denied = null;
+      throw err;
+    }
     if (broken && q.includes(broken)) {
       broken = null;
       throw new Error(`istruzione fatta fallire dal test: ${q.slice(0, 60)}`);
@@ -146,6 +163,9 @@ export function fakeConfigMysql(initial: Partial<ConfigState> = {}): FakeConfigM
     log,
     breakOn: (fragment) => {
       broken = fragment;
+    },
+    denyOn: (fragment, error) => {
+      denied = { fragment, ...error };
     },
     rows,
     tx: async <T>(fn: (t: DuelsTx) => Promise<T>): Promise<T> => {

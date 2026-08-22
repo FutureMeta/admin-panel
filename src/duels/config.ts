@@ -567,3 +567,73 @@ async function applySettings(
     await t.run(`DELETE FROM ${table} WHERE ${column} = ? AND type = ?`, [id, key]);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Quando il database del gioco dice di no
+// ---------------------------------------------------------------------------
+
+/** MySQL 1142: privilegio mancante su una tabella. 1044/1045: sul database. */
+const ER_TABLEACCESS_DENIED = 1142;
+const ER_DBACCESS_DENIED = 1044;
+const ER_ACCESS_DENIED = 1045;
+
+export type MissingPrivilege = { privilege: string; table: string };
+
+/**
+ * Il pannello non ha il privilegio per fare quello che gli e' stato chiesto.
+ *
+ * NON E' UN ERRORE DEL PANNELLO, ed e' per questo che va riconosciuto invece
+ * di finire nel gestore generico. Un 500 «errore non gestito» manda a cercare
+ * un difetto nel codice; qui il codice ha fatto la cosa giusta e il database
+ * ha risposto che quell'utente non puo'. Le due cose si sistemano in due posti
+ * diversi, e la risposta deve dire in quale.
+ *
+ * Torna la coppia privilegio+tabella, che MySQL scrive nel messaggio: e' cio'
+ * che serve per scrivere la GRANT. Quello che NON esce di qui e' il resto del
+ * messaggio, che nomina utente e indirizzo del database — il pannello non
+ * stampa in pagina il testo delle eccezioni di MySQL, che e' precisamente
+ * quello che faceva il legacy.
+ */
+export function missingPrivilege(err: unknown): MissingPrivilege | null {
+  if (typeof err !== 'object' || err === null) return null;
+  const { errno, sqlMessage } = err as { errno?: number; sqlMessage?: string };
+  if (errno !== ER_TABLEACCESS_DENIED && errno !== ER_DBACCESS_DENIED && errno !== ER_ACCESS_DENIED) {
+    return null;
+  }
+  const found = /^(\w+) command denied .* for table `[^`]+`\.`([^`]+)`/.exec(sqlMessage ?? '');
+  if (!found?.[1] || !found[2]) return { privilege: 'scrittura', table: 'una tabella dei duels' };
+  return { privilege: found[1], table: found[2] };
+}
+
+/**
+ * I privilegi di scrittura ci sono? Si guarda ALL'AVVIO.
+ *
+ * PERCHE' NON BASTA GESTIRE L'ERRORE. L'errore arriva al primo salvataggio,
+ * cioe' quando qualcuno sta gia' modificando una modalita' — davanti allo
+ * schermo, convinto di aver fatto una cosa che non e' successa. In produzione
+ * e' andata esattamente cosi': deploy, schermate che caricano, e il difetto
+ * scoperto premendo Salva. E' la stessa lezione della colonna `color`, che si
+ * scopriva un deploy alla volta.
+ *
+ * NON PROVA A INTERPRETARE LE GRANT, e non ci prova apposta: `SHOW GRANTS`
+ * mescola privilegi di database e di tabella, `ALL PRIVILEGES`, ruoli e
+ * caratteri jolly, e un analizzatore approssimativo darebbe un via libera
+ * falso — che e' peggio di nessun controllo. Guarda una cosa sola: se in
+ * nessuna riga compare un permesso di scrittura, allora di sicuro non c'e', e
+ * lo si dice adesso.
+ *
+ * Il contrario non e' garantito: un via libera qui non promette che ogni
+ * tabella sia scrivibile. Per quello resta `missingPrivilege`, che sul
+ * fallimento vero dice quale privilegio e quale tabella.
+ */
+export async function canWriteConfig(my: DuelsMysql): Promise<boolean> {
+  const rows = await my.rows<Record<string, string>>('SHOW GRANTS FOR CURRENT_USER()');
+  // `SHOW GRANTS` restituisce una colonna sola, il cui nome contiene l'utente:
+  // si prende il valore, non la chiave.
+  const lines = rows.map((r) => Object.values(r).join(' ').toUpperCase());
+  return lines.some(
+    (line) =>
+      line.includes('ALL PRIVILEGES') ||
+      (line.includes('INSERT') && line.includes('UPDATE') && line.includes('DELETE')),
+  );
+}

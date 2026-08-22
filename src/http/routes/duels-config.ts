@@ -34,6 +34,7 @@ import {
   listMaps,
   listModes,
   mapDetail,
+  missingPrivilege,
   modeDetail,
   NotFound,
   saveMap,
@@ -154,7 +155,28 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     ...(change.events ? { eventiAggiunti: change.events.add, eventiTolti: change.events.remove } : {}),
   });
 
-  const failed = (reply: FastifyReply, err: unknown): FastifyReply => {
+  const failed = (request: FastifyRequest, reply: FastifyReply, err: unknown): FastifyReply => {
+    const missing = missingPrivilege(err);
+    if (missing) {
+      // NON E' UN 500. Il codice ha fatto la cosa giusta e il database del gioco
+      // ha risposto che quell'utente non puo': un «errore non gestito» manda a
+      // cercare un difetto nel pannello, mentre quello che manca e' una GRANT.
+      // Sono due cose che si sistemano in due posti diversi, e la risposta deve
+      // dire in quale.
+      //
+      // 503 e non 403: il 403 e' la risposta a «TU non puoi», e qui la persona
+      // ha tutti i permessi del pannello — e' il pannello a non averli sul
+      // database del gioco.
+      request.log.warn(
+        { err, privilege: missing.privilege, table: missing.table },
+        'privilegio mancante sul database del gioco: la configurazione non e` scrivibile',
+      );
+      return reply.code(503).send({
+        error: 'privilegi mancanti',
+        code: 'privilegi_mancanti',
+        detail: `Al pannello manca il privilegio ${missing.privilege} sulla tabella ${missing.table}.`,
+      });
+    }
     if (err instanceof NotFound) {
       // 404 e non un salvataggio a vuoto: qualcuno ha eliminato la riga mentre
       // questa scheda era aperta, ed e' un fatto da dire.
@@ -249,7 +271,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
         }
         return reply.send({ ...detail, note: RELOAD_NOTE, changed: !isNoOp(change) });
       } catch (err) {
-        return failed(reply, err);
+        return failed(request, reply, err);
       }
     },
   );
@@ -270,7 +292,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
         });
         return reply.send({ deleted: name, note: RELOAD_NOTE });
       } catch (err) {
-        return failed(reply, err);
+        return failed(request, reply, err);
       }
     },
   );
@@ -301,7 +323,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
         }
         return reply.send({ ...detail, note: RELOAD_NOTE, changed: !isNoOp(change) });
       } catch (err) {
-        return failed(reply, err);
+        return failed(request, reply, err);
       }
     },
   );
@@ -323,7 +345,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
         });
         return reply.send({ deleted: name, note: RELOAD_NOTE });
       } catch (err) {
-        return failed(reply, err);
+        return failed(request, reply, err);
       }
     },
   );

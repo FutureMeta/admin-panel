@@ -19,6 +19,7 @@ import type { CacheService } from '#src/cache/service.ts';
 import type { Env } from '#src/config/env.ts';
 import { type DerivedKeys, deriveKeys, pepperRing } from '#src/crypto/keys.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { canWriteConfig } from '#src/duels/config.ts';
 import { type DuelsIngest, startDuelsIngest } from '#src/duels/keeper.ts';
 import { createDuelsMysql, type DuelsMysql } from '#src/duels/mysql.ts';
 import { PgDuelsProvider } from '#src/duels/pg.ts';
@@ -330,6 +331,32 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   // nostra, e due serie per lo stesso database sarebbero il doppio del peso
   // per la stessa cosa.
   const duelsMysql = env.DUELS_MYSQL_URL ? createDuelsMysql(env.DUELS_MYSQL_URL) : null;
+
+  // I PRIVILEGI DI SCRITTURA SI GUARDANO ALL'AVVIO, non al primo salvataggio.
+  //
+  // La prima volta in produzione è andata così: deploy pulito, schermate che
+  // caricano, e il difetto scoperto premendo Salva — cioè da qualcuno che
+  // stava già modificando una modalità, convinto di aver fatto una cosa che
+  // non era successa. Una riga di log all'avvio costa una query e sposta la
+  // scoperta dove non fa danno.
+  //
+  // NON blocca la partenza: leggere la configurazione funziona anche senza
+  // poterla scrivere, e un pannello che non parte è peggio di un pannello che
+  // dice cosa gli manca.
+  if (duelsMysql && opts.startJobs) {
+    void canWriteConfig(duelsMysql)
+      .then((ok) => {
+        if (ok) return;
+        logger.warn(
+          {
+            tables:
+              'duels_mode, duels_mode_setting, duels_map, duels_map_setting, duels_map_mode, duels_map_event_type',
+          },
+          'nessun privilegio di scrittura sul database del gioco: Modes e Maps si leggono ma non si salvano',
+        );
+      })
+      .catch((err) => logger.warn({ err }, 'privilegi del database del gioco non verificabili'));
+  }
 
   let duelsIngest: DuelsIngest | null = null;
   if (env.DUELS_INGEST_ENABLED && env.DUELS_MYSQL_URL && env.DATABASE_INGEST_URL && opts.startJobs) {

@@ -23,12 +23,14 @@ export type SettingSpec = {
   kind: SettingKind;
   fallback: string;
   options?: readonly string[];
-  group: string;
-  label: string;
+  /** Assente sui settings di mappa, che sono un elenco unico. */
+  group?: string;
 };
 
 export type Vocabulary = {
   modeSettings: SettingSpec[];
+  /** I sei gruppi nell ordine in cui vanno mostrati. */
+  modeSettingGroups: readonly string[];
   mapSettings: SettingSpec[];
   modeTypes: readonly string[];
   rankingTypes: readonly string[];

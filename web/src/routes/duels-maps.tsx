@@ -94,14 +94,14 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
     if (selected === null && rows.length > 0) setSelected(rows[0]?.id ?? null);
   }, [rows, selected]);
 
-  if (!canOpen(me, 'duels', 3)) {
+  if (!canOpen(me, 'duels_maps')) {
     return (
       <>
         <PageHeader title="Duels · Maps" sub="Configurazione delle mappe" />
         <Notice
           tone="err"
           title="Non hai accesso a questa schermata"
-          description="Serve il livello «Gestione» sul modulo Duels: è quello che permette di cambiare le regole con cui si gioca."
+          description="Serve almeno il livello «Lettura» sul modulo Maps."
         />
       </>
     );
@@ -195,6 +195,11 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
                 void qc.invalidateQueries({ queryKey: ['duels-config', 'maps'] });
               }}
               onError={setError}
+              // COSA PUO FARE, deciso una volta sola qui: 2 salva, 3 elimina.
+              // Ricalcolarlo dentro il pannello vorrebbe dire due risposte alla
+              // stessa domanda, e la seconda prima o poi diverge.
+              canSave={canOpen(me, 'duels_maps', 2)}
+              canDelete={canOpen(me, 'duels_maps', 3)}
             />
           )
         }
@@ -210,6 +215,8 @@ function MapPanel({
   onSaved,
   onDeleted,
   onError,
+  canSave,
+  canDelete,
 }: {
   id: number;
   vocab: Vocabulary;
@@ -217,6 +224,8 @@ function MapPanel({
   onSaved: () => void;
   onDeleted: () => void;
   onError: (message: string | undefined) => void;
+  canSave: boolean;
+  canDelete: boolean;
 }) {
   const qc = useQueryClient();
   const detail = useQuery({
@@ -330,8 +339,12 @@ function MapPanel({
 
   return (
     <>
+      {/* CHI NON PUO SALVARE NON VEDE LA BARRA. Vedrebbe un pulsante che
+          risponde 403, e su una schermata dove tutto e locale finche non si
+          salva sarebbe anche peggio: le modifiche fatte sembrerebbero in
+          attesa di essere scritte, e non lo sarebbero mai. */}
       <SaveBar
-        changes={invalid.length > 0 ? 0 : changes}
+        changes={canSave && invalid.length === 0 ? changes : 0}
         saving={save.isPending}
         onSave={() => save.mutate()}
         onReset={reset}
@@ -352,12 +365,19 @@ function MapPanel({
         >
           {editingCore ? null : (
             <>
-              <Button size="sm" onClick={() => setEditingCore(true)}>
-                Modifica
-              </Button>
-              <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
-                Elimina
-              </Button>
+              {canSave ? (
+                <Button size="sm" onClick={() => setEditingCore(true)}>
+                  Modifica
+                </Button>
+              ) : null}
+              {/* ELIMINARE STA UN GRADINO SOPRA: e la sola cosa irreversibile
+                  di questa schermata, e chi puo cambiare un valore non per
+                  questo puo portarsi via una riga e le sue cascate. */}
+              {canDelete ? (
+                <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
+                  Elimina
+                </Button>
+              ) : null}
             </>
           )}
         </BlockHeader>

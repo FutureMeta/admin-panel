@@ -33,17 +33,15 @@ const BOOL: SettingSpec = {
   kind: 'bool',
   fallback: '1',
   group: 'g',
-  label: 'Saturazione',
 };
-const INT: SettingSpec = { key: 'MOB_TIMER', kind: 'int', fallback: '10', group: 'g', label: 'Timer' };
-const DBL: SettingSpec = { key: 'DAMAGE', kind: 'double', fallback: '1.0', group: 'g', label: 'Danno' };
+const INT: SettingSpec = { key: 'MOB_TIMER', kind: 'int', fallback: '10', group: 'g' };
+const DBL: SettingSpec = { key: 'DAMAGE', kind: 'double', fallback: '1.0', group: 'g' };
 const ENUM: SettingSpec = {
   key: 'DIFFICULTY',
   kind: 'enum',
   fallback: 'HARD',
   options: ['PEACEFUL', 'EASY', 'NORMAL', 'HARD'],
   group: 'g',
-  label: 'Difficoltà',
 };
 const SPECS = [BOOL, INT, DBL, ENUM];
 

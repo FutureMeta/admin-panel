@@ -2,7 +2,7 @@
 // vale quando nessuno lo ha toccato.
 //
 // STA SUL SERVER E VIAGGIA NEL PAYLOAD. La schermata deve disegnare
-// quarantotto righe tipizzate con etichetta, default e valori ammessi: se
+// quarantotto righe tipizzate con tipo, default e valori ammessi: se
 // quell'elenco lo tenesse anche il client sarebbero due copie della stessa
 // tabella, e la seconda si dimenticherebbe — e' gia' successo due volte in
 // questo pannello, con le aree dei moduli e con il loro numero.
@@ -36,14 +36,12 @@ export type SettingSpec = {
   fallback: string;
   /** Solo per `enum`: i soli valori che il plugin sa rileggere. */
   options?: readonly string[];
-  /** Il gruppo in cui la schermata lo mostra. */
-  group: string;
-  /** Come si chiama per chi lo legge. Le chiavi restano quelle del plugin. */
-  label: string;
+  /**
+   * Il gruppo in cui la schermata lo mostra. Assente per i settings di mappa,
+   * che nel disegno sono un elenco unico.
+   */
+  group?: string;
 };
-
-const DIFFICULTY = ['PEACEFUL', 'EASY', 'NORMAL', 'HARD'] as const;
-const OBJECTIVE = ['NONE', 'DESTROY_BLOCK', 'ENTER_AREA'] as const;
 
 // ---------------------------------------------------------------------------
 // Gli enum delle colonne, non dei settings
@@ -89,267 +87,122 @@ export function withObserved(declared: readonly string[], observed: readonly str
 }
 
 /**
- * I sei gruppi.
+ * I sei gruppi, NELL'ORDINE DICHIARATO DAL MOCKUP.
  *
- * Il raggruppamento NON viene dal plugin — li' i quarantotto settings sono un
- * elenco piatto — e nemmeno dal mockup, che ne mostra sei senza nominarli. E'
- * una scelta di lettura: quarantotto righe di seguito non si scorrono, e senza
- * gruppi l'unico modo di trovare «danno da caduta» e' sapere gia' come si
- * chiama la costante.
+ * Non nell'ordine in cui compaiono nella tabella: sono due ordini diversi —
+ * «Blocchi & mappa» viene prima di «Oggetti & inventario» nell'elenco e dopo
+ * nella tabella — e ricavarlo dai dati invece di leggerlo darebbe sei sezioni
+ * in un ordine che nessuno ha scelto.
  */
 export const MODE_SETTING_GROUPS = [
-  'Partita',
-  'Giocatore',
-  'Oggetti',
-  'Blocchi',
-  'Esplosivi',
-  'Creature',
+  'Round & partita',
+  'Combattimento',
+  'Blocchi & mappa',
+  'Oggetti & inventario',
+  'Mob & ambiente',
+  'Recupero & cure',
 ] as const;
 
 /**
- * I quarantotto `ModeSetting`, con il default del plugin.
+ * I quarantotto `ModeSetting`: chiave, tipo, default, gruppo.
  *
- * L'ordine dentro un gruppo e' quello in cui si leggono, non quello del codice
- * Java: chi apre «Partita» cerca prima quanto dura il conto alla rovescia e
- * poi quante persone servono per cominciare.
+ * NESSUNA DESCRIZIONE, e non e' una dimenticanza. La riga mostra il nome della
+ * costante e basta, perche' e' quello il nome della cosa: e' cio' che sta nel
+ * database, cio' che il plugin rilegge, e cio' con cui se ne parla. Una
+ * traduzione italiana accanto sarebbe una seconda verita' da tenere allineata
+ * a mano, e chi cerca `SHIELD_STUN` cerca `SHIELD_STUN`.
+ *
+ * TABELLA E ORDINE VENGONO DAL MOCKUP, generati da `frontend/metamc-shared.js`
+ * invece di ricopiati: cinquantaquattro righe trascritte a occhio sono
+ * cinquantaquattro occasioni di sbagliare un default, e un default sbagliato
+ * qui non lo vede nessuno finche' non lo vede un server di gioco.
  */
 export const MODE_SETTINGS: readonly SettingSpec[] = [
-  // --- Partita -------------------------------------------------------------
-  { key: 'START_COOLDOWN', kind: 'int', fallback: '3', group: 'Partita', label: 'Conto alla rovescia' },
-  { key: 'PLAYERS_TO_START', kind: 'int', fallback: '2', group: 'Partita', label: 'Giocatori per iniziare' },
-  { key: 'MIN_ROUND', kind: 'int', fallback: '2', group: 'Partita', label: 'Round minimi' },
-  { key: 'RESPAWN_COOLDOWN', kind: 'int', fallback: '0', group: 'Partita', label: 'Attesa di rinascita' },
-  { key: 'INSTANT_DEATH', kind: 'bool', fallback: '0', group: 'Partita', label: 'Morte immediata' },
-  { key: 'MAP_RESET', kind: 'bool', fallback: '1', group: 'Partita', label: 'Ripristina la mappa' },
-  {
-    key: 'TEAM_OBJECTIVE_TYPE',
-    kind: 'enum',
-    fallback: 'NONE',
-    options: OBJECTIVE,
-    group: 'Partita',
-    label: 'Obiettivo di squadra',
-  },
-
-  // --- Giocatore -----------------------------------------------------------
+  { key: 'START_COOLDOWN', kind: 'int', fallback: '3', group: 'Round & partita' },
+  { key: 'PLAYERS_TO_START', kind: 'int', fallback: '2', group: 'Round & partita' },
+  { key: 'ITEM_DAMAGE', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'PREVENT_ITEM_DROP', kind: 'bool', fallback: '0', group: 'Oggetti & inventario' },
+  { key: 'DROP_INVENTORY_ON_DEATH', kind: 'bool', fallback: '0', group: 'Oggetti & inventario' },
+  { key: 'PREVENT_ARMOR_TOOLS_DROP', kind: 'bool', fallback: '0', group: 'Oggetti & inventario' },
+  { key: 'PREVENT_ARMOR_MOVE', kind: 'bool', fallback: '0', group: 'Oggetti & inventario' },
+  { key: 'SATURATION', kind: 'bool', fallback: '1', group: 'Combattimento' },
   {
     key: 'DIFFICULTY',
     kind: 'enum',
     fallback: 'HARD',
-    options: DIFFICULTY,
-    group: 'Giocatore',
-    label: 'Difficoltà',
+    options: ['PEACEFUL', 'EASY', 'NORMAL', 'HARD'],
+    group: 'Combattimento',
   },
+  { key: 'DAMAGE_MULTIPLIER', kind: 'double', fallback: '1.0', group: 'Combattimento' },
+  { key: 'NATURAL_REGENERATION', kind: 'bool', fallback: '1', group: 'Combattimento' },
+  { key: 'HUNGER', kind: 'bool', fallback: '1', group: 'Combattimento' },
+  { key: 'PLACE_BLOCKS', kind: 'bool', fallback: '0', group: 'Blocchi & mappa' },
+  { key: 'BREAK_BLOCKS', kind: 'bool', fallback: '0', group: 'Blocchi & mappa' },
+  { key: 'BREAK_MAP_BLOCKS', kind: 'bool', fallback: '0', group: 'Blocchi & mappa' },
+  { key: 'DROP_PLAYER_BLOCKS', kind: 'bool', fallback: '1', group: 'Oggetti & inventario' },
+  { key: 'DROP_MAP_BLOCKS', kind: 'bool', fallback: '0', group: 'Blocchi & mappa' },
+  { key: 'EXPLOSION_GRIEFING', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'EXPLOSION_DESTROY_DROPS', kind: 'bool', fallback: '1', group: 'Combattimento' },
+  { key: 'BED_EXPLOSION', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'CREEPER_INSTANT_IGNITE', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'CREEPER_EXPLOSION_TIME', kind: 'int', fallback: '0', group: 'Combattimento' },
+  { key: 'MOB_TIMER', kind: 'int', fallback: '10', group: 'Mob & ambiente' },
+  { key: 'MOB_DROPS', kind: 'bool', fallback: '1', group: 'Mob & ambiente' },
+  { key: 'MAP_RESET', kind: 'bool', fallback: '1', group: 'Blocchi & mappa' },
+  { key: 'RESPAWN_COOLDOWN', kind: 'int', fallback: '0', group: 'Round & partita' },
   {
-    key: 'DAMAGE_MULTIPLIER',
-    kind: 'double',
-    fallback: '1.0',
-    group: 'Giocatore',
-    label: 'Moltiplicatore del danno',
+    key: 'TEAM_OBJECTIVE_TYPE',
+    kind: 'enum',
+    fallback: 'NONE',
+    options: ['NONE', 'DESTROY_BLOCK', 'ENTER_AREA'],
+    group: 'Round & partita',
   },
-  {
-    key: 'NATURAL_REGENERATION',
-    kind: 'bool',
-    fallback: '1',
-    group: 'Giocatore',
-    label: 'Rigenerazione naturale',
-  },
-  { key: 'SATURATION', kind: 'bool', fallback: '1', group: 'Giocatore', label: 'Saturazione' },
-  { key: 'HUNGER', kind: 'bool', fallback: '1', group: 'Giocatore', label: 'Fame' },
-  { key: 'FEED_DELAY', kind: 'int', fallback: '0', group: 'Giocatore', label: 'Intervallo di nutrimento' },
-  { key: 'FEED_AMOUNT', kind: 'int', fallback: '0', group: 'Giocatore', label: 'Quantità di nutrimento' },
-  { key: 'HEAL_DELAY', kind: 'int', fallback: '0', group: 'Giocatore', label: 'Intervallo di cura' },
-  { key: 'HEAL_AMOUNT', kind: 'double', fallback: '0.0', group: 'Giocatore', label: 'Quantità di cura' },
-  {
-    key: 'HEALTH_INDICATOR',
-    kind: 'bool',
-    fallback: '1',
-    group: 'Giocatore',
-    label: 'Indicatore della vita',
-  },
-  { key: 'FALL_DAMAGE', kind: 'bool', fallback: '1', group: 'Giocatore', label: 'Danno da caduta' },
-  { key: 'SHIELD_STUN', kind: 'bool', fallback: '1', group: 'Giocatore', label: 'Stordimento con lo scudo' },
-
-  // --- Oggetti -------------------------------------------------------------
-  { key: 'ITEM_DAMAGE', kind: 'bool', fallback: '0', group: 'Oggetti', label: 'Usura degli oggetti' },
-  {
-    key: 'PREVENT_ITEM_DROP',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Oggetti',
-    label: 'Impedisci di lasciare oggetti',
-  },
-  {
-    key: 'DROP_INVENTORY_ON_DEATH',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Oggetti',
-    label: 'Lascia tutto alla morte',
-  },
-  {
-    key: 'PREVENT_ARMOR_TOOLS_DROP',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Oggetti',
-    label: 'Trattieni armatura e attrezzi',
-  },
-  {
-    key: 'PREVENT_ARMOR_MOVE',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Oggetti',
-    label: 'Blocca lo spostamento dell’armatura',
-  },
-  {
-    key: 'REFILL_KIT_ON_KILL',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Oggetti',
-    label: 'Ricarica il kit a ogni uccisione',
-  },
-  { key: 'AUTO_SMELT', kind: 'bool', fallback: '0', group: 'Oggetti', label: 'Fusione automatica' },
-  {
-    key: 'RANDOM_ITEM_COOLDOWN',
-    kind: 'int',
-    fallback: '0',
-    group: 'Oggetti',
-    label: 'Attesa dell’oggetto casuale',
-  },
-  {
-    key: 'ARROW_RETURN_COOLDOWN',
-    kind: 'int',
-    fallback: '0',
-    group: 'Oggetti',
-    label: 'Attesa del ritorno frecce',
-  },
-
-  // --- Blocchi -------------------------------------------------------------
-  { key: 'PLACE_BLOCKS', kind: 'bool', fallback: '0', group: 'Blocchi', label: 'Piazzare blocchi' },
-  { key: 'BREAK_BLOCKS', kind: 'bool', fallback: '0', group: 'Blocchi', label: 'Rompere blocchi' },
-  {
-    key: 'BREAK_MAP_BLOCKS',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Blocchi',
-    label: 'Rompere i blocchi della mappa',
-  },
-  {
-    key: 'DROP_PLAYER_BLOCKS',
-    kind: 'bool',
-    fallback: '1',
-    group: 'Blocchi',
-    label: 'I blocchi dei giocatori cadono',
-  },
-  {
-    key: 'DROP_MAP_BLOCKS',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Blocchi',
-    label: 'I blocchi della mappa cadono',
-  },
-  {
-    key: 'OPEN_MAP_CONTAINERS',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Blocchi',
-    label: 'Aprire i contenitori della mappa',
-  },
-  { key: 'TREECAPITATOR', kind: 'bool', fallback: '0', group: 'Blocchi', label: 'Abbattere l’albero intero' },
-  {
-    key: 'LEAF_APPLE_DROP_CHANCE',
-    kind: 'double',
-    fallback: '0.0',
-    group: 'Blocchi',
-    label: 'Probabilità della mela dalle foglie',
-  },
-
-  // --- Esplosivi -----------------------------------------------------------
-  {
-    key: 'EXPLOSION_GRIEFING',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Esplosivi',
-    label: 'Le esplosioni rompono',
-  },
-  {
-    key: 'EXPLOSION_DESTROY_DROPS',
-    kind: 'bool',
-    fallback: '1',
-    group: 'Esplosivi',
-    label: 'Le esplosioni distruggono gli oggetti a terra',
-  },
-  { key: 'BED_EXPLOSION', kind: 'bool', fallback: '0', group: 'Esplosivi', label: 'Esplosione dei letti' },
-  {
-    key: 'CREEPER_INSTANT_IGNITE',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Esplosivi',
-    label: 'I creeper si innescano subito',
-  },
-  {
-    key: 'CREEPER_EXPLOSION_TIME',
-    kind: 'int',
-    fallback: '0',
-    group: 'Esplosivi',
-    label: 'Tempo di innesco dei creeper',
-  },
-  { key: 'TNT_JUMP', kind: 'bool', fallback: '0', group: 'Esplosivi', label: 'Salto con il TNT' },
-  { key: 'TNT_INSTANT', kind: 'bool', fallback: '0', group: 'Esplosivi', label: 'TNT istantaneo' },
-  {
-    key: 'TNT_EXPLOSION_TIME',
-    kind: 'int',
-    fallback: '0',
-    group: 'Esplosivi',
-    label: 'Tempo di innesco del TNT',
-  },
-  {
-    key: 'FIREBALL_JUMP',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Esplosivi',
-    label: 'Salto con la palla di fuoco',
-  },
-
-  // --- Creature ------------------------------------------------------------
-  { key: 'MOB_TIMER', kind: 'int', fallback: '10', group: 'Creature', label: 'Timer delle creature' },
-  { key: 'MOB_DROPS', kind: 'bool', fallback: '1', group: 'Creature', label: 'Le creature lasciano oggetti' },
-  { key: 'PEARL_GLITCH', kind: 'bool', fallback: '0', group: 'Creature', label: 'Glitch della perla' },
+  { key: 'INSTANT_DEATH', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'FEED_DELAY', kind: 'int', fallback: '0', group: 'Recupero & cure' },
+  { key: 'FEED_AMOUNT', kind: 'int', fallback: '0', group: 'Recupero & cure' },
+  { key: 'HEAL_DELAY', kind: 'int', fallback: '0', group: 'Recupero & cure' },
+  { key: 'HEAL_AMOUNT', kind: 'double', fallback: '0.0', group: 'Recupero & cure' },
+  { key: 'HEALTH_INDICATOR', kind: 'bool', fallback: '1', group: 'Combattimento' },
+  { key: 'ARROW_RETURN_COOLDOWN', kind: 'int', fallback: '0', group: 'Combattimento' },
+  { key: 'TNT_JUMP', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'TNT_INSTANT', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'TNT_EXPLOSION_TIME', kind: 'int', fallback: '0', group: 'Combattimento' },
+  { key: 'FIREBALL_JUMP', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'FALL_DAMAGE', kind: 'bool', fallback: '1', group: 'Combattimento' },
+  { key: 'PEARL_GLITCH', kind: 'bool', fallback: '0', group: 'Combattimento' },
+  { key: 'AUTO_SMELT', kind: 'bool', fallback: '0', group: 'Blocchi & mappa' },
+  { key: 'RANDOM_ITEM_COOLDOWN', kind: 'int', fallback: '0', group: 'Oggetti & inventario' },
+  { key: 'MIN_ROUND', kind: 'int', fallback: '2', group: 'Round & partita' },
+  { key: 'REFILL_KIT_ON_KILL', kind: 'bool', fallback: '0', group: 'Oggetti & inventario' },
+  { key: 'TREECAPITATOR', kind: 'bool', fallback: '0', group: 'Blocchi & mappa' },
+  { key: 'LEAF_APPLE_DROP_CHANCE', kind: 'double', fallback: '0.0', group: 'Oggetti & inventario' },
+  { key: 'OPEN_MAP_CONTAINERS', kind: 'bool', fallback: '0', group: 'Blocchi & mappa' },
+  { key: 'SHIELD_STUN', kind: 'bool', fallback: '1', group: 'Combattimento' },
 ];
 
 /**
- * I sei `MapSetting`.
+ * I sei `MapSetting`, senza gruppo: nel disegno sono un elenco unico.
  *
- * `DOOR_DIRECTION` e' un enum di cui conosciamo SOLO il default: l'elenco
- * completo dei valori non ce l'ha dato nessuno. Finche' non ce l'ha, le scelte
- * offerte sono `UP` piu' quelle gia' presenti nel database — vedi
- * `withObservedOptions`. Inventarne altre sarebbe il modo esatto di impedire
- * il caricamento di una mappa: `Enum.valueOf` lancia, non ripiega.
+ * `DOOR_DIRECTION` porta finalmente tutti i suoi valori: li aveva il mockup,
+ * non il documento da cui ero partito — e avevo fatto bene a non indovinarli,
+ * perche' avrei scritto `UP, DOWN` e mi sarei perso i quattro punti cardinali.
+ *
+ * `withObservedOptions` resta comunque: un valore gia' presente nel database
+ * e' la prova che il plugin lo rilegge, e non offrirlo vorrebbe dire
+ * cancellarlo al primo salvataggio di quella scheda.
  */
 export const MAP_SETTINGS: readonly SettingSpec[] = [
-  { key: 'DOOR', kind: 'bool', fallback: '1', group: 'Porta', label: 'Porta di partenza' },
+  { key: 'DOOR', kind: 'bool', fallback: '1' },
   {
     key: 'DOOR_DIRECTION',
     kind: 'enum',
     fallback: 'UP',
-    options: ['UP'],
-    group: 'Porta',
-    label: 'Direzione di apertura',
+    options: ['UP', 'DOWN', 'NORTH', 'SOUTH', 'EAST', 'WEST'],
   },
-  { key: 'DOOR_DISTANCE', kind: 'int', fallback: '3', group: 'Porta', label: 'Distanza della porta' },
-  { key: 'DOOR_TIME', kind: 'int', fallback: '2', group: 'Porta', label: 'Durata dell’apertura' },
-  {
-    key: 'MOVE_DURING_COOLDOWN',
-    kind: 'bool',
-    fallback: '1',
-    group: 'Partenza',
-    label: 'Muoversi durante il conto alla rovescia',
-  },
-  {
-    key: 'TELEPORT_ON_PLAY',
-    kind: 'bool',
-    fallback: '0',
-    group: 'Partenza',
-    label: 'Teletrasporto all’avvio',
-  },
+  { key: 'DOOR_DISTANCE', kind: 'int', fallback: '3' },
+  { key: 'DOOR_TIME', kind: 'int', fallback: '2' },
+  { key: 'MOVE_DURING_COOLDOWN', kind: 'bool', fallback: '1' },
+  { key: 'TELEPORT_ON_PLAY', kind: 'bool', fallback: '0' },
 ];
 
 export const MODE_SETTING_BY_KEY = new Map(MODE_SETTINGS.map((s) => [s.key, s]));

@@ -17,6 +17,11 @@ export const MODULES = [
   // valutazioni sono nomi di persone e testo libero. Vedi migration 015.
   'duels',
   'duels_feedback',
+  // Le due schermate di configurazione. Il livello 3 su `duels` apriva la
+  // configurazione del gioco senza che la matrice lo dicesse: un permesso che
+  // non compare e' un permesso che nessuno revoca. Vedi migration 018.
+  'duels_modes',
+  'duels_maps',
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number];

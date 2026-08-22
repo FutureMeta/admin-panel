@@ -27,6 +27,7 @@ import {
   MAP_SETTINGS,
   MATCH_CONTEXTS,
   MATCH_TYPES,
+  MODE_SETTING_GROUPS,
   MODE_SETTINGS,
   MODE_TYPES,
   RANKING_TYPES,
@@ -87,6 +88,12 @@ export type MapDetail = {
  */
 export type ConfigVocabulary = {
   modeSettings: SettingSpec[];
+  /**
+   * I sei gruppi NELL ORDINE DICHIARATO, che non e quello in cui compaiono
+   * nella tabella: ricavarlo dai dati darebbe sei sezioni in un ordine che
+   * nessuno ha scelto.
+   */
+  modeSettingGroups: readonly string[];
   mapSettings: SettingSpec[];
   modeTypes: readonly string[];
   rankingTypes: readonly string[];
@@ -236,6 +243,7 @@ export async function vocabulary(my: DuelsMysql): Promise<ConfigVocabulary> {
 
   return {
     modeSettings: [...MODE_SETTINGS],
+    modeSettingGroups: MODE_SETTING_GROUPS,
     mapSettings: withObservedOptions(MAP_SETTINGS, observed),
     modeTypes: MODE_TYPES,
     rankingTypes: RANKING_TYPES,

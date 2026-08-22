@@ -37,6 +37,8 @@ export const MODULE_KEYS = [
   'server',
   'duels',
   'duels_feedback',
+  'duels_modes',
+  'duels_maps',
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -64,6 +66,8 @@ export const MODULE_AREAS: Record<string, string> = {
   statistiche: 'Analisi',
   duels: 'Duels',
   duels_feedback: 'Duels',
+  duels_modes: 'Duels',
+  duels_maps: 'Duels',
   server: 'Sistema',
 };
 

@@ -24,6 +24,7 @@ let my: FakeConfigMysql;
 // verificando.
 let capo: Awaited<ReturnType<typeof loginAs>>;
 let sviluppatore: Awaited<ReturnType<typeof loginAs>>;
+let moderatore: Awaited<ReturnType<typeof loginAs>>;
 
 const SEED = (): Partial<ConfigState> => ({
   modes: [
@@ -40,6 +41,7 @@ beforeAll(async () => {
   t = await startTestApp({ label: 'duels-config' });
   capo = await loginAs(t, await seedUser(t, { email: 'capo-config@metamc.it', roleKey: 'admin' }));
   sviluppatore = await loginAs(t, await seedUser(t, { email: 'dev-config@metamc.it', roleKey: 'dev' }));
+  moderatore = await loginAs(t, await seedUser(t, { email: 'mod-config@metamc.it', roleKey: 'moderatore' }));
 }, 180_000);
 
 afterAll(async () => {
@@ -61,17 +63,61 @@ async function auditRows(action: string): Promise<number> {
 }
 
 describe('chi puo` entrare', () => {
-  it('serve il livello 3 su `duels`, non quello con cui si guardano i grafici', async () => {
-    // E' la distinzione della specifica: 1 apre l'andamento, 3 cambia le
-    // regole con cui si gioca. Un controllo a 1 non fallirebbe mai in modo
-    // visibile — darebbe soltanto a piu' persone il potere di cambiare il
-    // gioco.
-    const actor = sviluppatore;
-
+  it('il livello 1 apre la schermata: guardare non e` cambiare', async () => {
+    // `dev` ha 1 su `duels_modes` (migration 018). Aprire la configurazione e
+    // leggerla e' una domanda diversa da modificarla, e i due test qui sotto
+    // provano che si fermi li'.
     const res = await t.app.inject({
       method: 'GET',
       url: '/api/duels/config/modes',
-      headers: actor.cookieOnly(),
+      headers: sviluppatore.cookieOnly(),
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('ma non basta a SALVARE, e il rifiuto e` un 404 per SEC-31', async () => {
+    // Il livello 2 e' «scrittura». Senza questo controllo, chiunque potesse
+    // aprire la schermata potrebbe cambiare le regole con cui si gioca — e la
+    // schermata non mostrerebbe nemmeno un pulsante che lo lascia intendere,
+    // quindi il difetto lo troverebbe solo chi provasse una richiesta a mano.
+    //
+    // 404 E NON 403 PERCHE' LA ROTTA INDIRIZZA UNA RISORSA PER ID: e' la regola
+    // SEC-31 del pannello, e vale anche qui. Un 403 direbbe «esiste, ma non
+    // puoi», e permetterebbe di sondare quali id esistono.
+    const res = await t.app.inject({
+      method: 'PATCH',
+      url: '/api/duels/config/modes/1',
+      headers: sviluppatore.headers(),
+      payload: { displayName: 'Da un dev' },
+    });
+    expect(res.statusCode, res.body).toBe(404);
+    expect(my.state.modes[0]?.display_name).toBe('BedWars');
+  });
+
+  it('e nemmeno a ELIMINARE, che sta un gradino ancora sopra', async () => {
+    // 3 e' «gestione», ed e' l'unica cosa irreversibile di queste schermate:
+    // una modalita' eliminata porta via a cascata i suoi settings, i suoi kit
+    // e i preferiti dei giocatori.
+    const res = await t.app.inject({
+      method: 'DELETE',
+      url: '/api/duels/config/modes/1',
+      headers: sviluppatore.headers(),
+    });
+    // Stesso motivo di sopra: la rotta porta un id.
+    expect(res.statusCode).toBe(404);
+    expect(my.state.modes).toHaveLength(2);
+  });
+
+  it('chi non ha il modulo non entra affatto, e li` il 403 si vede', async () => {
+    // `moderatore` ha 0 su entrambi: la configurazione del gioco non c'entra
+    // con moderare la comunita'.
+    //
+    // Questa rotta NON indirizza una risorsa per id — e' l'elenco — quindi
+    // SEC-31 non si applica e il rifiuto si vede per quello che e'.
+    const res = await t.app.inject({
+      method: 'GET',
+      url: '/api/duels/config/maps',
+      headers: moderatore.cookieOnly(),
     });
     expect(res.statusCode).toBe(403);
   });

@@ -59,7 +59,14 @@ describe('il vocabolario dei moduli e` uno solo', () => {
     const res = await sql.query<{ key: string }>(
       `SELECT key FROM auth.modules WHERE sort_order BETWEEN 70 AND 80 ORDER BY sort_order`,
     );
-    expect(res.rows.map((r) => r.key)).toEqual(['statistiche', 'duels', 'duels_feedback', 'server']);
+    expect(res.rows.map((r) => r.key)).toEqual([
+      'statistiche',
+      'duels',
+      'duels_feedback',
+      'duels_modes',
+      'duels_maps',
+      'server',
+    ]);
   });
 });
 
@@ -80,6 +87,14 @@ describe('la matrice dei permessi e` quella dichiarata', () => {
     expect(await livelli('duels')).toEqual({ owner: 3, admin: 3, dev: 1, moderatore: 1 });
   });
 
+  it('`duels_modes` e `duels_maps`: si guarda a 1, si salva a 2, si elimina a 3', async () => {
+    // I quattro livelli hanno tutti un significato, ed e' il vocabolario del
+    // pannello applicato a queste schermate. `dev` a 1: guardare com'e'
+    // configurata una modalita' non e' la stessa cosa che cambiarla.
+    expect(await livelli('duels_modes')).toEqual({ owner: 3, admin: 3, dev: 1, moderatore: 0 });
+    expect(await livelli('duels_maps')).toEqual({ owner: 3, admin: 3, dev: 1, moderatore: 0 });
+  });
+
   it('`duels_feedback`: il moderatore legge i commenti, lo sviluppatore no', async () => {
     // E` il verso che separa un dato personale da un aggregato, ed e` la sola
     // ragione per cui i moduli sono due invece di uno.
@@ -98,7 +113,7 @@ describe('la matrice dei permessi e` quella dichiarata', () => {
         WHERE m.key LIKE 'duels%'`,
     );
     expect(res.rows.every((r) => r.level === 3)).toBe(true);
-    expect(res.rows).toHaveLength(2);
+    expect(res.rows).toHaveLength(4);
   });
 });
 

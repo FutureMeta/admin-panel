@@ -86,14 +86,14 @@ export function DuelsModesRoute({ me }: { me: Me }) {
     if (selected === null && rows.length > 0) setSelected(rows[0]?.id ?? null);
   }, [rows, selected]);
 
-  if (!canOpen(me, 'duels', 3)) {
+  if (!canOpen(me, 'duels_modes')) {
     return (
       <>
         <PageHeader title="Duels · Modes" sub="Configurazione delle modalità" />
         <Notice
           tone="err"
           title="Non hai accesso a questa schermata"
-          description="Serve il livello «Gestione» sul modulo Duels: è quello che permette di cambiare le regole con cui si gioca."
+          description="Serve almeno il livello «Lettura» sul modulo Modes."
         />
       </>
     );
@@ -193,6 +193,11 @@ export function DuelsModesRoute({ me }: { me: Me }) {
                 void qc.invalidateQueries({ queryKey: ['duels-config', 'modes'] });
               }}
               onError={setError}
+              // COSA PUO FARE, deciso una volta sola qui: 2 salva, 3 elimina.
+              // Ricalcolarlo dentro il pannello vorrebbe dire due risposte alla
+              // stessa domanda, e la seconda prima o poi diverge.
+              canSave={canOpen(me, 'duels_modes', 2)}
+              canDelete={canOpen(me, 'duels_modes', 3)}
             />
           )
         }
@@ -207,12 +212,16 @@ function ModePanel({
   onSaved,
   onDeleted,
   onError,
+  canSave,
+  canDelete,
 }: {
   id: number;
   vocab: Vocabulary;
   onSaved: () => void;
   onDeleted: () => void;
   onError: (message: string | undefined) => void;
+  canSave: boolean;
+  canDelete: boolean;
 }) {
   const qc = useQueryClient();
   const detail = useQuery({
@@ -304,18 +313,22 @@ function ModePanel({
   if (!saved || !core || !values) return <SkeletonRows rows={6} />;
 
   const changes = coreChanges.length + changedKeys.length;
-  // I gruppi si ricavano dai settings e mantengono l'ordine in cui compaiono
-  // nel registro: e' quello con cui il server li manda, ed e' l'ordine in cui
-  // si leggono.
-  const groups = new Map<string, SettingSpec[]>();
+  // L ORDINE DELLE SEZIONI LO DICE IL SERVER, e non lo si ricava dai dati:
+  // nel disegno «Blocchi & mappa» viene prima di «Oggetti & inventario», mentre
+  // nella tabella compare dopo. Costruendo la mappa scorrendo i settings si
+  // otterrebbero le stesse sei sezioni in un ordine che nessuno ha scelto.
+  const groups = new Map<string, SettingSpec[]>(vocab.modeSettingGroups.map((g) => [g, []]));
   for (const spec of vocab.modeSettings) {
-    const bucket = groups.get(spec.group);
+    // Un setting senza gruppo, o con un gruppo che l elenco non dichiara, non
+    // sparisce: finisce in fondo, in una sezione con il suo nome. Sparire
+    // sarebbe il modo silenzioso di rendere immodificabile un setting.
+    const key = spec.group ?? 'Altri';
+    const bucket = groups.get(key);
     if (bucket) bucket.push(spec);
-    else groups.set(spec.group, [spec]);
+    else groups.set(key, [spec]);
   }
   const query = filter.trim().toLowerCase();
-  const matches = (spec: SettingSpec) =>
-    query === '' || spec.label.toLowerCase().includes(query) || spec.key.toLowerCase().includes(query);
+  const matches = (spec: SettingSpec) => query === '' || spec.key.toLowerCase().includes(query);
 
   const reset = () => {
     setCore({ displayName: saved.mode.displayName, type: saved.mode.type, ranking: saved.mode.ranking });
@@ -326,8 +339,12 @@ function ModePanel({
 
   return (
     <>
+      {/* CHI NON PUO SALVARE NON VEDE LA BARRA. Vedrebbe un pulsante che
+          risponde 403, e su una schermata dove tutto e locale finche non si
+          salva sarebbe anche peggio: le modifiche fatte sembrerebbero in
+          attesa di essere scritte, e non lo sarebbero mai. */}
       <SaveBar
-        changes={invalid.length > 0 ? 0 : changes}
+        changes={canSave && invalid.length === 0 ? changes : 0}
         saving={save.isPending}
         onSave={() => save.mutate()}
         onReset={reset}
@@ -348,12 +365,19 @@ function ModePanel({
         >
           {editingCore ? null : (
             <>
-              <Button size="sm" onClick={() => setEditingCore(true)}>
-                Modifica
-              </Button>
-              <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
-                Elimina
-              </Button>
+              {canSave ? (
+                <Button size="sm" onClick={() => setEditingCore(true)}>
+                  Modifica
+                </Button>
+              ) : null}
+              {/* ELIMINARE STA UN GRADINO SOPRA: e la sola cosa irreversibile
+                  di questa schermata, e chi puo cambiare un valore non per
+                  questo puo portarsi via una riga e le sue cascate. */}
+              {canDelete ? (
+                <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
+                  Elimina
+                </Button>
+              ) : null}
             </>
           )}
         </BlockHeader>

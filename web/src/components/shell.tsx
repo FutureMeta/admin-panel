@@ -38,16 +38,6 @@ type NavItem = {
   area: string;
   icon: string;
   /**
-   * Il livello minimo, quando avere il modulo non basta.
-   *
-   * QUASI TUTTE le voci compaiono a chi ha il modulo, perche' il livello 1 e'
-   * gia' «puoi vedere questa schermata». Modes e Maps no: `duels` a 1 apre i
-   * grafici, a 3 si cambia come si gioca, e sono due domande diverse. Senza
-   * questo campo la voce comparirebbe a chi poi prende un 403 — cioe' un menu
-   * che promette una schermata che non si apre.
-   */
-  minLevel?: 1 | 2 | 3;
-  /**
    * Da chiamare al passaggio del mouse. §8.9
    *
    * Il file dei contorni pesa 108 kB e serve a una schermata sola: scaricarlo
@@ -113,18 +103,24 @@ const NAV: NavItem[] = [
     area: 'Duels',
     icon: ICONS.star,
   },
-  // Le due di configurazione: stesso modulo delle altre due, livello diverso.
+  // Le due di configurazione hanno un MODULO PROPRIO (migration 018), e con
+  // quello la regola torna a essere una sola per tutte le voci: livello 1 vuol
+  // dire «puoi aprirla».
+  //
+  // Per un momento questa struttura ha avuto un campo `minLevel`, che serviva
+  // finché le due schermate vivevano su `duels` a 3. Con i moduli propri non lo
+  // usa più nessuno, ed è stato tolto invece di restare lì come manopola che
+  // non gira: salvare ed eliminare chiedono 2 e 3, ma quello lo decidono le
+  // rotte e la schermata, non il menu.
   {
-    modules: ['duels'],
-    minLevel: 3,
+    modules: ['duels_modes'],
     label: 'Modes',
     to: '/duels/modes',
     area: 'Duels',
     icon: ICONS.cfg,
   },
   {
-    modules: ['duels'],
-    minLevel: 3,
+    modules: ['duels_maps'],
     label: 'Maps',
     to: '/duels/maps',
     area: 'Duels',
@@ -157,7 +153,7 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
   // livelli, e una dipendenza più stretta di ciò che si legge è il modo in cui
   // una voce resta visibile dopo che il permesso è stato tolto.
   const groups = useMemo(() => {
-    const visible = NAV.filter((n) => n.modules.some((m) => canOpen(me, m, n.minLevel ?? 1)));
+    const visible = NAV.filter((n) => n.modules.some((m) => canOpen(me, m)));
     const map = new Map<string, typeof visible>();
     for (const item of visible) {
       const list = map.get(item.area) ?? [];

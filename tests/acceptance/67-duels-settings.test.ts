@@ -108,11 +108,16 @@ describe('il registro dice esattamente quello che dice il plugin', () => {
 
   it('ogni setting sta in uno dei sei gruppi dichiarati', async () => {
     // Un gruppo scritto male produce una settima sezione con una riga sola,
-    // e la riga sparisce da dove chi la cerca andrebbe a cercarla.
+    // e la riga sparisce da dove chi la cerca andrebbe a cercarla. Un gruppo
+    // ASSENTE fa lo stesso, in silenzio: la riga non compare affatto.
     const fuori = MODE_SETTINGS.filter(
-      (s) => !(MODE_SETTING_GROUPS as readonly string[]).includes(s.group),
+      (s) => s.group === undefined || !(MODE_SETTING_GROUPS as readonly string[]).includes(s.group),
     ).map((s) => s.key);
     expect(fuori).toEqual([]);
+  });
+
+  it('i settings di MAPPA non hanno gruppo: nel disegno sono un elenco unico', async () => {
+    expect(MAP_SETTINGS.filter((s) => s.group !== undefined)).toEqual([]);
   });
 
   it('e i gruppi dichiarati sono tutti abitati', async () => {
@@ -215,26 +220,38 @@ describe('riconoscere il default e` cio` che decide se la riga esiste', () => {
   });
 });
 
-describe('gli enum di cui non conosciamo tutti i valori', () => {
-  it('si allargano con quelli GIA` presenti nel database', async () => {
-    // Un valore che una mappa usa gia' e' un valore che il plugin rilegge
-    // senza lanciare: e' una prova, non un'ipotesi.
-    const [found] = withObservedOptions(
-      MAP_SETTINGS.filter((s) => s.key === 'DOOR_DIRECTION'),
-      new Map([['DOOR_DIRECTION', ['DOWN', 'UP']]]),
-    );
-    expect(found?.options).toEqual(['UP', 'DOWN']);
-    expect(found ? settingValueIsValid(found, 'DOWN') : false).toBe(true);
+describe('gli enum si allargano con quello che il database usa gia`', () => {
+  const door = () => MAP_SETTINGS.filter((s) => s.key === 'DOOR_DIRECTION');
+
+  it('`DOOR_DIRECTION` ha tutti i suoi sei valori', async () => {
+    // Per un po' ne conoscevo uno solo e avevo evitato di indovinare gli
+    // altri: avrei scritto `UP, DOWN` e mi sarei perso i quattro punti
+    // cardinali, cioe' avrei tolto quattro scelte esistenti dalla schermata.
+    expect(spec('DOOR_DIRECTION').options).toEqual(['UP', 'DOWN', 'NORTH', 'SOUTH', 'EAST', 'WEST']);
   });
 
-  it('ma non con quello che non ha la forma di una costante', async () => {
+  it('un valore che una mappa usa gia` viene offerto, anche se l`elenco non lo ha', async () => {
+    // E' il caso del plugin piu' nuovo del pannello. Un valore gia' scritto e'
+    // la prova che il plugin lo rilegge senza lanciare, e non offrirlo
+    // vorrebbe dire cancellarlo al primo salvataggio di quella scheda.
+    const [found] = withObservedOptions(door(), new Map([['DOOR_DIRECTION', ['DIAGONAL']]]));
+    expect(found?.options).toContain('DIAGONAL');
+    expect(found ? settingValueIsValid(found, 'DIAGONAL') : false).toBe(true);
+  });
+
+  it('l`elenco dichiarato resta in testa e senza doppioni', async () => {
+    const [found] = withObservedOptions(door(), new Map([['DOOR_DIRECTION', ['DOWN', 'DIAGONAL']]]));
+    expect(found?.options).toEqual(['UP', 'DOWN', 'NORTH', 'SOUTH', 'EAST', 'WEST', 'DIAGONAL']);
+  });
+
+  it('ma non quello che non ha la forma di una costante', async () => {
     // Il valore osservato viene dal database del gioco, che non e' nostro:
-    // arriva come `TEXT` e puo' contenere qualunque cosa.
+    // arriva come `TEXT` senza vincoli e puo' contenere qualunque cosa.
     const [found] = withObservedOptions(
-      MAP_SETTINGS.filter((s) => s.key === 'DOOR_DIRECTION'),
+      door(),
       new Map([['DOOR_DIRECTION', ['down', '', 'DROP TABLE', '1']]]),
     );
-    expect(found?.options).toEqual(['UP']);
+    expect(found?.options).toEqual(['UP', 'DOWN', 'NORTH', 'SOUTH', 'EAST', 'WEST']);
   });
 
   it('e non tocca i settings che non sono enum', async () => {

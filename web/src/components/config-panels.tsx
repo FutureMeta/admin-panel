@@ -67,13 +67,20 @@ export function Picker({
         overflow: 'hidden',
       }}
     >
+      {/* RICERCA E FILTRI SULLA STESSA RIGA, come nel mockup. Erano a capo: la
+          casella di ricerca ha `flex: 1`, e con `flex-wrap: wrap` si prendeva
+          tutta la prima riga spingendo i due filtri sotto. Il risultato era
+          una barra alta il doppio e due schermate che non somigliavano al
+          disegno in un punto che si guarda ogni volta. */}
       <div
         style={{
           display: 'flex',
+          alignItems: 'center',
           gap: 8,
           padding: 12,
           borderBottom: '1px solid var(--bd-subtle)',
-          flexWrap: 'wrap',
+          flexWrap: 'nowrap',
+          minWidth: 0,
         }}
       >
         {children}
@@ -185,7 +192,7 @@ export function SaveBar({
 }
 
 /**
- * Una riga di setting: etichetta, chiave, stato, controllo, ripristino.
+ * Una riga di setting: la costante, il suo stato, il controllo, il ripristino.
  *
  * IL CONTROLLO SEGUE IL TIPO, e il tipo lo dichiara il server. Un interruttore
  * per un booleano, un campo per un numero, un elenco chiuso per un enum: sono
@@ -219,11 +226,20 @@ export function SettingRow({
         background: changed ? 'var(--ac-soft)' : 'transparent',
       }}
     >
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, color: 'var(--tx-primary)' }}>{spec.label}</div>
-        <div className="mono" style={{ fontSize: 10.5, color: 'var(--tx-muted)' }}>
-          {spec.key}
-        </div>
+      {/* IL NOME DELLA COSTANTE E BASTA. Sopra ce n'era anche una traduzione
+          italiana, scritta da me: una seconda verità da tenere allineata a
+          mano, e chi cerca SHIELD_STUN cerca SHIELD_STUN. */}
+      <div
+        className="mono"
+        style={{
+          minWidth: 0,
+          fontSize: 12.5,
+          color: 'var(--tx-primary)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {spec.key}
       </div>
 
       {/* «personalizzato» e non «diverso dal default»: e' la stessa cosa detta
@@ -235,15 +251,11 @@ export function SettingRow({
 
       <div>
         {spec.kind === 'bool' ? (
-          <Toggle
-            on={value === '1'}
-            onToggle={() => onChange(value === '1' ? '0' : '1')}
-            label={spec.label}
-          />
+          <Toggle on={value === '1'} onToggle={() => onChange(value === '1' ? '0' : '1')} label={spec.key} />
         ) : spec.kind === 'enum' ? (
           <select
             className="input"
-            aria-label={spec.label}
+            aria-label={spec.key}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             style={{ width: '100%', height: 30, fontSize: 12.5 }}
@@ -257,7 +269,7 @@ export function SettingRow({
         ) : (
           <input
             className="input"
-            aria-label={spec.label}
+            aria-label={spec.key}
             value={value}
             inputMode="decimal"
             onChange={(e) => onChange(e.target.value)}

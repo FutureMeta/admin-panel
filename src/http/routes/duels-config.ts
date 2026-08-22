@@ -1,9 +1,14 @@
 // Le rotte di Modes e Maps: le uniche del pannello che scrivono nel gioco.
 //
-// PERMESSO `duels` A LIVELLO 3, come dice la specifica. E' il livello piu' alto
-// del modulo: chi guarda i grafici ha 1, chi cambia le regole con cui si gioca
-// ha 3. La schermata non e' l'unica difesa — la voce di menu compare solo a
-// chi ha il livello, ma la voce di menu e' cortesia; il controllo e' qui.
+// DUE MODULI PROPRI, `duels_modes` e `duels_maps`, e tre livelli distinti: 1
+// apre e legge, 2 salva, 3 elimina. Prima bastava `duels` a 3, cioe' un livello
+// alto su un modulo che nella matrice si chiama «Trends»: chi concedeva
+// «Gestione su Trends» stava concedendo di cambiare le regole del gioco, e la
+// matrice non lo diceva da nessuna parte. Un permesso che non compare e' un
+// permesso che nessuno revoca.
+//
+// La voce di menu compare solo a chi ha il livello, ma la voce di menu e'
+// cortesia; il controllo e' qui.
 //
 // NIENTE CACHE. Sono le uniche schermate del modulo in cui si MODIFICA quello
 // che si legge: servire trenta secondi di ritardo vorrebbe dire salvare sopra
@@ -99,10 +104,21 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     return null;
   };
 
-  const guard = (request: FastifyRequest) => requireLevel(actorOf(request), 'duels', 3);
+  // TRE LIVELLI DISTINTI, ed e il vocabolario del pannello applicato a queste
+  // due schermate: 1 apre e legge, 2 salva, 3 elimina. L eliminazione sta un
+  // gradino sopra perche e la sola cosa irreversibile qui dentro — togliere
+  // una modalita porta via a cascata i suoi settings, i suoi kit e i preferiti
+  // dei giocatori che la puntano.
+  const canRead = (request: FastifyRequest, module: 'duels_modes' | 'duels_maps') =>
+    requireLevel(actorOf(request), module, 1);
+  const canWrite = (request: FastifyRequest, module: 'duels_modes' | 'duels_maps') =>
+    requireLevel(actorOf(request), module, 2);
+  const canDelete = (request: FastifyRequest, module: 'duels_modes' | 'duels_maps') =>
+    requireLevel(actorOf(request), module, 3);
 
   const record = async (
     request: FastifyRequest,
+    module: 'duels_modes' | 'duels_maps',
     action: string,
     targetType: string,
     targetId: string,
@@ -119,7 +135,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
       outcome: 'success',
       actor: auditActorOf(actorOf(request)),
       request: auditContextOf(request, requestIps(request)),
-      moduleKey: 'duels',
+      moduleKey: module,
       targetType,
       targetId,
       targetLabel,
@@ -153,14 +169,14 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
   // --- lettura ---------------------------------------------------------------
 
   app.get('/api/duels/config/vocabulary', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
-    guard(request);
+    canRead(request, 'duels_modes');
     const my = gameDb(reply);
     if (!my) return reply;
     return reply.send(await vocabulary(my));
   });
 
   app.get('/api/duels/config/modes', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
-    guard(request);
+    canRead(request, 'duels_modes');
     const my = gameDb(reply);
     if (!my) return reply;
     return reply.send({ modes: await listModes(my) });
@@ -170,7 +186,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     '/api/duels/config/modes/:id',
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
-      guard(request);
+      canRead(request, 'duels_modes');
       const my = gameDb(reply);
       if (!my) return reply;
       const { id } = request.params as { id: number };
@@ -181,7 +197,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
   );
 
   app.get('/api/duels/config/maps', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
-    guard(request);
+    canRead(request, 'duels_maps');
     const my = gameDb(reply);
     if (!my) return reply;
     return reply.send({ maps: await listMaps(my) });
@@ -191,7 +207,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     '/api/duels/config/maps/:id',
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
-      guard(request);
+      canRead(request, 'duels_maps');
       const my = gameDb(reply);
       if (!my) return reply;
       const { id } = request.params as { id: number };
@@ -207,7 +223,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     '/api/duels/config/modes/:id',
     { schema: { params: idParams, body: modeBody }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
-      guard(request);
+      canWrite(request, 'duels_modes');
       const my = gameDb(reply);
       if (!my) return reply;
       const { id } = request.params as { id: number };
@@ -223,6 +239,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
         if (!isNoOp(change)) {
           await record(
             request,
+            'duels_modes',
             AUDIT_ACTIONS.duelsModeUpdated,
             'duels_mode',
             String(id),
@@ -241,14 +258,14 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     '/api/duels/config/modes/:id',
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
-      guard(request);
+      canDelete(request, 'duels_modes');
       const my = gameDb(reply);
       if (!my) return reply;
       const { id } = request.params as { id: number };
 
       try {
         const name = await deleteMode(my, id);
-        await record(request, AUDIT_ACTIONS.duelsModeDeleted, 'duels_mode', String(id), name, {
+        await record(request, 'duels_modes', AUDIT_ACTIONS.duelsModeDeleted, 'duels_mode', String(id), name, {
           cascata: 'settings, kit e preferiti dei giocatori',
         });
         return reply.send({ deleted: name, note: RELOAD_NOTE });
@@ -262,7 +279,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     '/api/duels/config/maps/:id',
     { schema: { params: idParams, body: mapBody }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
-      guard(request);
+      canWrite(request, 'duels_maps');
       const my = gameDb(reply);
       if (!my) return reply;
       const { id } = request.params as { id: number };
@@ -274,6 +291,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
         if (!isNoOp(change)) {
           await record(
             request,
+            'duels_maps',
             AUDIT_ACTIONS.duelsMapUpdated,
             'duels_map',
             String(id),
@@ -292,14 +310,14 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     '/api/duels/config/maps/:id',
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
-      guard(request);
+      canDelete(request, 'duels_maps');
       const my = gameDb(reply);
       if (!my) return reply;
       const { id } = request.params as { id: number };
 
       try {
         const name = await deleteMap(my, id);
-        await record(request, AUDIT_ACTIONS.duelsMapDeleted, 'duels_map', String(id), name, {
+        await record(request, 'duels_maps', AUDIT_ACTIONS.duelsMapDeleted, 'duels_map', String(id), name, {
           cascata: 'modalita`, event type, settings, aree, location e team',
           mondo: 'non toccato',
         });

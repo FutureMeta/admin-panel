@@ -139,12 +139,7 @@ function AppShell() {
           },
         ]
       : []),
-    // LE DUE DI CONFIGURAZIONE GUARDANO IL LIVELLO, come le voci della barra.
-    // Con il solo modulo comparirebbero a chi ha `duels` a 1, cioe' a chi
-    // guarda i grafici: la palette li porterebbe su una schermata che risponde
-    // 403, e una scorciatoia che non funziona e' peggio di una scorciatoia che
-    // non c'e'.
-    ...(canOpen(data, 'duels', 3)
+    ...(canOpen(data, 'duels_modes')
       ? [
           {
             id: 'duels-modes',
@@ -152,6 +147,10 @@ function AppShell() {
             hint: 'configurazione delle modalità',
             run: () => void navigate({ to: '/duels/modes' }),
           },
+        ]
+      : []),
+    ...(canOpen(data, 'duels_maps')
+      ? [
           {
             id: 'duels-maps',
             label: 'Vai a Duels · Maps',
@@ -204,9 +203,19 @@ function AppShell() {
       ] as const
     ).find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Console';
 
-  // Il periodo governa solo le schermate che hanno un periodo. Sono le
-  // stesse che il design elenca: non «Utenti», non «Registro».
-  const showFilters = !pathname.startsWith('/utenti') && !pathname.startsWith('/registro');
+  // Il periodo governa solo le schermate che HANNO un periodo, e l'elenco dice
+  // quali sono invece di dire quali non lo sono.
+  //
+  // ERA UN ELENCO DI ESCLUSIONI — «tutto tranne utenti e registro» — ed è lo
+  // stesso difetto del breadcrumb qui sopra, con la stessa forma: ogni
+  // schermata aggiunta dopo ereditava il selettore senza che nessuno lo
+  // decidesse. Modes e Maps ci sono cadute subito: due schermate di
+  // configurazione con sopra «24h · 7g · 30g», che non governano niente. Un
+  // comando che non fa niente si prova una volta e poi non ci si fida più
+  // nemmeno dove funziona.
+  const showFilters = ['/panoramica', '/dettaglio-modalita', '/duels/trends', '/duels/ratings'].some(
+    (prefix) => pathname.startsWith(prefix),
+  );
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>
@@ -309,19 +318,17 @@ function DuelsRatingsRoute() {
   return <DuelsRatingsPage />;
 }
 
-// LE DUE DI CONFIGURAZIONE CHIEDONO IL LIVELLO, non il modulo. `duels` a 1
-// apre i grafici; a 3 si cambia come si gioca, ed e' un'altra domanda.
 function DuelsModesRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'duels', 3)) return <ForbiddenPage />;
+  if (!canOpen(me.data, 'duels_modes')) return <ForbiddenPage />;
   return <DuelsModesPage me={me.data} />;
 }
 
 function DuelsMapsRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'duels', 3)) return <ForbiddenPage />;
+  if (!canOpen(me.data, 'duels_maps')) return <ForbiddenPage />;
   return <DuelsMapsPage me={me.data} />;
 }
 

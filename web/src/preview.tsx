@@ -49,6 +49,8 @@ const ME: Me = {
     server: 3,
     duels: 3,
     duels_feedback: 3,
+    duels_modes: 3,
+    duels_maps: 3,
   },
   modules: [
     'utenti',

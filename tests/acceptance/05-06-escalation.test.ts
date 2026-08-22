@@ -11,6 +11,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { canGrantLevel, canGrantRole, dominates, grantableRoles } from '#src/authz/dominance.ts';
+import { MODULES } from '#src/authz/modules.ts';
 import { readPermissions } from '#src/authz/store.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import {
@@ -51,9 +52,11 @@ afterAll(async () => {
 });
 
 describe('il seed della matrice regge le proprieta` che i test misurano', () => {
-  it('owner ha 3 su tutti e otto i moduli', async () => {
+  it('owner ha 3 su OGNI modulo, quanti che siano', async () => {
     const p = await readPermissions(db, owner);
-    expect(Object.values(p)).toHaveLength(8);
+    // Contro `MODULES`, non contro un numero: aggiungendo un modulo questo
+    // test deve seguire il vocabolario, non chiedere di essere aggiornato.
+    expect(Object.values(p)).toHaveLength(MODULES.length);
     expect(Object.values(p).every((l) => l === 3)).toBe(true);
   });
 
@@ -79,7 +82,7 @@ describe('il seed della matrice regge le proprieta` che i test misurano', () => 
   it('un utente senza ruoli ha 0 ovunque, e i moduli ci sono comunque tutti', async () => {
     const roleless = await createUser(db, {});
     const p = await readPermissions(db, roleless);
-    expect(Object.keys(p)).toHaveLength(8);
+    expect(Object.keys(p)).toHaveLength(MODULES.length);
     expect(Object.values(p).every((l) => l === 0)).toBe(true);
   });
 });

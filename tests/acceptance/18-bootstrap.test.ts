@@ -11,6 +11,7 @@
 // `invitation` con un `role_id` di sistema esiste legittimamente.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { MODULES } from '#src/authz/modules.ts';
 import { insertInvite } from '#src/invites/service.ts';
 import { sameOriginHeaders, startTestApp, type TestApp } from '#tests/support/app.ts';
 import { connect } from '#tests/support/postgres.ts';
@@ -220,7 +221,7 @@ describe('§17.2 — il primo owner riesce a installare il sistema', () => {
     });
     expect(me.statusCode).toBe(200);
     const identity = me.json() as { modules: string[]; permissions: Record<string, number> };
-    expect(identity.modules).toHaveLength(8);
+    expect(identity.modules).toHaveLength(MODULES.length);
     expect(Object.values(identity.permissions).every((l) => l === 3)).toBe(true);
 
     // 6. l'invito è consumato e legato alla persona giusta

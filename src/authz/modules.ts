@@ -13,6 +13,10 @@ export const MODULES = [
   'impostazioni',
   'statistiche',
   'server',
+  // Modulo Duels. Due chiavi e non una: le partite sono aggregati, le
+  // valutazioni sono nomi di persone e testo libero. Vedi migration 015.
+  'duels',
+  'duels_feedback',
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number];

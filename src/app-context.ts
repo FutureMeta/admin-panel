@@ -20,6 +20,8 @@ import type { Env } from '#src/config/env.ts';
 import { type DerivedKeys, deriveKeys, pepperRing } from '#src/crypto/keys.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { type DuelsIngest, startDuelsIngest } from '#src/duels/keeper.ts';
+import { PgDuelsProvider } from '#src/duels/pg.ts';
+import type { DuelsProvider } from '#src/duels/provider.ts';
 import type { Mailer } from '#src/email/mailer.ts';
 import { AuthzMiddleware } from '#src/http/authz-middleware.ts';
 import type { IndexHtml } from '#src/http/index-html.ts';
@@ -57,6 +59,13 @@ export type AppContext = {
    * nessuna connessione in piu' viene aperta.
    */
   statsIngest: StatsIngest | null;
+  /**
+   * La porta verso i dati dei duels, sul ruolo di sola lettura.
+   *
+   * `null` senza `DATABASE_STATS_URL`, esattamente come `statsDb`: le rotte
+   * rispondono 503 e il resto del pannello non cambia.
+   */
+  duels: DuelsProvider | null;
   /**
    * L'ingestione dei duels. `null` finche' non la si accende con
    * DUELS_INGEST_ENABLED: senza, nessuna connessione al MySQL del gioco viene
@@ -276,6 +285,11 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     : null;
   const statsDb = statsPool ? createKysely(statsPool) : null;
 
+  // La porta dei duels vive sullo STESSO pool di sola lettura delle
+  // statistiche: legge le stesse viste con lo stesso ruolo, e un secondo pool
+  // sarebbe otto connessioni in piu' per rispondere alle stesse domande.
+  const duels: DuelsProvider | null = statsDb ? new PgDuelsProvider(statsDb) : null;
+
   // CLIENT DEDICATO, anche quando l'istanza e' la stessa del pannello.
   //
   // Il documento vuole un'istanza Valkey a parte (`allkeys-lru`, senza
@@ -317,6 +331,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     statsIngest,
     duelsIngest,
     statsDb,
+    duels,
     statsCache,
     cacheRedis,
     // Si accende DOPO `listen()`, in `startStatsWarming`.

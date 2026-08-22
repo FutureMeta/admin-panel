@@ -112,7 +112,7 @@ function romeOffset(at: Date): number {
  * un risultato identico. Ora sono due `formatToParts` su formattatori gia'
  * costruiti, ~12 µs in tutto.
  */
-function romeMidnight(at: Date): Date {
+export function romeMidnight(at: Date): Date {
   const [y, m, d] = ROME_YMD.format(at).split('-').map(Number) as [number, number, number];
   const naive = Date.UTC(y, m - 1, d);
   const first = naive - romeOffset(new Date(naive));
@@ -127,7 +127,7 @@ function romeMidnight(at: Date): Date {
  * entrambi i cambi, quindi sommare giorni li' non puo' mai far scivolare la
  * data. Poi si torna alla mezzanotte del giorno cosi' raggiunto.
  */
-function shiftDays(midnight: Date, days: number): Date {
+export function shiftDays(midnight: Date, days: number): Date {
   const [y, m, d] = ROME_YMD.format(midnight).split('-').map(Number) as [number, number, number];
   return romeMidnight(new Date(Date.UTC(y, m - 1, d + days, 12)));
 }

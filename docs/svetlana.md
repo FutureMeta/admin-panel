@@ -263,11 +263,14 @@ un ambiente con una chiave:
 
 * i due flag beta (`compact-2026-01-12`, `server-side-fallback-2026-07-01`) —
   si tolgono da `ASSISTANT_BETAS` e da `runner.ts` con una riga ciascuno;
-* `strict: true` sugli schemi dei tool. I parametri facoltativi sono espressi
-  come `anyOf: [{type:"string"},{type:"null"}]`, che è JSON Schema valido ma
-  che la modalità `strict` potrebbe non accettare: se succede, si toglie
-  `strict` in fondo a `buildTools()` — la validazione dei parametri resta,
-  perché la fa Zod in `parse` prima di ogni `run`;
+* lo schema dei tool sotto `strict: true`. **Successo il 2026-08-23**: l'API
+  ha rifiutato l'intera richiesta con `For 'integer' type, properties maximum,
+  minimum are not supported` — `z.int()` emette da solo i limiti dell'intero
+  sicuro di JavaScript. Adesso lo schema si normalizza al confine
+  (`normaliseSchema` in `tools.ts`) e i limiti sui valori stanno nel codice dei
+  tool, dove non si possono aggirare. Resta possibile che l'API rifiuti
+  qualche altra parola: l'elenco da allargare è `UNSUPPORTED_BY_STRICT`, e un
+  test lo tiene allineato con quello che gli schemi contengono davvero;
 * il conto in dollari, che usa i prezzi di listino scritti in `config.ts`: la
   fattura la fa il fornitore, e questa è una stima per fermarsi prima di una
   sorpresa.

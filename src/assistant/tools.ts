@@ -162,6 +162,9 @@ function guarded<Input>(
       if (err instanceof UnknownMode) {
         return reply({ ok: false, error: 'sconosciuto', detail: err.message });
       }
+      if (err instanceof BadArgument) {
+        return reply({ ok: false, error: 'argomento_non_valido', detail: err.message });
+      }
       // Il dettaglio resta nei log del pannello. Al modello va una frase che
       // non descrive lo schema del database a chi ha scritto in chat.
       throw err;
@@ -170,6 +173,120 @@ function guarded<Input>(
 }
 
 const rangeSchema = z.enum(RANGES as unknown as [Range, ...Range[]]);
+
+// ---------------------------------------------------------------------------
+// I LIMITI SUI VALORI STANNO NEL CODICE, NON NELLO SCHEMA.
+//
+// Non e' una scelta di stile: `strict: true` accetta un SOTTOINSIEME di JSON
+// Schema, e `minimum`/`maximum` non ne fanno parte. L'API rifiuta l'intera
+// richiesta con
+//
+//     tools.0.custom: For 'integer' type, properties maximum, minimum are
+//     not supported
+//
+// e la chat non risponde affatto — non «risponde male»: non parte. Scoperto al
+// primo messaggio in produzione, il 2026-08-23, perche' nessun test parla con
+// l'API vera.
+//
+// LO SCHEMA RESTA `strict` E GARANTISCE LA FORMA: tipi giusti, nessuna
+// proprieta' in piu', tutte obbligatorie. Il VALORE lo governano queste due
+// funzioni, ed e' un posto migliore di prima: un limite dichiarato in uno
+// schema e' una richiesta al modello, un limite applicato qui e' un fatto.
+// ---------------------------------------------------------------------------
+
+/**
+ * Le parole di JSON Schema che `strict: true` NON accetta.
+ *
+ * NON BASTA NON SCRIVERLE. `z.int()` da solo emette `minimum` e `maximum` con
+ * i limiti dell'intero sicuro di JavaScript — nessuno le ha chieste, e la
+ * richiesta viene rifiutata lo stesso. Lo schema lo genera una libreria di cui
+ * non controlliamo l'uscita, quindi si normalizza al CONFINE: cosi' la
+ * prossima versione di zod che aggiunge una parola non ferma la chat in
+ * produzione.
+ *
+ * E' un elenco di NEGAZIONE, come le altre guardie del progetto: non prova che
+ * lo schema sia valido — quello lo dice solo l'API — impedisce di ripetere
+ * questa classe esatta di errore.
+ */
+export const UNSUPPORTED_BY_STRICT = [
+  'minimum',
+  'maximum',
+  'exclusiveMinimum',
+  'exclusiveMaximum',
+  'minLength',
+  'maxLength',
+  'minItems',
+  'maxItems',
+  'pattern',
+  'format',
+  'multipleOf',
+  // Non porta niente che l'API debba sapere, e ogni parola in piu' in uno
+  // schema `strict` e' un'occasione di essere rifiutati. Toglierlo non puo'
+  // rompere niente.
+  '$schema',
+] as const;
+
+/**
+ * Porta lo schema dentro il sottoinsieme che `strict` accetta.
+ *
+ * Toglie le parole di troppo e aggiunge `required` dove manca: senza
+ * proprieta', zod non lo emette affatto, e uno schema che dichiara
+ * `additionalProperties: false` senza dire cosa e' obbligatorio e' scritto in
+ * un modo diverso da tutti gli altri per nessuna ragione.
+ */
+function normaliseSchema(node: unknown): void {
+  if (node === null || typeof node !== 'object') return;
+  if (Array.isArray(node)) {
+    for (const child of node) normaliseSchema(child);
+    return;
+  }
+  const record = node as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if ((UNSUPPORTED_BY_STRICT as readonly string[]).includes(key)) {
+      delete record[key];
+      continue;
+    }
+    normaliseSchema(record[key]);
+  }
+  if (record.type === 'object' && record.properties && !record.required) {
+    record.required = Object.keys(record.properties as object);
+  }
+}
+
+/** Un intero riportato dentro i limiti. Fuori scala si taglia, non si rifiuta. */
+function clamp(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+/** Una stringa tagliata alla lunghezza massima. */
+function cut(value: string, max: number): string {
+  return value.length <= max ? value : value.slice(0, max);
+}
+
+/**
+ * L'alfabeto delle chiavi di modalita', lo stesso del contratto delle
+ * statistiche.
+ *
+ * Serve QUI perche' la chiave entra in una chiave di cache: una stringa
+ * qualunque costruirebbe voci che nessuno riscaldera' mai. La rotta
+ * `/api/stats/mode` lo impone con un `pattern` nello schema di Fastify; qui
+ * `pattern` non si puo' usare, quindi lo impone il codice.
+ */
+const MODE_KEY = /^[a-z0-9_]{1,32}$/;
+
+/**
+ * Un parametro che lo schema non puo' piu' rifiutare da solo.
+ *
+ * Si lancia e `guarded` la traduce, come per le altre due: cosi' il controllo
+ * sta accanto alla lettura che protegge invece che in un ramo lontano.
+ */
+class BadArgument extends Error {
+  constructor(detail: string) {
+    super(detail);
+    this.name = 'BadArgument';
+  }
+}
 
 // ---------------------------------------------------------------------------
 // I cinque tool, in ORDINE ALFABETICO.
@@ -196,19 +313,19 @@ export function buildTools(context: ToolContext): AssistantTool[] {
           'NON restituisce indirizzi IP, user agent, ne` il prima/dopo di una modifica: per quel dettaglio ' +
           'si apre la schermata Registro attivita`.',
         inputSchema: z.strictObject({
-          action: z.string().max(96).nullable(),
-          moduleKey: z.string().max(32).nullable(),
+          action: z.string().nullable(),
+          moduleKey: z.string().nullable(),
           outcome: z.enum(['success', 'failure', 'denied']).nullable(),
-          actorEmail: z.string().max(120).nullable(),
-          limit: z.int().min(1).max(25).describe('quante voci, dalla piu` recente'),
+          actorEmail: z.string().nullable(),
+          limit: z.int().describe('quante voci, dalla piu` recente. Da 1 a 25'),
         }),
         run: guarded({ name: 'audit_recent', module: 'audit', level: 1 }, context, (input) =>
           readRecentAudit(context.data, {
-            ...(input.action ? { action: input.action } : {}),
-            ...(input.moduleKey ? { moduleKey: input.moduleKey } : {}),
+            ...(input.action ? { action: cut(input.action, 96) } : {}),
+            ...(input.moduleKey ? { moduleKey: cut(input.moduleKey, 32) } : {}),
             ...(input.outcome ? { outcome: input.outcome } : {}),
-            ...(input.actorEmail ? { actorEmail: input.actorEmail } : {}),
-            limit: input.limit,
+            ...(input.actorEmail ? { actorEmail: cut(input.actorEmail, 120) } : {}),
+            limit: clamp(input.limit, 1, 25),
           }),
         ),
       }),
@@ -263,11 +380,19 @@ export function buildTools(context: ToolContext): AssistantTool[] {
           'mancante, perche` il massimo di una modalita` non si ricostruisce dai massimi dei suoi server.',
         inputSchema: z.strictObject({
           range: rangeSchema.describe('il periodo: 24h, 7d, 30d, 90d o 1y'),
-          mode: z.string().max(32).nullable(),
+          mode: z.string().nullable(),
         }),
-        run: guarded({ name: 'network_trend', module: 'statistiche', level: 1 }, context, (input) =>
-          readNetworkTrend(context.data, input.range, input.mode),
-        ),
+        run: guarded({ name: 'network_trend', module: 'statistiche', level: 1 }, context, (input) => {
+          // La chiave entra in una chiave di CACHE, quindi si controlla prima
+          // di leggere: una stringa qualunque costruirebbe voci che nessuno
+          // riscaldera' mai.
+          if (input.mode !== null && !MODE_KEY.test(input.mode)) {
+            throw new BadArgument(
+              'la chiave di una modalita` e` fatta di lettere minuscole, cifre e trattini bassi',
+            );
+          }
+          return readNetworkTrend(context.data, input.range, input.mode);
+        }),
       }),
     },
     {
@@ -282,12 +407,18 @@ export function buildTools(context: ToolContext): AssistantTool[] {
           'ti sta scrivendo puo` agire su quella persona: quando e` falso, non suggerire operazioni su di ' +
           'lei, perche` il pannello le rifiuterebbe.',
         inputSchema: z.strictObject({
-          query: z.string().min(1).max(120).describe('parte del nome o dell`indirizzo email'),
-          limit: z.int().min(1).max(10).describe('quante persone al massimo'),
+          query: z.string().describe('parte del nome o dell`indirizzo email'),
+          limit: z.int().describe('quante persone al massimo. Da 1 a 10'),
         }),
-        run: guarded({ name: 'panel_user_search', module: 'utenti', level: 1 }, context, (input) =>
-          searchPanelUsers(context.data, context.actor.userId, input.query, input.limit),
-        ),
+        run: guarded({ name: 'panel_user_search', module: 'utenti', level: 1 }, context, (input) => {
+          // UNA RICERCA VUOTA NON E' UNA RICERCA: `ILIKE '%%'` restituisce
+          // l'elenco completo dello staff, che finirebbe a un fornitore
+          // esterno al posto di una riga. Prima lo impediva `min(1)` nello
+          // schema; adesso lo impedisce questa riga.
+          const query = cut(input.query.trim(), 120);
+          if (query === '') throw new BadArgument('serve un nome o una parte di indirizzo da cercare');
+          return searchPanelUsers(context.data, context.actor.userId, query, clamp(input.limit, 1, 10));
+        }),
       }),
     },
   ];
@@ -297,6 +428,10 @@ export function buildTools(context: ToolContext): AssistantTool[] {
   // Si applica QUI e non dentro `betaZodTool`, che non lo espone.
   for (const entry of tools) {
     (entry.tool as { strict?: boolean }).strict = true;
+    // Dopo `strict`, e non prima: le due cose vanno insieme. `strict` chiede
+    // uno schema dentro un sottoinsieme di JSON Schema, e questa riga e' cio'
+    // che ce lo tiene qualunque cosa generi la libreria.
+    normaliseSchema((entry.tool as { input_schema?: unknown }).input_schema);
   }
 
   return sealWrites(tools);

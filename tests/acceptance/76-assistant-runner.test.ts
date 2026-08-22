@@ -14,6 +14,7 @@ import { MAX_ITERATIONS } from '#src/assistant/config.ts';
 import { SYSTEM_PROMPT } from '#src/assistant/prompt.ts';
 import type { AssistantData } from '#src/assistant/reader.ts';
 import { type AssistantEvent, type RunResult, runAssistant } from '#src/assistant/runner.ts';
+import { UNSUPPORTED_BY_STRICT } from '#src/assistant/tools.ts';
 import type { AuthzContext } from '#src/authz/context.ts';
 import { type Level, MODULES, type ModuleKey } from '#src/authz/modules.ts';
 import { StatsCache } from '#src/stats/cache.ts';
@@ -151,6 +152,40 @@ describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
       const required = [...((schema.required ?? []) as string[])].sort();
       expect(required).toEqual(declared);
     }
+  });
+
+  it('e nessuno schema usa parole che `strict` non accetta', async () => {
+    // IL 400 CHE HA FERMATO IL PRIMO MESSAGGIO IN PRODUZIONE, il 2026-08-23:
+    //
+    //   tools.0.custom: For 'integer' type, properties maximum, minimum are
+    //   not supported
+    //
+    // `strict: true` accetta un SOTTOINSIEME di JSON Schema. Un vincolo di
+    // valore dentro lo schema non rende la richiesta piu' severa: la fa
+    // rifiutare intera, e la chat non parte affatto. I limiti stanno nel
+    // codice dei tool, dove per giunta non si possono aggirare.
+    //
+    // L'elenco e' di NEGAZIONE, come le altre guardie del progetto: non prova
+    // che lo schema sia valido — quello lo dice solo l'API — impedisce di
+    // ripetere questa classe esatta di errore.
+    const { capture } = await run([{ text: 'ciao' }]);
+    const tools = capture.params?.tools as Array<Record<string, unknown>>;
+
+    const trovate: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (node === null || typeof node !== 'object') return;
+      if (Array.isArray(node)) {
+        for (const [i, child] of node.entries()) walk(child, `${path}[${i}]`);
+        return;
+      }
+      for (const [key, value] of Object.entries(node)) {
+        if ((UNSUPPORTED_BY_STRICT as readonly string[]).includes(key)) trovate.push(`${path}.${key}`);
+        walk(value, `${path}.${key}`);
+      }
+    };
+    for (const tool of tools) walk(tool.input_schema, String(tool.name));
+
+    expect(trovate).toEqual([]);
   });
 
   it('modello, pensiero, profondita` e ripiego sono quelli decisi', async () => {

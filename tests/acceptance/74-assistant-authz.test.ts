@@ -59,6 +59,12 @@ beforeAll(async () => {
        VALUES ('user.banned', 'success', $1, 'utenti', 'una riga che non si deve vedere')`,
       [VITTIMA],
     );
+    // Trenta righe in piu': servono a vedere il tetto mordere. Con una sola,
+    // «al massimo venticinque» e «una» sono indistinguibili.
+    await owner.query(
+      `INSERT INTO audit.audit_log (action, outcome, module_key)
+       SELECT 'auth.login.success', 'success', 'audit' FROM generate_series(1, 30)`,
+    );
   } finally {
     await owner.end();
   }
@@ -195,11 +201,14 @@ describe('con il permesso, il dato esce', () => {
   });
 
   it('chi ha `audit` legge il registro, senza indirizzi IP', async () => {
+    // Filtrato per attore: il registro porta anche trenta righe di
+    // riempimento, e cercare proprio quella e' anche il modo di provare il
+    // filtro.
     const { parsed, raw } = await callTool(actorWith({ audit: 1 }), 'audit_recent', {
       action: null,
       moduleKey: null,
       outcome: null,
-      actorEmail: null,
+      actorEmail: VITTIMA,
       limit: 10,
     });
     expect(parsed.ok).toBe(true);
@@ -211,6 +220,58 @@ describe('con il permesso, il dato esce', () => {
     expect(raw).not.toContain('actor_ip');
     expect(raw).not.toContain('userAgent');
     expect(raw).not.toContain('socketIp');
+  });
+});
+
+describe('i limiti sui valori li applica il codice, non lo schema', () => {
+  // `strict: true` non accetta `minimum`/`maximum` — l'API rifiuta l'intera
+  // richiesta, e la chat non parte. I limiti sono quindi scesi nel corpo dei
+  // tool: e' un posto migliore, perche' li' non si possono aggirare.
+
+  it('un `limit` fuori scala si taglia, non si rifiuta', async () => {
+    const { parsed } = await callTool(actorWith({ audit: 1 }), 'audit_recent', {
+      action: null,
+      moduleKey: null,
+      outcome: null,
+      actorEmail: null,
+      limit: 999,
+    });
+    expect(parsed.ok).toBe(true);
+    expect((parsed.data as unknown[]).length).toBe(25);
+  });
+
+  it('e uno sotto il minimo pure', async () => {
+    const { parsed } = await callTool(actorWith({ audit: 1 }), 'audit_recent', {
+      action: null,
+      moduleKey: null,
+      outcome: null,
+      actorEmail: null,
+      limit: 0,
+    });
+    expect((parsed.data as unknown[]).length).toBe(1);
+  });
+
+  it('una ricerca vuota non e` una ricerca', async () => {
+    // `ILIKE '%%'` restituirebbe l'elenco completo dello staff, che finirebbe
+    // a un fornitore esterno al posto di una riga. Prima lo impediva `min(1)`
+    // nello schema.
+    const { parsed, raw } = await callTool(actorWith({ utenti: 1 }), 'panel_user_search', {
+      query: '   ',
+      limit: 5,
+    });
+    expect(parsed.error).toBe('argomento_non_valido');
+    expect(raw).not.toContain(VITTIMA);
+  });
+
+  it('una chiave di modalita` inventata non costruisce una chiave di cache', async () => {
+    const { parsed } = await callTool(actorWith({ statistiche: 1 }), 'network_trend', {
+      range: '24h',
+      mode: 'Bed Wars!!',
+    });
+    // Il controllo viene PRIMA della lettura: infatti la risposta non e'
+    // «sorgente non configurata», che sarebbe l'esito di questa suite se si
+    // fosse arrivati a leggere.
+    expect(parsed.error).toBe('argomento_non_valido');
   });
 });
 

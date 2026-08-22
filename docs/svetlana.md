@@ -253,8 +253,26 @@ test lo pinna.
 | «la sorgente … non risulta configurata» | manca `DATABASE_ASSISTANT_URL` o `DATABASE_STATS_URL` |
 | «non ha accesso al modulo …» | è un permesso mancante, non un guasto: si concede nella matrice |
 | la risposta arriva tutta insieme dopo minuti | la rotta non sta passando dal blocco `location /api/stream` di nginx |
-| 400 dall'API su ogni messaggio | il flag beta `compact-2026-01-12` o `server-side-fallback-2026-07-01`: si tolgono in `src/assistant/runner.ts` |
+| 400 dall'API su ogni messaggio | uno dei tre parametri che nessun test può verificare davvero: il flag beta `compact-2026-01-12`, `server-side-fallback-2026-07-01`, o `strict: true` sugli schemi. Vedi sotto |
 | `cache_read` fermo a zero | qualcosa nel prefisso cambia a ogni messaggio. Vedi §6 |
+
+**Quello che i test non possono provare.** Nessun test parla con l'API: il
+client è finto, e ciò che si verifica è la *richiesta che costruiamo*, contro
+il contratto documentato. Tre cose si scoprono solo alla prima domanda vera in
+un ambiente con una chiave:
+
+* i due flag beta (`compact-2026-01-12`, `server-side-fallback-2026-07-01`) —
+  si tolgono da `ASSISTANT_BETAS` e da `runner.ts` con una riga ciascuno;
+* `strict: true` sugli schemi dei tool. I parametri facoltativi sono espressi
+  come `anyOf: [{type:"string"},{type:"null"}]`, che è JSON Schema valido ma
+  che la modalità `strict` potrebbe non accettare: se succede, si toglie
+  `strict` in fondo a `buildTools()` — la validazione dei parametri resta,
+  perché la fa Zod in `parse` prima di ogni `run`;
+* il conto in dollari, che usa i prezzi di listino scritti in `config.ts`: la
+  fattura la fa il fornitore, e questa è una stima per fermarsi prima di una
+  sorpresa.
+
+Il primo messaggio dopo un rilascio va quindi guardato, non dato per buono.
 
 ---
 

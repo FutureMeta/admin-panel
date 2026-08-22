@@ -26,7 +26,14 @@
 
 import { type RawBuilder, sql } from 'kysely';
 import type { Database } from '#src/db/pool.ts';
-import { BATCH, ingestMatchBatch, ingestRatingBatch, syncCatalogs, watermarkOf } from './ingest.ts';
+import {
+  BATCH,
+  DEFAULT_SOURCE_TZ,
+  ingestMatchBatch,
+  ingestRatingBatch,
+  syncCatalogs,
+  watermarkOf,
+} from './ingest.ts';
 import type { DuelsMysql } from './mysql.ts';
 
 /** Un lotto appena finito, per chi vuole stamparlo mentre scorre. */
@@ -93,14 +100,11 @@ async function sourceSpan(my: DuelsMysql, table: string): Promise<{ first: strin
   );
   const span = rows[0];
   if (!span?.first || !span.last) return null;
-  // La 'Z' non e' un vezzo. Le date arrivano come STRINGA — la connessione ha
-  // `dateStrings` e `timezone: 'Z'`, quindi quella stringa e' ora UTC senza
-  // dirlo — e PostgreSQL, se la riceve nuda, la interpreta nel fuso della
-  // SESSIONE. Da Roma il primo marzo alle 00:30 diventerebbe il 28 febbraio,
-  // e il controllo cercherebbe la partizione del mese sbagliato: mancante
-  // quella giusta, si importerebbe lo stesso e si morirebbe a meta'. E' la
-  // stessa ragione per cui l'ingestione scrive `slice(0, 13) + ':00:00Z'`.
-  return { first: `${span.first}Z`, last: `${span.last}Z` };
+  // Si restituisce l'ORA DI PARETE, nuda: la converte chi la usa, con il fuso
+  // della sorgente. Appiccicarci una 'Z' qui — come faceva questa riga —
+  // significava dichiararla UTC, che e' il difetto che ha spostato tutto di
+  // due ore.
+  return { first: span.first, last: span.last };
 }
 
 /**
@@ -116,12 +120,16 @@ export async function missingPartitions(
   table: string,
   first: string,
   last: string,
+  tz: string = DEFAULT_SOURCE_TZ,
 ): Promise<string[]> {
   const res = await sql<{ month: string }>`
     SELECT to_char(m, 'YYYY_MM') AS month
+      -- Le due date sono ORE DI PARETE del server di gioco: si convertono con
+      -- il suo fuso e poi si riportano a UTC, che e' il fuso in cui i nomi
+      -- delle partizioni sono stati generati.
       FROM generate_series(
-             date_trunc('month', ${first}::timestamptz AT TIME ZONE 'UTC'),
-             date_trunc('month', ${last}::timestamptz AT TIME ZONE 'UTC'),
+             date_trunc('month', (${first}::timestamp AT TIME ZONE ${tz}) AT TIME ZONE 'UTC'),
+             date_trunc('month', (${last}::timestamp AT TIME ZONE ${tz}) AT TIME ZONE 'UTC'),
              interval '1 month') g(m)
      WHERE to_regclass('stats.' || quote_ident(${table} || '_' || to_char(m, 'YYYY_MM'))) IS NULL
      ORDER BY 1
@@ -155,20 +163,21 @@ async function countHere(db: Database, query: RawBuilder<{ n: string }>): Promis
 export async function runDuelsBackfill(
   db: Database,
   my: DuelsMysql,
-  opts: { onProgress?: (p: BackfillProgress) => void } = {},
+  opts: { onProgress?: (p: BackfillProgress) => void; tz?: string } = {},
 ): Promise<BackfillReport> {
   const started = Date.now();
   const onProgress = opts.onProgress ?? (() => undefined);
+  const tz = opts.tz ?? DEFAULT_SOURCE_TZ;
 
   // 1. Le partizioni, PRIMA di leggere una riga.
   const matchSpan = await sourceSpan(my, 'duels_match_statistics');
   if (matchSpan) {
-    const gaps = await missingPartitions(db, 'duels_match_hour', matchSpan.first, matchSpan.last);
+    const gaps = await missingPartitions(db, 'duels_match_hour', matchSpan.first, matchSpan.last, tz);
     if (gaps.length > 0) throw new PartitionsMissing('duels_match_hour', gaps);
   }
   const ratingSpan = await sourceSpan(my, 'duels_match_ratings');
   if (ratingSpan) {
-    const gaps = await missingPartitions(db, 'duels_rating', ratingSpan.first, ratingSpan.last);
+    const gaps = await missingPartitions(db, 'duels_rating', ratingSpan.first, ratingSpan.last, tz);
     if (gaps.length > 0) throw new PartitionsMissing('duels_rating', gaps);
   }
 
@@ -181,7 +190,7 @@ export async function runDuelsBackfill(
   let matches = 0;
   for (let batch = 1; ; batch += 1) {
     const at = Date.now();
-    const done = await ingestMatchBatch(db, my, matchAt);
+    const done = await ingestMatchBatch(db, my, matchAt, tz);
     matches += done.read;
     matchAt = done.lastId;
     if (done.read > 0) {
@@ -204,7 +213,7 @@ export async function runDuelsBackfill(
   let discarded = 0;
   for (let batch = 1; ; batch += 1) {
     const at = Date.now();
-    const done = await ingestRatingBatch(db, my, ratingAt);
+    const done = await ingestRatingBatch(db, my, ratingAt, tz);
     ratings += done.read;
     discarded += done.discarded;
     ratingAt = done.lastId;

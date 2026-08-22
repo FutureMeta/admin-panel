@@ -6,7 +6,7 @@
 // posto solo evita che le tre schermate divergano di due pixel alla volta.
 
 import type { ReactNode } from 'react';
-import { ICONS, Icon } from './ui.tsx';
+import { Button, EmptyState, ICONS, Icon, Notice, SkeletonRows } from './ui.tsx';
 
 export function PageHeader({ title, sub, action }: { title: string; sub: string; action?: ReactNode }) {
   return (
@@ -338,4 +338,107 @@ export function lastSeenLabel(value: string | null): string {
   if (it === today) return `oggi, ${time}`;
   if (it === yesterday) return `ieri, ${time}`;
   return `${it}, ${time}`;
+}
+
+/**
+ * Una freccia del piede. Spenta quando non c'è dove andare, non nascosta: la
+ * posizione del controllo non deve saltare.
+ *
+ * NASCE NEL REGISTRO ATTIVITÀ e adesso vive qui. Utenti aveva le stesse due
+ * frecce ridisegnate a mano come `<span aria-hidden>` — stessa geometria,
+ * stessi token, e **nessun click possibile**: due controlli che sembravano
+ * uguali, uno funzionante e uno finto.
+ */
+export function PageArrow({
+  glyph,
+  label,
+  disabled,
+  onClick,
+}: {
+  glyph: string;
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      style={{
+        width: 26,
+        height: 26,
+        border: '1px solid var(--bd-subtle)',
+        borderRadius: 'var(--r-sm)',
+        background: 'transparent',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: disabled ? 'var(--tx-disabled)' : 'var(--tx-secondary)',
+        cursor: disabled ? 'default' : 'pointer',
+        font: 'inherit',
+        lineHeight: 1,
+      }}
+    >
+      {glyph}
+    </button>
+  );
+}
+
+/**
+ * I QUATTRO STATI di una tabella, in un posto solo: caricamento, errore,
+ * vuoto, dati.
+ *
+ * Ogni schermata li riscriveva. Non erano ancora divergenti nella sostanza, ma
+ * lo erano già nella forma — chi mostrava un riquadro d'errore con «Riprova» e
+ * chi una riga di testo grigio, chi il ritorno a capo orizzontale e chi no — e
+ * il quarto stato è quello che si dimentica: una tabella senza stato vuoto
+ * disegna un'intestazione e basta, che si legge come «sta ancora caricando».
+ *
+ * La tabella vera la disegna chi chiama, perché le colonne sono sue. Questo
+ * componente possiede solo la macchina a stati e il ritorno a capo.
+ */
+export function TableStates({
+  pending,
+  error,
+  empty,
+  errorTitle,
+  emptyTitle,
+  emptyDescription,
+  onRetry,
+  rows = 10,
+  children,
+}: {
+  pending: boolean;
+  error: boolean;
+  empty: boolean;
+  errorTitle: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  onRetry: () => void;
+  rows?: number;
+  children: ReactNode;
+}) {
+  if (pending) return <SkeletonRows rows={rows} />;
+  if (error) {
+    return (
+      <div style={{ padding: 16 }}>
+        <Notice
+          tone="err"
+          title={errorTitle}
+          action={
+            <Button size="sm" onClick={onRetry}>
+              Riprova
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+  if (empty) return <EmptyState title={emptyTitle} description={emptyDescription} />;
+  // Il ritorno a capo orizzontale sta QUI e non nelle singole schermate: una
+  // tabella che sfora e non scorre taglia le colonne di destra su uno schermo
+  // stretto, e non c'è modo di accorgersene su uno largo.
+  return <div style={{ overflowX: 'auto' }}>{children}</div>;
 }

@@ -19,8 +19,17 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { FilterSelect, PageHeader, Panel, PanelBar, PanelFooter, SearchBox } from '../components/page.tsx';
-import { Avatar, Badge, Banner, Button, EmptyState, SkeletonRows } from '../components/ui.tsx';
+import {
+  FilterSelect,
+  PageArrow,
+  PageHeader,
+  Panel,
+  PanelBar,
+  PanelFooter,
+  SearchBox,
+  TableStates,
+} from '../components/page.tsx';
+import { Avatar, Badge } from '../components/ui.tsx';
 import { type AuditEntry, type AuditPage, api } from '../lib/api.ts';
 
 /**
@@ -146,50 +155,37 @@ export function AuditPage_() {
           />
         </PanelBar>
 
-        {query.isPending ? (
-          <SkeletonRows rows={10} />
-        ) : query.isError ? (
-          <div style={{ padding: 16 }}>
-            <Banner
-              tone="err"
-              title="Non è stato possibile caricare il registro"
-              action={
-                <Button size="sm" onClick={() => void query.refetch()}>
-                  Riprova
-                </Button>
-              }
-            />
-          </div>
-        ) : entries.length === 0 ? (
-          <EmptyState
-            title="Nessuna voce"
-            description="Con questi filtri il registro è vuoto. Non significa che non sia successo nulla: prova ad allargare."
-          />
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table className="table" style={{ borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: 96 }}>Ora</th>
-                  <th style={{ width: 200 }}>Attore</th>
-                  <th>Azione</th>
-                  <th style={{ width: 220 }}>Oggetto</th>
-                  <th style={{ width: 44 }} />
-                </tr>
-              </thead>
-              <tbody>
-                {entries.map((entry) => (
-                  <AuditRow
-                    key={entry.id}
-                    entry={entry}
-                    expanded={expanded === entry.id}
-                    onToggle={() => setExpanded(expanded === entry.id ? undefined : entry.id)}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <TableStates
+          pending={query.isPending}
+          error={query.isError}
+          empty={entries.length === 0}
+          errorTitle="Non è stato possibile caricare il registro"
+          emptyTitle="Nessuna voce"
+          emptyDescription="Con questi filtri il registro è vuoto. Non significa che non sia successo nulla: prova ad allargare."
+          onRetry={() => void query.refetch()}
+        >
+          <table className="table" style={{ borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={{ width: 96 }}>Ora</th>
+                <th style={{ width: 200 }}>Attore</th>
+                <th>Azione</th>
+                <th style={{ width: 220 }}>Oggetto</th>
+                <th style={{ width: 44 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <AuditRow
+                  key={entry.id}
+                  entry={entry}
+                  expanded={expanded === entry.id}
+                  onToggle={() => setExpanded(expanded === entry.id ? undefined : entry.id)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </TableStates>
 
         <PanelFooter>
           <span>{entries.length === 0 ? 'Nessuna azione' : `${first}–${last} azioni`}</span>
@@ -388,44 +384,6 @@ function AuditRow({
         </tr>
       ) : null}
     </>
-  );
-}
-
-/** Una freccia del piede. Spenta quando non c'e' dove andare, non nascosta: la posizione del controllo non deve saltare. */
-function PageArrow({
-  glyph,
-  label,
-  disabled,
-  onClick,
-}: {
-  glyph: string;
-  label: string;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      style={{
-        width: 26,
-        height: 26,
-        border: '1px solid var(--bd-subtle)',
-        borderRadius: 'var(--r-sm)',
-        background: 'transparent',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: disabled ? 'var(--tx-disabled)' : 'var(--tx-secondary)',
-        cursor: disabled ? 'default' : 'pointer',
-        font: 'inherit',
-        lineHeight: 1,
-      }}
-    >
-      {glyph}
-    </button>
   );
 }
 

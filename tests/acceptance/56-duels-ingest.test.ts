@@ -16,7 +16,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
-import { runDuelsIngest } from '#src/duels/ingest.ts';
+import { DEFAULT_SOURCE_TZ, runDuelsIngest } from '#src/duels/ingest.ts';
 import {
   createExecutionCap,
   type DuelsMysql,
@@ -159,9 +159,14 @@ describe('le partite si contano per ora, e non si contano due volte', () => {
       `SELECT to_char(bucket_at AT TIME ZONE 'UTC', 'HH24:MI') AS ora, matches
          FROM stats.duels_match_hour ORDER BY bucket_at, mode_id`,
     );
+    // 10:05 e 11:02 sono ORE DI PARETE del server di gioco. Ad agosto Roma e'
+    // due ore avanti su UTC, quindi i bucket cadono alle 08:00 e alle 09:00
+    // UTC. Trattare quelle stringhe come UTC — che e' cio' che questo file
+    // faceva — spostava tutto due ore avanti, e la heatmap mostrava vuoto
+    // alle sette invece che alle cinque.
     expect(rows.rows).toEqual([
-      { ora: '10:00', matches: 2 },
-      { ora: '11:00', matches: 1 },
+      { ora: '08:00', matches: 2 },
+      { ora: '09:00', matches: 1 },
     ]);
   });
 
@@ -192,7 +197,7 @@ describe('le partite si contano per ora, e non si contano due volte', () => {
     expect(
       await one<number>(
         `SELECT matches FROM stats.duels_match_hour
-          WHERE bucket_at = '2026-08-20 10:00:00+00' AND mode_id = 1`,
+          WHERE bucket_at = '2026-08-20 08:00:00+00' AND mode_id = 1`,
       ),
     ).toBe(3);
   });
@@ -228,7 +233,7 @@ describe('il budget ferma il giro e lo dichiara', () => {
       mode_id: 1,
       map_id: 10,
     }));
-    const res = await runDuelsIngest(db, fakeMysql({ modes: MODES, matches: many }), 0);
+    const res = await runDuelsIngest(db, fakeMysql({ modes: MODES, matches: many }), DEFAULT_SOURCE_TZ, 0);
 
     expect(res.behind).toBe(true);
     expect(res.matches).toBe(0);
@@ -460,5 +465,59 @@ describe('cosa manca alla sorgente si chiede una volta, all`avvio', () => {
   it('il maiuscolo di MariaDB non conta come una colonna diversa', async () => {
     const urlate = TUTTE.map((x) => ({ t: x.t.toUpperCase(), c: x.c.toUpperCase() }));
     expect(await missingSourceColumns(fakeMysql({ columns: urlate }))).toEqual([]);
+  });
+});
+
+describe('le date della sorgente sono ore di PARETE, non istanti UTC', () => {
+  /** Un'ora locale sul server di gioco, con la modalita' gia' nel catalogo. */
+  async function bucketOf(localAt: string, tz = DEFAULT_SOURCE_TZ): Promise<string | undefined> {
+    await sql.query(`DELETE FROM stats.duels_match_hour`);
+    await sql.query(`UPDATE stats.duels_ingest_state SET last_id = 0 WHERE source = 'match'`);
+    await runDuelsIngest(
+      db,
+      fakeMysql({
+        modes: MODES,
+        matches: [{ id: 1, created_at: localAt, type: 'DUEL', context: 'NORMAL', mode_id: 1, map_id: 10 }],
+      }),
+      tz,
+    );
+    const res = await sql.query<{ at: string }>(
+      `SELECT to_char(bucket_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI') AS at
+         FROM stats.duels_match_hour`,
+    );
+    return res.rows[0]?.at;
+  }
+
+  it('d`estate Roma e` due ore avanti', async () => {
+    // IL DIFETTO CHE HA PRODOTTO QUESTO TEST: il pannello mostrava le partite
+    // due ore avanti rispetto a quello vecchio, e la heatmap risultava vuota
+    // alle sette invece che alle cinque.
+    expect(await bucketOf('2026-08-20 05:30:00')).toBe('2026-08-20 03:00');
+  });
+
+  it('d`inverno e` UN`ORA, e questo prova che e` un FUSO e non un offset', async () => {
+    // Con un offset costante di due ore, gennaio sbaglierebbe di un'ora per
+    // tutto l'inverno — e sbaglierebbe in silenzio, perche' un'ora di
+    // differenza su un grafico non si vede finche' non la si cerca.
+    expect(await bucketOf('2026-01-15 05:30:00')).toBe('2026-01-15 04:00');
+  });
+
+  it('una sorgente su UTC non si sposta affatto', async () => {
+    // Il verso opposto: se la conversione fosse cablata su Roma, un server di
+    // gioco spostato su UTC continuerebbe a essere corretto di due ore.
+    expect(await bucketOf('2026-08-20 05:30:00', 'UTC')).toBe('2026-08-20 05:00');
+  });
+
+  it('anche le valutazioni si convertono, non solo le partite', async () => {
+    await sql.query(`DELETE FROM stats.duels_rating_day; DELETE FROM stats.duels_rating;`);
+    await sql.query(`UPDATE stats.duels_ingest_state SET last_id = 0 WHERE source = 'rating'`);
+    await runDuelsIngest(
+      db,
+      fakeMysql({ modes: MODES, ratings: [{ ...RATINGS[0], created_at: '2026-08-20 05:30:00' }] }),
+    );
+
+    expect(
+      await one<string>(`SELECT to_char(created_at AT TIME ZONE 'UTC', 'HH24:MI') FROM stats.duels_rating`),
+    ).toBe('03:30');
   });
 });

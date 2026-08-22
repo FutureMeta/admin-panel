@@ -351,3 +351,21 @@ export const DUELS_CLOSED_RANGES: readonly Range[] = ['7d', '30d', '90d', '1y'] 
 
 /** Il periodo vivo: l'unico la cui finestra si sposta fra un ciclo e l'altro. */
 export const DUELS_LIVE_RANGE: Range = '24h';
+
+/**
+ * Quanto comprimere i byte di un periodo, e lo decide IL PERIODO.
+ *
+ * La compressione forte costa venti volte tanto e si ripaga solo se quei byte
+ * vengono serviti molte volte prima di essere rifatti. La fetta viva si rifa'
+ * ogni trenta secondi e viene letta due o tre volte: q11 la' sarebbe pagata e
+ * buttata. I periodi chiusi si costruiscono una volta e si servono per ore.
+ *
+ * STA QUI perche' era deciso in TRE posti che si contraddicevano: la rotta
+ * scriveva q11 per ogni chiave, il giro della fetta viva q5, e il giro dei
+ * periodi chiusi q11 per le due chiavi globali ma q5 per le modalita' calde —
+ * smentendo il proprio stesso commento. La stessa chiave finiva in cache con
+ * qualita' diverse a seconda di chi l'aveva scritta per ultimo.
+ */
+export function duelsQuality(range: Range): 5 | 11 {
+  return range === DUELS_LIVE_RANGE ? 5 : 11;
+}

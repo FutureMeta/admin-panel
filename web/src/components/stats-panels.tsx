@@ -16,6 +16,7 @@ import type React from 'react';
 import { gaps, niceScale, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
+import { numberFmt, shareLabel } from '../lib/format.ts';
 import { axisLabel } from '../lib/when.ts';
 import { CHART } from './chart-frame.tsx';
 import { HeatGrid, HeatLegend } from './heat-grid.tsx';
@@ -75,7 +76,9 @@ const ROME = new Intl.DateTimeFormat('it-IT', {
   minute: '2-digit',
 });
 
-export const numberFmt = new Intl.NumberFormat('it-IT');
+// Il formattatore vive in `lib/format.ts`: ce n'e' uno solo per il pannello.
+// Si ri-esporta perche' mezza interfaccia lo chiede a questo modulo.
+export { numberFmt } from '../lib/format.ts';
 
 /** Per la data di inizio della raccolta: giorno e mese bastano. */
 export const dayFmt = new Intl.DateTimeFormat('it-IT', {
@@ -436,8 +439,8 @@ export function Donut({
                   e,
                   labelOf(p.key),
                   `${numberFmt.format(Math.round(p.value))} giocatori · ${
-                    total > 0 ? ((p.value / total) * 100).toFixed(1).replace('.', ',') : '—'
-                  }%`,
+                    total > 0 ? shareLabel((p.value / total) * 100) : '—'
+                  }`,
                 )
               }
             />
@@ -501,7 +504,9 @@ export function Donut({
                     color: 'var(--tx-muted)',
                   }}
                 >
-                  <span>{total > 0 ? `${((s.value / total) * 100).toFixed(1)}%` : '—'}</span>
+                  {/* La virgola, come nel tooltip dello stesso riquadro: senza il
+                      `replace` la legenda diceva 38.5% e il tooltip 38,5%. */}
+                  <span>{total > 0 ? shareLabel((s.value / total) * 100) : '—'}</span>
                 </div>
               </div>
             ))
@@ -638,7 +643,7 @@ export function DailyUniques({ data, label }: { data: Overview; label: string })
         <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--tx-secondary)' }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: 'var(--ac)' }} />
-            Unici del dayFmt
+            Unici del giorno
           </span>
         </div>
       </div>
@@ -655,8 +660,8 @@ export function DailyUniques({ data, label }: { data: Overview; label: string })
       */}
       {v.every((n) => n === null) ? (
         <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', padding: '24px 0' }}>
-          Nessun dayFmt con dati in questo periodo. Gli unici si chiudono a fine giornata: il primo punto
-          compare il dayFmt dopo il primo dayFmt raccolto.
+          Nessun giorno con dati in questo periodo. Gli unici si chiudono a fine giornata: il primo punto
+          compare il giorno dopo il primo giorno raccolto.
         </div>
       ) : (
         <div ref={hover.boxRef} onPointerLeave={hover.clear} style={{ position: 'relative' }}>

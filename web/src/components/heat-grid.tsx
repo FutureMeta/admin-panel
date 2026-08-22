@@ -16,23 +16,12 @@
 // Disegnare `null` e `0` allo stesso modo direbbe che di domenica alle tre non
 // gioca nessuno, quando domenica non è nemmeno nell'intervallo scelto.
 
+import { HEAT_GRADIENT, heatColour } from '../lib/heat.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
 export const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab', 'Dom'] as const;
 /** Le ventiquattro ore come VALORI: la cella è identificata dall'ora, non dalla posizione. */
 const HOURS = Array.from({ length: 24 }, (_, h) => h);
-
-/** La rampa del design: dal fondo scuro all'accento. */
-const STOPS = ['#0F212A', '#1E5670', '#8A7147', '#F0A63F'] as const;
-export const HEAT_GRADIENT = `linear-gradient(90deg,${STOPS.join(',')})`;
-
-function colourOf(value: number | null, top: number): string {
-  if (value === null) return 'transparent';
-  if (value <= 0 || top <= 0) return STOPS[0];
-  const f = Math.min(1, value / top);
-  const i = Math.min(STOPS.length - 2, Math.floor(f * (STOPS.length - 1)));
-  return f >= 1 ? STOPS[3] : (STOPS[i + 1] as string);
-}
 
 export type HeatCell = number | null;
 
@@ -76,7 +65,7 @@ export function HeatGrid({
                   style={{
                     height: 20,
                     borderRadius: 3,
-                    background: colourOf(value, top),
+                    background: heatColour(value, top),
                     // Il tratteggio è ciò che distingue «non c'è dato» da
                     // «zero»: senza, le due celle sono lo stesso rettangolo
                     // scuro e la differenza vive solo nel tooltip.

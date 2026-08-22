@@ -315,6 +315,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       duelsIngest = await startDuelsIngest({
         databaseUrl: env.DATABASE_INGEST_URL,
         mysqlUrl: env.DUELS_MYSQL_URL,
+        tz: env.DUELS_SOURCE_TZ,
         logger,
         registry: maintenance.registry,
         ...(duelsWarm ? { warm: duelsWarm } : {}),

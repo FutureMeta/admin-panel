@@ -17,7 +17,7 @@
 import { fileURLToPath } from 'node:url';
 import { createKysely, createPool } from '#src/db/pool.ts';
 import { type BackfillProgress, PartitionsMissing, runDuelsBackfill } from '#src/duels/backfill.ts';
-import { WatermarkMoved } from '#src/duels/ingest.ts';
+import { DEFAULT_SOURCE_TZ, WatermarkMoved } from '#src/duels/ingest.ts';
 import { BACKFILL_MAX_EXECUTION_MS, createDuelsMysql } from '#src/duels/mysql.ts';
 
 function requireEnv(name: string, hint: string): string {
@@ -45,6 +45,8 @@ function line(label: string, source: number, stored: number, ok: boolean, extra 
 async function main(): Promise<void> {
   const databaseUrl = requireEnv('DATABASE_INGEST_URL', 'ruolo di scrittura su stats, non metamc_app');
   const mysqlUrl = requireEnv('DUELS_MYSQL_URL', 'sola lettura sul MySQL del gioco');
+  // Il fuso della sorgente: un FUSO, non un offset. Vedi `DEFAULT_SOURCE_TZ`.
+  const tz = process.env['DUELS_SOURCE_TZ'] ?? DEFAULT_SOURCE_TZ;
 
   const pool = createPool({
     connectionString: databaseUrl,
@@ -64,7 +66,7 @@ async function main(): Promise<void> {
 
   try {
     console.log('importazione storico duels: inizio.');
-    const report = await runDuelsBackfill(db, my, { onProgress: printProgress });
+    const report = await runDuelsBackfill(db, my, { onProgress: printProgress, tz });
 
     if (report.resumedFrom.match !== '0' || report.resumedFrom.rating !== '0') {
       console.log(

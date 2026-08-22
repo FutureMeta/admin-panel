@@ -34,6 +34,7 @@ import {
   spacingOf,
   starsFilled,
 } from '#web/lib/duels.ts';
+import { heatColour, heatPosition } from '#web/lib/heat.ts';
 
 describe('le tab sommano senza chiudere i buchi', () => {
   const combos = [
@@ -263,5 +264,34 @@ describe('la geometria dei grafici e` UNA SOLA', () => {
     // Anche quando l'ultimo indice cade su un multiplo, non si duplica.
     const esatte = everyNth(9, (i) => String(i));
     expect(esatte.map((t) => t.at)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  });
+});
+
+describe('la rampa della heatmap ha piu` di quattro colori', () => {
+  it('due valori vicini danno due colori DIVERSI', async () => {
+    // Prima la rampa era a gradini: `Math.floor` su quattro fermate sceglieva
+    // una delle quattro tinte, quindi centosessantotto celle finivano dipinte
+    // con tre o quattro colori in tutto. La differenza fra un'ora da dieci
+    // partite e una da settanta spariva dentro lo stesso rettangolo — cioe`
+    // la heatmap smetteva di essere una heatmap.
+    const colori = new Set<string>();
+    for (let v = 0; v <= 100; v += 1) colori.add(heatColour(v, 100));
+    expect(colori.size).toBeGreaterThan(50);
+  });
+
+  it('gli estremi restano gli estremi', async () => {
+    expect(heatColour(null, 100)).toBe('transparent');
+    // Zero e` il primo gradino pieno, non il tratteggio: «coperto e vuoto».
+    expect(heatColour(0, 100)).not.toBe('transparent');
+    // Oltre il tetto la cella resta al massimo invece di uscire dalla scala.
+    expect(heatColour(500, 100)).toBe(heatColour(100, 100));
+  });
+
+  it('la rampa e` monotona: piu` partite non danno un colore piu` scuro', async () => {
+    // Non si puo` confrontare un `color-mix` a occhio, ma si puo` pretendere
+    // che la posizione sulla rampa cresca: e` quella a decidere il colore.
+    expect(heatPosition(10, 100)).toBeLessThan(heatPosition(70, 100));
+    expect(heatPosition(0, 100)).toBe(0);
+    expect(heatPosition(100, 100)).toBe(1);
   });
 });

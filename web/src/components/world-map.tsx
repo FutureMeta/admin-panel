@@ -27,6 +27,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ALPHA2_TO_NUMERIC } from '../lib/country-codes.ts';
+import { numberFmt } from '../lib/format.ts';
 import { type CountryShape, loadWorld, MAP_HEIGHT, MAP_WIDTH, pathOf } from '../lib/world.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
@@ -41,7 +42,9 @@ const UNATTRIBUTED: Record<string, string> = {
   '--': 'non rilevati',
 };
 
-const numberFmt = new Intl.NumberFormat('it-IT');
+// `numberFmt` è condiviso con il resto del pannello (import in testa al file):
+// una seconda istanza con le stesse opzioni è solo un altro posto in cui la
+// punteggiatura può divergere, ed è già successo dentro la ciambella.
 
 /**
  * I nomi dei paesi in italiano, dal browser.

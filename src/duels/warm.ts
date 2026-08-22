@@ -28,7 +28,7 @@ import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
 import type { StatsCache } from '#src/stats/cache.ts';
 import { hotOf, markHotAt, ttlOf } from '#src/stats/warm.ts';
-import { DK, DUELS_CLOSED_RANGES, DUELS_LIVE_RANGE, type Range } from './contract.ts';
+import { DK, DUELS_CLOSED_RANGES, DUELS_LIVE_RANGE, duelsQuality, type Range } from './contract.ts';
 import type { DuelsProvider } from './provider.ts';
 
 /** Quanto puo' durare la parte «modalita' calde» di un giro. */
@@ -62,37 +62,31 @@ function bytes(payload: unknown): Buffer {
 }
 
 /**
- * La fetta viva: il 24h, che e' l'unico periodo la cui finestra si sposta.
+ * Un periodo, con la sua qualita' di compressione e le sue modalita' calde.
  *
- * La chiama il ciclo di ingestione, subito dopo aver scritto. E' li' che si
- * vede la cadenza da trenta secondi: se questa ricostruzione stesse su un
- * timer suo, il payload sarebbe pronto in un momento qualunque fra
- * l'ingestione e mezzo minuto dopo, e nessuno saprebbe dire quale.
- *
- * SEQUENZIALE, come il giro delle statistiche. Un `Promise.all` su tre
- * costruzioni piu' N modalita' calde vuol dire tre compressioni Brotli
- * concorrenti su un thread che serve anche i login.
+ * ERANO DUE FUNZIONI GEMELLE — `warmDuelsLive` e `warmDuelsClosed` — quaranta
+ * righe identiche l'una all'altra, e differivano solo per la qualita' di
+ * compressione. Differivano male: quella dei periodi chiusi prometteva q11 nel
+ * commento e poi scriveva le modalita' calde a q5, cioe' contraddiceva se
+ * stessa. Adesso la qualita' la decide il periodo, in un posto solo.
  */
-export async function warmDuelsLive(deps: DuelsWarmDeps): Promise<DuelsWarmResult> {
+export async function warmDuelsRange(deps: DuelsWarmDeps, range: Range): Promise<DuelsWarmResult> {
   const t0 = Date.now();
-  const range = DUELS_LIVE_RANGE;
   const ttl = ttlOf();
+  const quality = duelsQuality(range);
   const now = new Date();
 
-  // q5 e non q11: questi byte vivono trenta secondi e vengono letti poche
-  // volte prima di essere rifatti. Con q11 si pagherebbe una compressione
-  // venti volte piu' cara per servirla a due o tre richieste.
   await deps.cache.warmEnvelope(
     DK.tr(range),
     async () => bytes(await deps.provider.trends(range, now)),
     ttl,
-    5,
+    quality,
   );
   await deps.cache.warmEnvelope(
     DK.rt(null, range),
     async () => bytes(await deps.provider.ratings(range, null, now)),
     ttl,
-    5,
+    quality,
   );
 
   // L'HOT-SET SI LEGGE PRIMA di costruire: chiederlo dopo vorrebbe dire
@@ -104,7 +98,7 @@ export async function warmDuelsLive(deps: DuelsWarmDeps): Promise<DuelsWarmResul
   let payloads = 2;
   let deferred = 0;
   for (const mode of hot) {
-    if (Date.now() - modesFrom > budget || deps.cache.underPressure) {
+    if (Date.now() - modesFrom >= budget || deps.cache.underPressure) {
       // Rimandare significa che la prossima richiesta di quella modalita'
       // paghera' l'aggregazione. E' un costo su una richiesta, contro il
       // rischio di far scivolare l'intero ciclo da trenta secondi.
@@ -115,7 +109,7 @@ export async function warmDuelsLive(deps: DuelsWarmDeps): Promise<DuelsWarmResul
       DK.rt(mode, range),
       async () => bytes(await deps.provider.ratings(range, mode, now)),
       ttl,
-      5,
+      quality,
     );
     payloads += 1;
   }
@@ -124,57 +118,15 @@ export async function warmDuelsLive(deps: DuelsWarmDeps): Promise<DuelsWarmResul
 }
 
 /**
- * Un periodo chiuso: si costruisce e non si tocca piu' fino a mezzanotte.
+ * La fetta viva: il 24h, che e' l'unico periodo la cui finestra si sposta.
  *
- * Sale sul giro di warm delle statistiche invece di avere il proprio, e non
- * si ricostruisce a ogni ingestione perche' non puo' essere cambiato: la sua
- * finestra finisce a mezzanotte di oggi, e una partita giocata adesso ci cade
- * fuori. L'unica cosa che lo cambia davvero e' un recupero di arretrato, e
- * quello lo copre il TTL: il payload diventa obsoleto dopo novanta secondi e
- * la prima richiesta successiva lo rifa' in sottofondo.
- *
- * q11, all'opposto della fetta viva: questi byte si costruiscono una volta e
- * si servono per ore, quindi la compressione piu' cara si ammortizza.
+ * La chiama il ciclo di ingestione, subito dopo aver scritto. E' li' che si
+ * vede la cadenza da trenta secondi: se questa ricostruzione stesse su un
+ * timer suo, il payload sarebbe pronto in un momento qualunque fra
+ * l'ingestione e mezzo minuto dopo, e nessuno saprebbe dire quale.
  */
-export async function warmDuelsClosed(deps: DuelsWarmDeps, range: Range): Promise<DuelsWarmResult> {
-  const t0 = Date.now();
-  const ttl = ttlOf();
-  const now = new Date();
-
-  await deps.cache.warmEnvelope(
-    DK.tr(range),
-    async () => bytes(await deps.provider.trends(range, now)),
-    ttl,
-    11,
-  );
-  await deps.cache.warmEnvelope(
-    DK.rt(null, range),
-    async () => bytes(await deps.provider.ratings(range, null, now)),
-    ttl,
-    11,
-  );
-
-  const hot = await hotDuelsModes(deps.redis, range);
-  const budget = deps.budgetMs ?? DUELS_WARM_BUDGET_MS;
-  const modesFrom = Date.now();
-
-  let payloads = 2;
-  let deferred = 0;
-  for (const mode of hot) {
-    if (Date.now() - modesFrom > budget || deps.cache.underPressure) {
-      deferred += 1;
-      continue;
-    }
-    await deps.cache.warmEnvelope(
-      DK.rt(mode, range),
-      async () => bytes(await deps.provider.ratings(range, mode, now)),
-      ttl,
-      5,
-    );
-    payloads += 1;
-  }
-
-  return { payloads, deferred, ms: Date.now() - t0 };
+export function warmDuelsLive(deps: DuelsWarmDeps): Promise<DuelsWarmResult> {
+  return warmDuelsRange(deps, DUELS_LIVE_RANGE);
 }
 
 /**
@@ -187,7 +139,7 @@ export async function warmDuelsAllClosed(deps: DuelsWarmDeps): Promise<number> {
   let payloads = 0;
   for (const range of DUELS_CLOSED_RANGES) {
     try {
-      payloads += (await warmDuelsClosed(deps, range)).payloads;
+      payloads += (await warmDuelsRange(deps, range)).payloads;
     } catch (err) {
       deps.logger.warn(
         { err, range },

@@ -23,7 +23,7 @@ import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
-import { DK, isCommentFilter, isSort, RANGES, type Range } from '#src/duels/contract.ts';
+import { DK, duelsQuality, isCommentFilter, isSort, RANGES, type Range } from '#src/duels/contract.ts';
 import { BadCursor } from '#src/duels/provider.ts';
 import { markDuelsHot } from '#src/duels/warm.ts';
 import { isRange } from '#src/stats/contract.ts';
@@ -114,7 +114,9 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
         DK.tr(range),
         async () => Buffer.from(JSON.stringify(await provider.trends(range, new Date())), 'utf8'),
         ttlOf(),
-        11,
+        // La qualita' la decide il PERIODO, non la rotta: la fetta viva vive
+        // trenta secondi e q11 sarebbe pagata e buttata.
+        duelsQuality(range),
       );
       return sendEnvelope(reply, env, request.headers['if-none-match'], request.headers['accept-encoding']);
     },
@@ -151,7 +153,9 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
         DK.rt(mode, range),
         async () => Buffer.from(JSON.stringify(await provider.ratings(range, mode, new Date())), 'utf8'),
         ttlOf(),
-        11,
+        // La qualita' la decide il PERIODO, non la rotta: la fetta viva vive
+        // trenta secondi e q11 sarebbe pagata e buttata.
+        duelsQuality(range),
       );
       return sendEnvelope(reply, env, request.headers['if-none-match'], request.headers['accept-encoding']);
     },

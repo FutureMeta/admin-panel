@@ -146,11 +146,6 @@ export function ranked<T extends { matches: number }>(
   return { rows: out, total, max };
 }
 
-/** Una quota in italiano, una cifra decimale. */
-export function shareLabel(share: number): string {
-  return `${share.toFixed(1).replace('.', ',')}%`;
-}
-
 /**
  * La distanza fra due bucket, in secondi, per decidere l'etichetta dell'asse.
  *
@@ -259,12 +254,6 @@ export function avgLabel(value: number): string {
   return value.toFixed(2).replace('.', ',');
 }
 
-/** Una quota intera, in italiano. Per i KPI, che non hanno decimali. */
-export function pctLabel(part: number, whole: number): string {
-  if (whole <= 0) return '0%';
-  return `${Math.round((part / whole) * 100)}%`;
-}
-
 /**
  * La chiave dei filtri della lista.
  *
@@ -335,3 +324,8 @@ export function omitEmpty<T extends Record<string, unknown>>(base: T, patch: Rec
   }
   return next as T;
 }
+
+// I formattatori dei numeri stanno in `lib/format.ts`: ce n'e' una copia sola
+// per tutto il pannello. Si ri-esportano qui perche' le schermate duels li
+// chiedevano a questo modulo prima che esistesse quell'altro.
+export { numberFmt, pctLabel, shareLabel } from './format.ts';

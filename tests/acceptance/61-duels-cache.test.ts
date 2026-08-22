@@ -21,7 +21,7 @@
 
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { DK } from '#src/duels/contract.ts';
+import { DK, duelsQuality } from '#src/duels/contract.ts';
 import { startDuelsIngest } from '#src/duels/keeper.ts';
 import { type DuelsWarmDeps, markDuelsHot, warmDuelsAllClosed, warmDuelsLive } from '#src/duels/warm.ts';
 import { decode } from '#src/stats/cache.ts';
@@ -208,5 +208,19 @@ describe('solo le modalita` guardate entrano nel giro', () => {
     expect(res.deferred).toBe(1);
     expect(res.payloads, 'i due globali si fanno comunque').toBe(2);
     expect(await etagOf(DK.rt(1, '24h'))).toBeNull();
+  });
+});
+
+describe('la qualita` di compressione la decide il periodo, non chi scrive', () => {
+  it('la fetta viva e i periodi chiusi non si comprimono allo stesso modo', async () => {
+    // Era deciso in TRE posti che si contraddicevano: la rotta scriveva q11
+    // per ogni chiave, il giro della fetta viva q5, e quello dei periodi
+    // chiusi q11 per le chiavi globali ma q5 per le modalita` calde —
+    // smentendo il proprio commento. La stessa chiave finiva in cache con
+    // qualita` diverse a seconda di chi l'aveva scritta per ultimo.
+    expect(duelsQuality('24h')).toBe(5);
+    for (const range of ['7d', '30d', '90d', '1y'] as const) {
+      expect(duelsQuality(range), range).toBe(11);
+    }
   });
 });

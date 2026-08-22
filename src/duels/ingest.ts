@@ -45,6 +45,35 @@ export const BATCH = 10_000;
  */
 export const BUDGET_MS = 5_000;
 
+// Il confronto e' >=, non >. Con > un budget di zero non fermava niente
+// quando il prologo del giro finiva dentro lo stesso millisecondo — cioe' il
+// test del budget passava quasi sempre e falliva una volta ogni tanto, che e'
+// il modo peggiore in cui un test puo' comportarsi. In produzione, con 5000,
+// la differenza e' un millisecondo; nel significato e' «esaurito» contro
+// «superato», e la prima e' quella giusta.
+
+/**
+ * IL FUSO DELLA SORGENTE, e non e' un dettaglio: e' un difetto costato due ore.
+ *
+ * `duels_match_statistics.created_at` e' un DATETIME senza fuso, cioe' l'ora di
+ * PARETE della macchina del gioco. La connessione ha `dateStrings`, quindi
+ * quella stringa arriva com'e': '2026-08-20 05:00:00' significa le cinque del
+ * mattino LA', non le cinque UTC. Trattandola come UTC — che e' cio' che questo
+ * file faceva — ogni partita finiva due ore avanti, e la heatmap mostrava
+ * vuoto alle sette invece che alle cinque.
+ *
+ * E' UN FUSO, NON UN OFFSET, ed e' la stessa lezione della migration 012 su
+ * `registrationDate`: un offset costante sbaglia di un'ora per meta' anno, e
+ * sbaglia proprio nei giorni in cui conta. Si nomina la zona e si lascia
+ * decidere a PostgreSQL quando scatta l'ora legale.
+ *
+ * LIMITE DICHIARATO: nell'ora ripetuta del cambio d'ora di ottobre la stessa
+ * ora di parete esiste due volte, e la sorgente non dice quale delle due sia.
+ * `AT TIME ZONE` ne sceglie una. L'informazione e' persa all'origine e nessuna
+ * scelta qui puo' recuperarla.
+ */
+export const DEFAULT_SOURCE_TZ = 'Europe/Rome';
+
 export type IngestResult = {
   matches: number;
   ratings: number;
@@ -203,6 +232,7 @@ export async function ingestMatchBatch(
   db: Database,
   my: DuelsMysql,
   from: bigint,
+  tz: string,
 ): Promise<{ read: number; lastId: bigint }> {
   const rows = await my.rows<MatchRow>(
     `SELECT id, created_at, type, context, mode_id, map_id
@@ -225,7 +255,10 @@ export async function ingestMatchBatch(
     // `created_at` arriva come stringa (dateStrings), gia' in UTC per la
     // sessione: si tronca all'ora senza passare da un `Date` di JavaScript,
     // che sarebbe interpretato nel fuso del processo.
-    const bucket = `${r.created_at.slice(0, 13)}:00:00Z`;
+    // L'ORA DI PARETE DEL SERVER DI GIOCO, senza fuso: si tronca all'ora e si
+    // lascia a PostgreSQL il compito di dire a quale istante corrisponde.
+    // Vedi il commento in testa al file.
+    const bucket = `${r.created_at.slice(0, 13)}:00:00`;
     const key = `${bucket}|${r.mode_id}|${r.map_id}|${r.type}|${r.context}`;
     const found = counts.get(key);
     if (found) found.n += 1;
@@ -236,14 +269,18 @@ export async function ingestMatchBatch(
   await db.transaction().execute(async (tx) => {
     await sql`
       INSERT INTO stats.duels_match_hour (bucket_at, mode_id, map_id, match_type, context, matches)
-      SELECT * FROM unnest(
-        ${agg.map((a) => a.bucket)}::timestamptz[],
+      -- La conversione usa un fuso NOMINATO, non un offset: due volte l'anno
+      -- un offset costante sbaglierebbe di un'ora, e sbaglierebbe proprio nei
+      -- giorni in cui conta.
+      SELECT b.local_hour AT TIME ZONE ${tz}, b.mode_id, b.map_id, b.match_type, b.context, b.matches
+      FROM unnest(
+        ${agg.map((a) => a.bucket)}::timestamp[],
         ${agg.map((a) => a.mode)}::smallint[],
         ${agg.map((a) => a.map)}::integer[],
         ${agg.map((a) => a.type)}::text[],
         ${agg.map((a) => a.ctx)}::text[],
         ${agg.map((a) => a.n)}::integer[]
-      ) AS b(bucket_at, mode_id, map_id, match_type, context, matches)
+      ) AS b(local_hour, mode_id, map_id, match_type, context, matches)
       ON CONFLICT (bucket_at, mode_id, map_id, match_type, context)
         DO UPDATE SET matches = stats.duels_match_hour.matches + EXCLUDED.matches
     `.execute(tx);
@@ -251,7 +288,10 @@ export async function ingestMatchBatch(
     const bumped = await sql<{ last_id: string }>`
       UPDATE stats.duels_ingest_state
          SET last_id = ${lastId.toString()}::bigint, last_run_at = now(),
-             since_day = LEAST(since_day, ${agg[0]?.bucket ?? null}::timestamptz::date)
+             since_day = LEAST(
+               since_day,
+               stats.civil_day((${agg[0]?.bucket ?? null}::timestamp AT TIME ZONE ${tz}))
+             )
        WHERE source = 'match'
          -- Confronto-e-scambio: vale solo se il watermark e' ancora quello da
          -- cui questo lotto e' partito. Altrimenti c'e' un secondo ingeritore
@@ -279,6 +319,7 @@ export async function ingestRatingBatch(
   db: Database,
   my: DuelsMysql,
   from: bigint,
+  tz: string,
 ): Promise<{ read: number; lastId: bigint; degraded: number; discarded: number }> {
   const rows = await my.rows<RatingRow>(
     `SELECT r.id, r.created_at, HEX(r.match_id) AS match_hex, r.player_id, r.mode_id,
@@ -300,7 +341,7 @@ export async function ingestRatingBatch(
     if (id > lastId) lastId = id;
     const dialog = parseDialog(r.dialog);
     if (dialog.degraded) degraded += 1;
-    days.add(r.created_at.slice(0, 10));
+    days.add(r.created_at);
     return {
       id: r.id,
       createdAt: r.created_at,
@@ -329,9 +370,11 @@ export async function ingestRatingBatch(
       await sql`
         INSERT INTO stats.duels_rating
           (rating_id, created_at, match_id, player_id, player_uuid, player_name, mode_id, rating, comment, dialog)
-        SELECT * FROM unnest(
+        SELECT r.rating_id, r.local_at AT TIME ZONE ${tz}, r.match_id, r.player_id,
+               r.player_uuid, r.player_name, r.mode_id, r.rating, r.comment, r.dialog
+        FROM unnest(
           ${writable.map((p) => p.id)}::bigint[],
-          ${writable.map((p) => p.createdAt)}::timestamptz[],
+          ${writable.map((p) => p.createdAt)}::timestamp[],
           ${writable.map((p) => p.matchId)}::uuid[],
           ${writable.map((p) => p.playerId)}::integer[],
           ${writable.map((p) => p.playerUuid)}::uuid[],
@@ -340,20 +383,23 @@ export async function ingestRatingBatch(
           ${writable.map((p) => p.rating)}::smallint[],
           ${writable.map((p) => p.comment)}::text[],
           ${writable.map((p) => p.dialog)}::jsonb[]
-        ) AS r(rating_id, created_at, match_id, player_id, player_uuid, player_name, mode_id, rating, comment, dialog)
+        ) AS r(rating_id, local_at, match_id, player_id, player_uuid, player_name, mode_id, rating, comment, dialog)
         -- Rieseguire un lotto non deve duplicare: la chiave e' (created_at,
         -- rating_id) e il contenuto di una valutazione non cambia mai.
         ON CONFLICT (created_at, rating_id) DO NOTHING
       `.execute(tx);
     }
 
-    await recomputeRatingDays(tx, [...days]);
+    await recomputeRatingDays(tx, [...days], tz);
 
     const bumped = await sql<{ last_id: string }>`
       UPDATE stats.duels_ingest_state
          SET last_id = ${lastId.toString()}::bigint, last_run_at = now(),
              degraded = degraded + ${degraded},
-             since_day = LEAST(since_day, ${[...days].sort()[0] ?? null}::date)
+             since_day = LEAST(
+               since_day,
+               stats.civil_day((${[...days].sort()[0] ?? null}::timestamp AT TIME ZONE ${tz}))
+             )
        WHERE source = 'rating'
          -- Come per le partite. Qui l'inserimento e' idempotente e non
          -- raddoppierebbe, ma il contatore delle righe degradate e' additivo:
@@ -376,8 +422,8 @@ export async function ingestRatingBatch(
  * questo aggregato fosse additivo, invece, il ripasso le conterebbe due volte.
  * Ricalcolare un giorno costa una scansione su poche decine di righe.
  */
-async function recomputeRatingDays(db: Database, days: string[]): Promise<void> {
-  if (days.length === 0) return;
+async function recomputeRatingDays(db: Database, localAt: string[], tz: string): Promise<void> {
+  if (localAt.length === 0) return;
   await sql`
     INSERT INTO stats.duels_rating_day
       (day, mode_id, n, sum_rating, with_comment, r1, r2, r3, r4, r5)
@@ -396,7 +442,13 @@ async function recomputeRatingDays(db: Database, days: string[]): Promise<void> 
            count(*) FILTER (WHERE rating = 4)::int,
            count(*) FILTER (WHERE rating = 5)::int
       FROM stats.duels_rating
-     WHERE stats.civil_day(created_at) = ANY(${days}::date[])
+     -- I GIORNI SI RICAVANO DAGLI ISTANTI, non dalle date della sorgente:
+     -- quelle sono ore di parete del server di gioco, e il giorno civile di
+     -- Roma lo decide la funzione civil_day, dopo la conversione.
+     WHERE stats.civil_day(created_at) IN (
+             SELECT DISTINCT stats.civil_day(x AT TIME ZONE ${tz})
+               FROM unnest(${localAt}::timestamp[]) AS x
+           )
      GROUP BY 1, 2
     ON CONFLICT (day, mode_id) DO UPDATE SET
       n = EXCLUDED.n, sum_rating = EXCLUDED.sum_rating,
@@ -421,6 +473,7 @@ async function recomputeRatingDays(db: Database, days: string[]): Promise<void> 
 export async function runDuelsIngest(
   db: Database,
   my: DuelsMysql,
+  tz: string = DEFAULT_SOURCE_TZ,
   budgetMs = BUDGET_MS,
 ): Promise<IngestResult> {
   const started = Date.now();
@@ -439,11 +492,11 @@ export async function runDuelsIngest(
   try {
     let matchAt = await watermarkOf(db, 'match');
     for (;;) {
-      if (Date.now() - started > budgetMs) {
+      if (Date.now() - started >= budgetMs) {
         behind = true;
         break;
       }
-      const batch = await ingestMatchBatch(db, my, matchAt);
+      const batch = await ingestMatchBatch(db, my, matchAt, tz);
       matches += batch.read;
       matchAt = batch.lastId;
       if (batch.read < BATCH) break;
@@ -451,11 +504,11 @@ export async function runDuelsIngest(
 
     let ratingAt = await watermarkOf(db, 'rating');
     for (;;) {
-      if (Date.now() - started > budgetMs) {
+      if (Date.now() - started >= budgetMs) {
         behind = true;
         break;
       }
-      const batch = await ingestRatingBatch(db, my, ratingAt);
+      const batch = await ingestRatingBatch(db, my, ratingAt, tz);
       ratings += batch.read;
       degraded += batch.degraded;
       ratingAt = batch.lastId;

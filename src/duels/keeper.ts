@@ -23,7 +23,7 @@ import type { Logger } from 'pino';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import type { JobRegistry, RunningJob } from '#src/jobs/scheduler.ts';
 import { startJob } from '#src/jobs/scheduler.ts';
-import { runDuelsIngest } from './ingest.ts';
+import { DEFAULT_SOURCE_TZ, runDuelsIngest } from './ingest.ts';
 import { createDuelsMysql, type DuelsMysql, missingSourceColumns } from './mysql.ts';
 import { type DuelsWarmDeps, type DuelsWarmResult, warmDuelsLive } from './warm.ts';
 
@@ -47,6 +47,8 @@ export type DuelsIngestOptions = {
    * E un job scritto ma mai registrato e' precisamente la classe di difetto
    * che questo pannello insegue: si legge nel codice e si da' per fatto.
    */
+  /** Il fuso in cui il server di gioco scrive le date. Vedi `DEFAULT_SOURCE_TZ`. */
+  tz?: string;
   mysql?: DuelsMysql;
   /**
    * Cosa serve per riscaldare la fetta viva, se la si vuole riscaldare.
@@ -136,7 +138,7 @@ export async function startDuelsIngest(opts: DuelsIngestOptions): Promise<DuelsI
   let warmedHour = -1;
 
   const runOnce = async (): Promise<Record<string, unknown>> => {
-    const res = await runDuelsIngest(db, my);
+    const res = await runDuelsIngest(db, my, opts.tz ?? DEFAULT_SOURCE_TZ);
     if (res.contended) {
       // Quasi sempre e' il backfill lanciato a mano, ed e' una condizione
       // legittima che passa da sola. Se resta accesa senza che nessuno abbia

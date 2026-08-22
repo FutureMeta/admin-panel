@@ -18,9 +18,18 @@ import { useNavigate, useSearch } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CHART, ChartFrame, everyNth } from '../components/chart-frame.tsx';
 import { HoverTip, useHoverTip } from '../components/hover-tip.tsx';
-import { FilterSelect, PageHeader, Panel, PanelBar, SearchBox } from '../components/page.tsx';
+import {
+  FilterSelect,
+  PageArrow,
+  PageHeader,
+  Panel,
+  PanelBar,
+  PanelFooter,
+  SearchBox,
+  TableStates,
+} from '../components/page.tsx';
 import { numberFmt, StatsPanelsSkeleton } from '../components/stats-panels.tsx';
-import { Avatar, EmptyState, Notice, Pill, RelativeTime, SkeletonRows } from '../components/ui.tsx';
+import { Avatar, EmptyState, Notice, Pill, RelativeTime } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
 import { segments } from '../lib/chart.ts';
 import {
@@ -404,8 +413,15 @@ function TrendPanel({ data, range }: { data: DuelsRatings; range: string }) {
   );
 }
 
-const PAGE_LABEL = 'Valutazioni recenti';
-
+/**
+ * Le valutazioni recenti: una TABELLA, la stessa del registro attività.
+ *
+ * Prima era una lista di `<div>` con i bordi disegnati a mano — stessa
+ * funzione, stessa forma, markup diverso. Adesso condivide con il registro il
+ * contenitore (`Panel`), la barra dei filtri, la macchina a quattro stati
+ * (`TableStates`), la classe `.table`, il piede e le frecce: cambiano solo le
+ * colonne, che sono l'unica cosa davvero diversa fra le due schermate.
+ */
 function RecentPanel({ range, mode }: { range: string; mode: number | null }) {
   const search = useSearch({ from: '/shell/duels/ratings' });
   const navigate = useNavigate();
@@ -429,7 +445,14 @@ function RecentPanel({ range, mode }: { range: string; mode: number | null }) {
     return () => clearTimeout(timer);
   }, [typed, term, navigate]);
 
-  const [cursor, setCursor] = useState<string | null>(null);
+  // LA PILA DEI CURSORI, come nel registro: il server ne dà uno solo, in
+  // avanti. Tenendo quelli già usati si torna indietro senza chiedere al
+  // server una cosa che non sa fare — e senza `OFFSET`, che a pagina dieci
+  // farebbe scartare centotrentacinque righe a ogni richiesta.
+  const [trail, setTrail] = useState<string[]>([]);
+  const [expanded, setExpanded] = useState<string | undefined>(undefined);
+  const cursor = trail.at(-1) ?? null;
+
   const key = filterKey({ mode, q: term, comment, sort, range });
   // IL CURSORE SI AZZERA DURANTE IL RENDER, non in un effetto: in un effetto
   // partirebbe prima una richiesta con il cursore vecchio, cioè la pagina due
@@ -437,7 +460,8 @@ function RecentPanel({ range, mode }: { range: string; mode: number | null }) {
   const previousKey = useRef(key);
   if (previousKey.current !== key) {
     previousKey.current = key;
-    if (cursor !== null) setCursor(null);
+    if (trail.length > 0) setTrail([]);
+    if (expanded !== undefined) setExpanded(undefined);
   }
 
   const params = new URLSearchParams({ range, comment, sort });
@@ -445,169 +469,201 @@ function RecentPanel({ range, mode }: { range: string; mode: number | null }) {
   if (term !== '') params.set('q', term);
   if (cursor !== null) params.set('cursor', cursor);
 
-  const page = useQuery({
+  const query = useQuery({
     queryKey: ['duels-recent', key, cursor],
     queryFn: () => api<DuelsRecent>(`/api/duels/ratings/recent?${params.toString()}`),
     placeholderData: (previous) => previous,
   });
 
-  const rows = page.data?.rows ?? [];
+  const rows = query.data?.rows ?? [];
   const filtered = term !== '' || comment !== 'all';
+  const first = trail.length * (query.data?.pageSize ?? 15) + 1;
+  const last = first + rows.length - 1;
 
   return (
     <Panel>
       <PanelBar>
-        <div>
-          <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 16, fontWeight: 600, margin: '0 0 4px' }}>
-            {PAGE_LABEL}
-          </h3>
-          <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            {page.data?.total !== null && page.data?.total !== undefined
-              ? `${numberFmt.format(page.data.total)} nel periodo`
-              : 'Feedback post-partita'}
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <SearchBox
-            value={typed}
-            onChange={setTyped}
-            placeholder="Nome o commento"
-            label="Cerca fra le valutazioni"
-          />
-          <FilterSelect
-            label="Commento"
-            value={comment}
-            onChange={(v) =>
-              void navigate({
-                to: '.',
-                search: (prev) => omitEmpty(prev, { comment: v === 'all' ? undefined : v }),
-                replace: true,
-              })
-            }
-            options={(['all', 'with', 'without'] as const).map((v) => ({
-              value: v,
-              label: COMMENT_LABEL[v],
-            }))}
-          />
-          <FilterSelect
-            label="Ordine"
-            value={sort}
-            onChange={(v) =>
-              void navigate({
-                to: '.',
-                search: (prev) => omitEmpty(prev, { sort: v === 'recent' ? undefined : v }),
-                replace: true,
-              })
-            }
-            options={(['recent', 'worst', 'best'] as const).map((v) => ({
-              value: v,
-              label: SORT_LABEL[v],
-            }))}
-          />
-        </div>
+        <SearchBox
+          value={typed}
+          onChange={setTyped}
+          placeholder="Cerca per nome o commento"
+          label="Cerca fra le valutazioni"
+          width={220}
+        />
+        <FilterSelect
+          label="Filtra per commento"
+          value={comment}
+          onChange={(v) =>
+            void navigate({
+              to: '.',
+              search: (prev) => omitEmpty(prev, { comment: v === 'all' ? undefined : v }),
+              replace: true,
+            })
+          }
+          options={(['all', 'with', 'without'] as const).map((v) => ({
+            value: v,
+            label: COMMENT_LABEL[v],
+          }))}
+        />
+        <FilterSelect
+          label="Ordina"
+          value={sort}
+          onChange={(v) =>
+            void navigate({
+              to: '.',
+              search: (prev) => omitEmpty(prev, { sort: v === 'recent' ? undefined : v }),
+              replace: true,
+            })
+          }
+          options={(['recent', 'worst', 'best'] as const).map((v) => ({
+            value: v,
+            label: SORT_LABEL[v],
+          }))}
+        />
       </PanelBar>
 
-      {page.isLoading ? <SkeletonRows rows={6} /> : null}
-      {!page.isLoading && rows.length === 0 ? (
-        <EmptyState
-          // Lo stato vuoto DIFFERENZIATO: «non corrisponde ai filtri» e «non
-          // ce n'è nessuna» sono due situazioni diverse, e confonderle manda a
-          // cercare un guasto dove c'è solo un filtro attivo.
-          title={filtered ? 'Nessuna valutazione corrisponde ai filtri.' : 'Nessuna valutazione registrata.'}
-          description={
-            filtered
-              ? 'Prova a togliere la ricerca o a cambiare il filtro sui commenti.'
-              : 'Nel periodo scelto nessuno ha lasciato un voto a fine partita.'
-          }
-        />
-      ) : null}
+      <TableStates
+        pending={query.isPending}
+        error={query.isError}
+        empty={rows.length === 0}
+        errorTitle="Non è stato possibile caricare le valutazioni"
+        // Lo stato vuoto DIFFERENZIATO: «non corrisponde ai filtri» e «non ce
+        // n'è nessuna» sono due situazioni diverse, e confonderle manda a
+        // cercare un guasto dove c'è solo un filtro attivo.
+        emptyTitle={filtered ? 'Nessuna valutazione corrisponde ai filtri' : 'Nessuna valutazione'}
+        emptyDescription={
+          filtered
+            ? 'Prova a togliere la ricerca o ad allargare il filtro sui commenti.'
+            : 'Nel periodo scelto nessuno ha lasciato un voto a fine partita.'
+        }
+        onRetry={() => void query.refetch()}
+      >
+        <table className="table" style={{ borderCollapse: 'collapse' }}>
+          <thead>
+            <tr>
+              <th style={{ width: 96 }}>Quando</th>
+              <th style={{ width: 200 }}>Giocatore</th>
+              <th style={{ width: 150 }}>Modalità</th>
+              <th style={{ width: 130 }}>Voto</th>
+              <th>Commento</th>
+              <th style={{ width: 44 }} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <RatingRow
+                key={row.id}
+                row={row}
+                expanded={expanded === row.id}
+                onToggle={() => setExpanded(expanded === row.id ? undefined : row.id)}
+              />
+            ))}
+          </tbody>
+        </table>
+      </TableStates>
 
-      <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {rows.map((row) => (
-          <RatingRow key={row.id} row={row} />
-        ))}
-      </div>
-
-      {page.data?.cursor ? (
-        <div style={{ padding: '12px 20px', borderTop: '1px solid var(--bd-subtle)' }}>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => setCursor(page.data?.cursor ?? null)}
-          >
-            Altre valutazioni
-          </button>
-        </div>
-      ) : null}
+      <PanelFooter>
+        <span>
+          {rows.length === 0
+            ? 'Nessuna valutazione'
+            : query.data?.total !== null && query.data?.total !== undefined
+              ? `${first}–${last} di ${numberFmt.format(query.data.total)}`
+              : `${first}–${last}`}
+        </span>
+        <span style={{ display: 'flex', gap: 6 }}>
+          <PageArrow
+            glyph="‹"
+            label="Pagina precedente"
+            disabled={trail.length === 0 || query.isFetching}
+            onClick={() => {
+              setTrail((t) => t.slice(0, -1));
+              setExpanded(undefined);
+            }}
+          />
+          <PageArrow
+            glyph="›"
+            label="Pagina successiva"
+            disabled={!query.data?.cursor || query.isFetching}
+            onClick={() => {
+              const next = query.data?.cursor;
+              if (!next) return;
+              setTrail((t) => [...t, next]);
+              setExpanded(undefined);
+            }}
+          />
+        </span>
+      </PanelFooter>
     </Panel>
   );
 }
 
-function RatingRow({ row }: { row: DuelsRatingRow }) {
-  const [open, setOpen] = useState(false);
+function RatingRow({
+  row,
+  expanded,
+  onToggle,
+}: {
+  row: DuelsRatingRow;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
   const turns = row.dialog ?? [];
+  const openable = turns.length > 0;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 6,
-        padding: '12px 20px',
-        borderTop: '1px solid var(--bd-subtle)',
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {/* Il volto passa dal NOSTRO dominio: la CSP dichiara `img-src 'self'`,
-            e un CDN esterno vedrebbe l'indirizzo di chi guarda e il nome di
-            chi è guardato, riga per riga. Senza nome restano le iniziali. */}
-        <Avatar name={row.player ?? '?'} size={24} />
-        <span style={{ fontSize: 13, fontWeight: 500, flex: 'none' }}>{row.player ?? 'Sconosciuto'}</span>
-        {row.modeName ? <Pill tone="neutral">{row.modeName}</Pill> : null}
-        <span style={{ marginLeft: 'auto' }}>
-          <Stars value={row.rating} />
-        </span>
-        <span
-          className="mono"
-          style={{ fontSize: 11.5, color: 'var(--tx-disabled)', width: 32, textAlign: 'right' }}
-        >
-          {row.rating}/5
-        </span>
-        <span style={{ fontSize: 11, color: 'var(--tx-muted)', width: 74, textAlign: 'right' }}>
+    <>
+      <tr>
+        <td style={{ color: 'var(--tx-muted)', fontSize: 11.5 }}>
           <RelativeTime value={new Date(row.at * 1000)} />
-        </span>
-      </div>
-
-      {row.comment ? (
-        <p
-          style={{
-            margin: '0 0 0 34px',
-            paddingLeft: 12,
-            borderLeft: '2px solid var(--bd-strong)',
-            fontSize: 12.5,
-            fontStyle: 'italic',
-            color: 'var(--tx-secondary)',
-          }}
-        >
-          «{row.comment}»
-        </p>
-      ) : null}
-
-      {turns.length > 0 ? (
-        <div style={{ marginLeft: 34 }}>
-          {/* CHIUSA DI DEFAULT: il legacy tiene la conversazione sempre
-              aperta e la lista diventa illeggibile. */}
-          <button
-            type="button"
-            className="btn btn-ghost"
-            aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}
-            style={{ fontSize: 12 }}
-          >
-            {open ? 'Nascondi la conversazione' : `${turns.length} messaggi`}
-          </button>
-          {open ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+        </td>
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            {/* Il volto passa dal NOSTRO dominio: la CSP dichiara
+                `img-src 'self'`, e un CDN esterno vedrebbe l'indirizzo di chi
+                guarda e il nome di chi è guardato, riga per riga. Senza nome
+                restano le iniziali. */}
+            <Avatar name={row.player ?? '?'} size={26} square />
+            <span style={{ fontWeight: 500 }}>{row.player ?? 'Sconosciuto'}</span>
+          </span>
+        </td>
+        <td>{row.modeName ? <Pill tone="neutral">{row.modeName}</Pill> : '—'}</td>
+        <td>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Stars value={row.rating} />
+            <span className="mono" style={{ fontSize: 11.5, color: 'var(--tx-disabled)' }}>
+              {row.rating}/5
+            </span>
+          </span>
+        </td>
+        <td style={{ color: row.comment ? 'var(--tx-secondary)' : 'var(--tx-disabled)' }}>
+          {row.comment ? (
+            <span style={{ fontStyle: 'italic' }}>«{row.comment}»</span>
+          ) : openable ? (
+            `${turns.length} messaggi`
+          ) : (
+            '—'
+          )}
+        </td>
+        <td>
+          {openable ? (
+            <button
+              type="button"
+              onClick={onToggle}
+              aria-expanded={expanded}
+              aria-label={expanded ? 'Nascondi la conversazione' : 'Mostra la conversazione'}
+              className="btn btn-ghost"
+              style={{ padding: '2px 6px', fontSize: 12 }}
+            >
+              {expanded ? '▾' : '▸'}
+            </button>
+          ) : null}
+        </td>
+      </tr>
+      {/* CHIUSA DI DEFAULT: il legacy tiene la conversazione sempre aperta e
+          la lista diventa illeggibile. */}
+      {expanded && openable ? (
+        <tr>
+          <td colSpan={6} style={{ background: 'var(--s-inset)' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' }}>
               {turns.map((turn) => (
                 <div
                   // Il turno non ha un identificativo all'origine: conta solo
@@ -632,9 +688,9 @@ function RatingRow({ row }: { row: DuelsRatingRow }) {
                 </div>
               ))}
             </div>
-          ) : null}
-        </div>
+          </td>
+        </tr>
       ) : null}
-    </div>
+    </>
   );
 }

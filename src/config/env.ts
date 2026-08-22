@@ -148,6 +148,25 @@ const EnvSchema = z.object({
    */
   DUELS_MYSQL_URL: z.string().min(1).optional(),
   /**
+   * Il fuso in cui il server di gioco scrive `created_at`.
+   *
+   * E' UN FUSO, NON UN OFFSET, ed e' la stessa lezione di `registration_tz`
+   * nella migration 012: un offset costante sbaglia di un'ora per meta' anno.
+   * Il controllo e' di FORMA, non di esistenza — l'elenco dei fusi vive in un
+   * catalogo e non si puo' interrogare da qui; un nome inesistente si
+   * manifesta alla prima conversione con «time zone not recognized», che e'
+   * un messaggio che si capisce.
+   *
+   * Il predefinito e' Europe/Rome perche' e' cio' che la macchina del gioco
+   * usa oggi: misurato il 22 agosto 2026, il pannello mostrava le partite due
+   * ore avanti rispetto al pannello vecchio, che e' esattamente lo scarto fra
+   * Roma e UTC d'estate.
+   */
+  DUELS_SOURCE_TZ: z
+    .string()
+    .regex(/^(UTC|[A-Za-z]+(\/[A-Za-z0-9_+-]+){1,2})$/)
+    .default('Europe/Rome'),
+  /**
    * Il Redis di gioco. In questa installazione e' la stessa istanza del
    * pannello, quindi in assenza si usa REDIS_URL — ma con un client
    * dedicato, con i suoi timeout e senza autopipelining.

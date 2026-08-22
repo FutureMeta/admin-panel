@@ -25,7 +25,7 @@ import { dominates } from '#src/authz/dominance.ts';
 import type { Database } from '#src/db/pool.ts';
 import { DK, type DuelsTrends, duelsQuality, TOP_LIMIT } from '#src/duels/contract.ts';
 import type { DuelsProvider } from '#src/duels/provider.ts';
-import type { StatsCache } from '#src/stats/cache.ts';
+import { inflate, type StatsCache } from '#src/stats/cache.ts';
 import type { OverviewPayload, Range } from '#src/stats/contract.ts';
 import { buildAll } from '#src/stats/read.ts';
 import { K, ttlOf } from '#src/stats/warm.ts';
@@ -70,7 +70,12 @@ async function overview(data: AssistantData, range: Range): Promise<OverviewPayl
     ttlOf(),
     11,
   );
-  return JSON.parse(env.body.toString('utf8')) as OverviewPayload;
+  // `inflate(env)` e NON `env.body`: i byte in cache sono COMPRESSI in brotli.
+  // Le rotte non se ne accorgono perche' li rispediscono cosi' come sono —
+  // decomprimere per far ricomprimere a valle sarebbe pagare due volte — ma
+  // qui quei byte si LEGGONO, e `JSON.parse` su un flusso brotli non fallisce
+  // con un messaggio che si capisce: fallisce su un carattere qualunque.
+  return JSON.parse(await inflate(env)) as OverviewPayload;
 }
 
 /** Una porta non configurata. La rotta la traduce in un risultato, non in un 500. */
@@ -173,7 +178,7 @@ export async function readNetworkTrend(
       ttlOf(),
       5,
     );
-    const payload = JSON.parse(env.body.toString('utf8')) as OverviewPayload;
+    const payload = JSON.parse(await inflate(env)) as OverviewPayload;
     return project(payload, range, mode);
   }
 
@@ -254,7 +259,7 @@ export async function readDuelsSummary(data: AssistantData, range: Range, now: D
     ttlOf(),
     duelsQuality(range),
   );
-  const trends = JSON.parse(env.body.toString('utf8')) as DuelsTrends;
+  const trends = JSON.parse(await inflate(env)) as DuelsTrends;
 
   // La heatmap e' SEMPRE 168 celle, indice = dow * 24 + hour, dow 0 = lunedi.
   // Le prime tre bastano: «quando si gioca di piu`» e' una domanda a cui si

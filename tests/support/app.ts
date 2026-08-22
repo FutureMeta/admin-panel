@@ -53,6 +53,14 @@ export type TestAppOptions = {
    * statistiche sarebbe lavoro per niente.
    */
   statsDb?: boolean;
+  /**
+   * Accende Svetlana: una chiave finta e il pool di sola lettura.
+   *
+   * La chiave non serve a chiamare niente — nessun test parla con l'API — ma
+   * senza, il contesto non costruisce l'assistente e la rotta risponde 503.
+   * Il client vero si sostituisce col finto: `t.ctx.assistant.client = ...`.
+   */
+  assistant?: boolean;
 };
 
 /**
@@ -185,6 +193,9 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     SESSION_IDLE_SECONDS: String(opts.idleSeconds ?? 1800),
     LOG_LEVEL: 'fatal',
     ...(opts.statsDb ? { DATABASE_STATS_URL: db.statsUrl } : {}),
+    ...(opts.assistant
+      ? { ANTHROPIC_API_KEY: 'chiave-finta-di-test', DATABASE_ASSISTANT_URL: db.assistantUrl }
+      : {}),
   });
 
   const ctx = await buildContext({

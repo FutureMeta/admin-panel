@@ -265,13 +265,37 @@ export async function* runAssistant(
   yield { type: 'done', usage, iterations, truncated };
 
   return {
-    turns: stripSystem(runner.params.messages as Turn[]),
+    turns: withFinalAnswer(stripSystem(runner.params.messages as Turn[]), final.content as Turn['content']),
     usage,
     calls,
     iterations,
     truncated,
     stopReason,
   };
+}
+
+/**
+ * La risposta finale finisce nella cronologia, comunque sia andata.
+ *
+ * IL RUNNER AGGIUNGE I TURNI CHE GLI SERVONO PER CONTINUARE, non quelli che
+ * servono a noi per ricordare: dopo l'ultimo turno — quello senza tool, cioe'
+ * la risposta vera — non c'e' nessun giro dopo, quindi puo' non finire in
+ * `params.messages`.
+ *
+ * L'effetto era una conversazione che ricordava solo le domande. Il messaggio
+ * dopo partiva con la cronologia di chi ha chiesto e senza quella di chi ha
+ * risposto, e Svetlana si contraddiceva su cose che aveva appena detto — senza
+ * nessun errore e senza che il difetto si vedesse in una risposta sola.
+ *
+ * Si guarda l'ultimo turno invece di aggiungere sempre: se il runner l'ha gia'
+ * messo, aggiungerlo di nuovo lo direbbe due volte.
+ */
+function withFinalAnswer(turns: Turn[], content: Turn['content']): Turn[] {
+  const last = turns.at(-1);
+  const { role } = last ?? { role: '' };
+  if (role === 'assistant') return turns;
+  if (Array.isArray(content) && content.length === 0) return turns;
+  return [...turns, { role: 'assistant', content }];
 }
 
 /** L'elenco dei tool, per i test e per le metriche. Non dipende da un attore. */

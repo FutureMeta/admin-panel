@@ -25,16 +25,8 @@
 import type React from 'react';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
-import {
-  CHART,
-  type ChartScales,
-  chartScales,
-  everyNth,
-  slotsFor,
-  spacingOf,
-  tickSpacing,
-} from '../lib/chart.ts';
-import { axisLabel, bucketLabel } from '../lib/when.ts';
+import { CHART, type ChartScales, chartScales, everyNth, slotsFor, spacingOf, spanOf } from '../lib/chart.ts';
+import { bucketLabel, tickLabel } from '../lib/when.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
 export type YTick = { value: number; label: string };
@@ -111,13 +103,13 @@ export function ChartFrame({
   const scales = chartScales(points, top, plot, width);
   const height = plot + CHART.AXIS_BAND;
 
-  // L'ASSE ORIZZONTALE, TUTTO QUI DENTRO. Le tacche le sceglie la larghezza; la
-  // forma dell'etichetta la decide la distanza fra le tacche SCELTE, non quella
-  // fra i bucket. Sono due numeri diversi e confonderli si vede: un'etichetta
-  // ogni ventun ore vuole il giorno accanto all'ora, una ogni novanta vuole la
-  // data.
+  // L'ASSE ORIZZONTALE, TUTTO QUI DENTRO. Le tacche le sceglie la larghezza
+  // misurata; la forma dell'etichetta la decide l'AMPIEZZA DEL PERIODO, che
+  // non dipende ne' dalla larghezza ne' dalla grana dei bucket — cosi' la
+  // stessa schermata si legge uguale su ogni monitor, e due schermate che
+  // mostrano lo stesso periodo scrivono la stessa cosa.
   const xTicks = everyNth(points, () => '', slotsFor(width));
-  const labelStep = tickSpacing(t, xTicks);
+  const span = spanOf(t);
   const bucketStep = spacingOf(t);
 
   const leave = () => {
@@ -205,7 +197,7 @@ export function ChartFrame({
               fontSize="11"
               fontFamily={CHART.FONT}
             >
-              {axisLabel(t[tick.at] ?? 0, labelStep)}
+              {tickLabel(t[tick.at] ?? 0, span)}
             </text>
           ))}
         </svg>

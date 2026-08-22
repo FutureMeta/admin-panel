@@ -120,6 +120,33 @@ export function axisLabel(epochSec: number, spacingSec: number): string {
 }
 
 /**
+ * L'etichetta di una TACCA d'asse, decisa dall'AMPIEZZA DEL PERIODO.
+ *
+ * NON DALLA DISTANZA FRA LE TACCHE, ed è la correzione di un difetto che si
+ * vedeva solo su certi schermi. Quante tacche entrano sull'asse lo decide la
+ * larghezza del riquadro, quindi con la distanza fra le tacche la stessa
+ * schermata si etichettava in due modi diversi a seconda del monitor: la
+ * panoramica a trenta giorni scriveva la data fino a circa 2400 pixel e
+ * «gio 14» oltre. Sotto ai duels — trenta bucket giornalieri invece di
+ * trecentosessanta da due ore — il salto non avveniva, e le due schermate
+ * finivano per dire la stessa cosa in due modi.
+ *
+ * L'ampiezza invece è una proprietà del PERIODO: non cambia con la finestra
+ * del browser, e non cambia con la grana dei bucket.
+ *
+ *  * fino a due giorni: l'ora basta, il giorno è sempre lo stesso o quasi;
+ *  * fino a due settimane: il giorno della settimana con l'ora, perché su
+ *    sette giorni «14:00» indica sette istanti diversi;
+ *  * oltre: la data, perché l'ora ha smesso di distinguere qualsiasi cosa.
+ */
+export function tickLabel(epochSec: number, spanSec: number): string {
+  const at = new Date(epochSec * 1000);
+  if (spanSec <= 48 * 3_600) return TIME.format(at);
+  if (spanSec <= 16 * 24 * 3_600) return WEEKDAY_HOUR.format(at);
+  return SHORT_DATE.format(at);
+}
+
+/**
  * L'etichetta di un BUCKET, che non è sempre un istante.
  *
  * «20 gennaio alle 00:00» su una colonna che vale l'intero 20 gennaio è falso

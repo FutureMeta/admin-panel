@@ -178,26 +178,27 @@ export function spacingOf(t: number[]): number {
 }
 
 /**
- * La distanza fra due ETICHETTE, che non è quella fra due bucket.
+ * L'AMPIEZZA del periodo disegnato, in secondi.
  *
- * È il numero che decide come si scrive un'etichetta d'asse — solo l'ora, il
- * giorno con l'ora, o la data — e confonderlo con il passo dei bucket è
- * costato due difetti visibili insieme: sul 7g dei duels le etichette dicevano
- * «14:00» senza il giorno (bucket da un'ora), e sul 30g dicevano «gio 00»
- * (bucket da un giorno). Sulla panoramica, che passava il passo giusto, le
- * stesse due schermate erano corrette.
+ * È il numero che decide come si scrive un'etichetta d'asse, e ci sono voluti
+ * due tentativi per arrivarci. Il passo dei BUCKET era sbagliato: sul 7g dei
+ * duels dava «14:00» senza il giorno. La distanza fra le TACCHE era sbagliata
+ * in un modo più insidioso: quante tacche entrano sull'asse dipende dalla
+ * larghezza del riquadro, quindi la stessa schermata si etichettava in due
+ * modi a seconda del monitor.
  *
- * Non è deducibile da chi disegna, perché quante tacche stanno sull'asse lo
- * decide la LARGHEZZA misurata del riquadro: la sa solo il telaio.
+ * L'ampiezza è una proprietà del periodo. Non cambia con la finestra del
+ * browser né con la grana dei bucket, e due schermate che mostrano lo stesso
+ * periodo scrivono la stessa cosa — che è tutto quello che serve.
+ *
+ * Si somma un passo: l'ultimo bucket occupa spazio anche lui, e senza il 24h
+ * misurerebbe ventitré ore invece di ventiquattro.
  */
-export function tickSpacing(t: number[], ticks: XTick[]): number {
-  const first = ticks[0];
-  const second = ticks[1];
-  if (!first || !second) return spacingOf(t);
-  const a = t[first.at];
-  const b = t[second.at];
-  if (a === undefined || b === undefined) return spacingOf(t);
-  return Math.max(1, b - a);
+export function spanOf(t: number[]): number {
+  if (t.length === 0) return 3_600;
+  const first = t[0] as number;
+  const last = t[t.length - 1] as number;
+  return Math.max(1, last - first + spacingOf(t));
 }
 
 /** Quanti pixel serve riservare a un'etichetta perché non tocchi la vicina. */

@@ -27,7 +27,7 @@ import {
   niceScale,
   segments,
   slotsFor,
-  tickSpacing,
+  spanOf,
 } from '#web/lib/chart.ts';
 import {
   ALL,
@@ -45,7 +45,7 @@ import {
   starsFilled,
 } from '#web/lib/duels.ts';
 import { heatColour, heatPosition } from '#web/lib/heat.ts';
-import { axisLabel, bucketLabel } from '#web/lib/when.ts';
+import { bucketLabel, tickLabel } from '#web/lib/when.ts';
 
 describe('le tab sommano senza chiudere i buchi', () => {
   const combos = [
@@ -379,40 +379,51 @@ describe('le barre di fondo non escono dal tracciato', () => {
   });
 });
 
-describe('l`etichetta dell`asse la decide la distanza fra le TACCHE', () => {
+describe('l`etichetta dell`asse la decide l`AMPIEZZA del periodo', () => {
   /** 168 bucket da un'ora, come il 7g. */
   const hourly = Array.from({ length: 168 }, (_, i) => 1_787_000_000 + i * 3_600);
-  /** 30 bucket da un giorno, come il 30g. */
+  /** 30 bucket da un giorno, come il 30g dei duels. */
   const daily = Array.from({ length: 30 }, (_, i) => 1_787_000_000 + i * 86_400);
+  /** 24 bucket da un'ora: il 24h. */
+  const day = Array.from({ length: 24 }, (_, i) => 1_787_000_000 + i * 3_600);
+  /** 360 bucket da due ore: il 30g della panoramica. Stesso periodo, altra grana. */
+  const bihourly = Array.from({ length: 360 }, (_, i) => 1_787_000_000 + i * 7_200);
 
-  it('sul 7g le tacche distano ORE, ma abbastanza da volere il giorno', async () => {
-    // IL DIFETTO: passando il passo dei BUCKET (un'ora) l'etichetta diventava
-    // «14:00» senza il giorno, e su sette giorni quell'ora indica sette
-    // istanti diversi. La panoramica passava il passo giusto ed era corretta:
-    // stessa figura, due risposte, perche' il numero lo sceglieva ogni
-    // grafico per conto suo.
-    const ticks = everyNth(hourly.length, () => '', slotsFor(1050));
-    const step = tickSpacing(hourly, ticks);
-
-    expect(step).toBeGreaterThanOrEqual(6 * 3_600);
-    expect(step).toBeLessThan(48 * 3_600);
-    expect(axisLabel(hourly[0] as number, step)).toMatch(/\d{1,2}:\d{2}|\s\d{1,2}$/);
-    expect(axisLabel(hourly[0] as number, step)).not.toBe(axisLabel(hourly[0] as number, 3_600));
+  it('la stessa schermata si etichetta uguale su OGNI monitor', async () => {
+    // IL DIFETTO: quante tacche stiano sull'asse lo decide la larghezza
+    // misurata, quindi scegliendo la forma dell'etichetta dalla distanza fra
+    // le tacche la panoramica a 30g scriveva la data fino a circa 2400 pixel
+    // e «gio 14» oltre. Stessa schermata, stesso periodo, due letture
+    // diverse a seconda dello schermo di chi guarda.
+    for (const width of [520, 1050, 1400, 2000, 2600, 3400]) {
+      const ticks = everyNth(bihourly.length, () => '', slotsFor(width));
+      for (const tick of ticks) {
+        expect(tickLabel(bihourly[tick.at] as number, spanOf(bihourly))).toMatch(/^\d{1,2} \p{L}+$/u);
+      }
+    }
   });
 
-  it('sul 30g le tacche distano giorni, e l`ora sparisce', async () => {
-    // Col passo dei bucket (un giorno) usciva «gio 00», cioe` il giorno con
-    // un'ora che non significa niente.
-    const ticks = everyNth(daily.length, () => '', slotsFor(1050));
-    const step = tickSpacing(daily, ticks);
-
-    expect(step).toBeGreaterThanOrEqual(48 * 3_600);
-    expect(axisLabel(daily[0] as number, step)).not.toMatch(/\d{1,2}:\d{2}/);
+  it('il 30g dei duels e il 30g della panoramica hanno la stessa forma', async () => {
+    // Trenta bucket da un giorno contro trecentosessanta da due ore: la grana
+    // e' diversa, il periodo no — ed e' il periodo a decidere.
+    expect(spanOf(daily)).toBe(spanOf(bihourly));
+    expect(tickLabel(daily[0] as number, spanOf(daily))).toBe(
+      tickLabel(bihourly[0] as number, spanOf(bihourly)),
+    );
   });
 
-  it('con una tacca sola si ripiega sul passo dei bucket', async () => {
-    expect(tickSpacing(hourly, [])).toBe(3_600);
-    expect(tickSpacing(daily, [{ at: 0, label: '' }])).toBe(86_400);
+  it('24h l`ora, 7g il giorno con l`ora, 30g la data', async () => {
+    expect(tickLabel(day[0] as number, spanOf(day))).toMatch(/^\d{1,2}:\d{2}$/);
+    expect(tickLabel(hourly[0] as number, spanOf(hourly))).toMatch(/^\p{L}+ \d{1,2}:\d{2}$/u);
+    expect(tickLabel(daily[0] as number, spanOf(daily))).toMatch(/^\d{1,2} \p{L}+$/u);
+  });
+
+  it('l`ampiezza conta anche l`ULTIMO bucket', async () => {
+    // Senza sommare un passo, il 24h misurerebbe ventitre' ore: l'ultimo
+    // bucket comincia alle 23 e vale fino a mezzanotte.
+    expect(spanOf(day)).toBe(24 * 3_600);
+    expect(spanOf(daily)).toBe(30 * 86_400);
+    expect(spanOf([])).toBe(3_600);
   });
 
   it('un bucket giornaliero nel tooltip non dice «alle 00:00»', async () => {

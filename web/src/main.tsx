@@ -21,6 +21,7 @@ import { type Command, CommandPalette, Sidebar, Topbar } from './components/shel
 import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
 import { ratingsSearch } from './lib/duels.ts';
+import { canOpen } from './lib/modules.ts';
 import { rangeSearch } from './lib/range.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
@@ -135,6 +136,27 @@ function AppShell() {
             label: 'Vai a Duels · Ratings',
             hint: 'feedback dei giocatori',
             run: () => void navigate({ to: '/duels/ratings' }),
+          },
+        ]
+      : []),
+    // LE DUE DI CONFIGURAZIONE GUARDANO IL LIVELLO, come le voci della barra.
+    // Con il solo modulo comparirebbero a chi ha `duels` a 1, cioe' a chi
+    // guarda i grafici: la palette li porterebbe su una schermata che risponde
+    // 403, e una scorciatoia che non funziona e' peggio di una scorciatoia che
+    // non c'e'.
+    ...(canOpen(data, 'duels', 3)
+      ? [
+          {
+            id: 'duels-modes',
+            label: 'Vai a Duels · Modes',
+            hint: 'configurazione delle modalità',
+            run: () => void navigate({ to: '/duels/modes' }),
+          },
+          {
+            id: 'duels-maps',
+            label: 'Vai a Duels · Maps',
+            hint: 'configurazione delle mappe',
+            run: () => void navigate({ to: '/duels/maps' }),
           },
         ]
       : []),
@@ -292,14 +314,14 @@ function DuelsRatingsRoute() {
 function DuelsModesRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
-  if ((me.data.permissions.duels ?? 0) < 3) return <ForbiddenPage />;
+  if (!canOpen(me.data, 'duels', 3)) return <ForbiddenPage />;
   return <DuelsModesPage me={me.data} />;
 }
 
 function DuelsMapsRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
-  if ((me.data.permissions.duels ?? 0) < 3) return <ForbiddenPage />;
+  if (!canOpen(me.data, 'duels', 3)) return <ForbiddenPage />;
   return <DuelsMapsPage me={me.data} />;
 }
 

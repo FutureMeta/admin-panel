@@ -7,6 +7,7 @@
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Me, ModuleKey } from '../lib/api.ts';
+import { canOpen } from '../lib/modules.ts';
 import {
   areaOf,
   COLLAPSED_KEY,
@@ -148,17 +149,15 @@ const NAV: NavItem[] = [
 export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
-  // `me.modules` arriva già filtrato dal server: il client non decide chi vede
-  // cosa, lo disegna e basta.
+  // Chi vede cosa lo decide il server: `me` porta i moduli e i livelli, e la
+  // barra li disegna. La stessa `canOpen` la usano la palette e le guardie di
+  // rotta, o si otterrebbero tre risposte alla stessa domanda.
+  //
+  // La dipendenza è `me` intero e non `me.modules`: adesso si guardano anche i
+  // livelli, e una dipendenza più stretta di ciò che si legge è il modo in cui
+  // una voce resta visibile dopo che il permesso è stato tolto.
   const groups = useMemo(() => {
-    // Il livello si guarda SOLO quando la voce lo chiede: `me.modules` porta
-    // gia' cio' a cui si ha accesso, e ricontrollarlo ovunque duplicherebbe
-    // una decisione che il server ha gia' preso.
-    const visible = NAV.filter((n) =>
-      n.modules.some(
-        (m) => me.modules.includes(m) && (n.minLevel === undefined || (me.permissions[m] ?? 0) >= n.minLevel),
-      ),
-    );
+    const visible = NAV.filter((n) => n.modules.some((m) => canOpen(me, m, n.minLevel ?? 1)));
     const map = new Map<string, typeof visible>();
     for (const item of visible) {
       const list = map.get(item.area) ?? [];
@@ -166,7 +165,7 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
       map.set(item.area, list);
     }
     return [...map.entries()];
-  }, [me.modules]);
+  }, [me]);
 
   // Il ricordo si legge UNA VOLTA, all'apertura: leggerlo a ogni disegno
   // significherebbe che una scheda aperta accanto sovrascrive quello che si

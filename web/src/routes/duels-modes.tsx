@@ -37,6 +37,7 @@ import {
   type SettingSpec,
   type Vocabulary,
 } from '../lib/config-draft.ts';
+import { canOpen } from '../lib/modules.ts';
 
 type ConfigMode = {
   id: number;
@@ -85,7 +86,7 @@ export function DuelsModesRoute({ me }: { me: Me }) {
     if (selected === null && rows.length > 0) setSelected(rows[0]?.id ?? null);
   }, [rows, selected]);
 
-  if (!me.modules.includes('duels') || (me.permissions.duels ?? 0) < 3) {
+  if (!canOpen(me, 'duels', 3)) {
     return (
       <>
         <PageHeader title="Duels · Modes" sub="Configurazione delle modalità" />

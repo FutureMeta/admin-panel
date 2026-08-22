@@ -70,3 +70,32 @@ export const MODULE_AREAS: Record<string, string> = {
 export function areaOfModule(key: string): string {
   return MODULE_AREAS[key] ?? OTHER_AREA;
 }
+
+/** Quanto in alto puo' arrivare un permesso. 0 = nessun accesso. */
+export type Level = 0 | 1 | 2 | 3;
+
+/**
+ * Questa persona puo' aprire questa schermata?
+ *
+ * UNA DOMANDA SOLA, IN UN POSTO SOLO. Era scritta in sei punti — la barra
+ * laterale, la palette, le guardie di rotta, le due schermate — ognuno con la
+ * sua forma: `modules.includes(k)` da una parte, `(permissions.k ?? 0) < 3`
+ * dall'altra, e le due non dicono la stessa cosa. Quando divergono si ottiene
+ * il difetto piu' fastidioso di un menu: una voce che compare e porta a un
+ * 403, oppure una schermata raggiungibile che nessuna voce nomina.
+ *
+ * IL LIVELLO E' LA DOMANDA VERA. `duels` a 1 apre i grafici, a 3 si cambia
+ * come si gioca: sono due permessi diversi sulla stessa chiave, e guardare
+ * solo l'elenco dei moduli non li distingue.
+ *
+ * NON E' UN CONTROLLO DI SICUREZZA e non prova a esserlo: quello sta sulle
+ * rotte, dove i dati non arrivano dal client. Questo decide cosa mostrare, ed
+ * e' cortesia — ma una cortesia che sbaglia manda le persone contro un muro.
+ */
+export function canOpen(
+  me: { modules: readonly string[]; permissions: Record<string, number> },
+  module: string,
+  minLevel: Level = 1,
+): boolean {
+  return me.modules.includes(module) && (me.permissions[module] ?? 0) >= minLevel;
+}

@@ -20,6 +20,8 @@
 
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
+import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
+import { writeAudit } from '#src/audit/log.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import { DK, isCommentFilter, isSort, RANGES, type Range } from '#src/duels/contract.ts';
 import { BadCursor } from '#src/duels/provider.ts';
@@ -28,7 +30,7 @@ import { isRange } from '#src/stats/contract.ts';
 import { ttlOf } from '#src/stats/warm.ts';
 import { sendEnvelope } from '../envelope.ts';
 import { requireAuth } from '../guards.ts';
-import { actorOf } from '../request-context.ts';
+import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
 const trendsSchema = {
   querystring: {
@@ -184,6 +186,32 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
       // Niente involucro e niente ETag: con la ricerca libera lo spazio delle
       // chiavi non e' enumerabile, quindi non e' scaldabile.
       reply.header('Cache-Control', 'private, no-store');
+
+      // L'UNICA azione di lettura del registro, e si scrive solo QUI: non
+      // «ha aperto le valutazioni», ma «ha cercato qualcuno». Registrare ogni
+      // consultazione della lista produrrebbe una riga per ogni pagina
+      // sfogliata, e il registro diventerebbe illeggibile proprio dove serve.
+      //
+      // Non blocca la risposta e un guasto non la fa fallire: la scrittura e'
+      // append-only con catena di hash e ha i suoi allarmi. Far fallire una
+      // lettura perche' il registro non ha risposto significherebbe che il
+      // pannello smette di funzionare per proteggere la sua stessa traccia.
+      const term = q.q?.trim() ?? '';
+      if (term !== '') {
+        void writeAudit(ctx.db, {
+          action: AUDIT_ACTIONS.duelsRatingSearch,
+          outcome: 'success',
+          actor: auditActorOf(actorOf(request)),
+          request: auditContextOf(request, requestIps(request)),
+          moduleKey: 'duels_feedback',
+          targetType: 'duels_rating_search',
+          targetId: null,
+          targetLabel: term,
+          meta: { q: term, mode, range },
+        }).catch((err) => {
+          ctx.logger.error({ err }, 'ricerca valutazioni non registrata: la riga di registro manca');
+        });
+      }
 
       try {
         const page = await provider.recent({

@@ -169,3 +169,44 @@ describe('senza il ruolo di lettura si dice cosa manca', () => {
     }
   }, 300_000);
 });
+
+describe('il registro segna chi ha cercato CHI, e nient`altro', () => {
+  async function searches(): Promise<Array<{ label: string | null; meta: unknown }>> {
+    const res = await sql.query<{ label: string | null; meta: unknown }>(
+      `SELECT target_label AS label, meta FROM audit.audit_log
+        WHERE action = 'duels.rating.search' ORDER BY occurred_at`,
+    );
+    return res.rows;
+  }
+
+  it('una ricerca lascia una riga con il termine cercato', async () => {
+    // E` l'unica azione di LETTURA di tutto il registro. Il fatto sensibile
+    // non e` aver aperto le valutazioni: e` aver cercato una persona.
+    const prima = (await searches()).length;
+    const actor = await actorWith('moderatore');
+    const res = await get('/api/duels/ratings/recent?range=24h&q=Vally', actor.cookieOnly());
+    expect(res.statusCode).toBe(200);
+
+    await expect.poll(async () => (await searches()).length, { timeout: 5_000 }).toBe(prima + 1);
+    const righe = await searches();
+    expect(righe.at(-1)?.label).toBe('Vally');
+  });
+
+  it('sfogliare la lista NON lascia niente', async () => {
+    // Una riga per pagina sfogliata renderebbe il registro illeggibile
+    // proprio dove serve. E` il verso opposto della stessa regola: il test
+    // qui sopra da solo non distinguerebbe «registra la ricerca» da
+    // «registra ogni richiesta».
+    const prima = (await searches()).length;
+    const actor = await actorWith('moderatore');
+
+    await get('/api/duels/ratings/recent?range=24h', actor.cookieOnly());
+    await get('/api/duels/ratings/recent?range=24h&sort=worst', actor.cookieOnly());
+    await get('/api/duels/ratings/recent?range=24h&comment=with', actor.cookieOnly());
+    // Uno spazio non e` una ricerca.
+    await get('/api/duels/ratings/recent?range=24h&q=%20%20', actor.cookieOnly());
+
+    await new Promise((r) => setTimeout(r, 300));
+    expect((await searches()).length).toBe(prima);
+  });
+});

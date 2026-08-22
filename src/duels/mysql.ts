@@ -29,12 +29,86 @@ export const SOURCE_TABLES = [
 /**
  * Quanto puo' durare una lettura prima di essere interrotta DAL SERVER.
  *
- * `max_execution_time` e' un tetto lato MySQL sulle SELECT: vale anche se il
- * pannello muore nel frattempo, mentre un timeout lato client lascerebbe la
- * query a girare sul database del gioco. E' la differenza fra rinunciare a un
- * risultato e smettere di pesare su una macchina che non e' nostra.
+ * Un tetto lato server vale anche se il pannello muore nel frattempo, mentre
+ * un timeout lato client lascerebbe la query a girare sul database del gioco.
+ * E' la differenza fra rinunciare a un risultato e smettere di pesare su una
+ * macchina che non e' nostra.
  */
 const MAX_EXECUTION_MS = 10_000;
+
+/** SQLSTATE HY000 / errno 1193: la variabile di sessione non esiste. */
+const ER_UNKNOWN_SYSTEM_VARIABLE = 1193;
+
+/**
+ * Quale variabile impone il tetto, su QUESTO server.
+ *
+ * - `mysql`: `max_execution_time`, in MILLISECONDI, da MySQL 5.7.8.
+ * - `mariadb`: `max_statement_time`, in SECONDI (un double), su MariaDB.
+ * - `none`: nessuna delle due. Il tetto lato server non c'e'.
+ */
+export type CapKind = 'unknown' | 'mysql' | 'mariadb' | 'none';
+
+function isUnknownVariable(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    (err as { errno?: number }).errno === ER_UNKNOWN_SYSTEM_VARIABLE
+  );
+}
+
+/**
+ * Il tetto di esecuzione, che ha due nomi diversi su due database diversi.
+ *
+ * COSTATO UN GUASTO IN PRODUZIONE, il 22 agosto 2026: il database del gioco e'
+ * MariaDB, `max_execution_time` non esiste, ed errno 1193 arrivava PRIMA di
+ * ogni singola query — quindi l'ingestione non ne ha eseguita nemmeno una. Il
+ * log lo diceva («MySQL del gioco NON raggiungibile»), ma la causa era il
+ * tetto, non la raggiungibilita'.
+ *
+ * SI PROVA, NON SI SUPPONE. Chiedere la versione e dedurne il dialetto
+ * significherebbe fidarsi di una stringa: qui si prova la prima forma, e se il
+ * server risponde «non conosco questa variabile» si prova la seconda. L'esito
+ * si ricorda, quindi il costo e' due query in croce all'avvio.
+ *
+ * E SE NON CE N'E' NESSUNA il giro continua, ma SENZA tetto lato server: e'
+ * un degrado da dire forte, perche' significa che una query fuori controllo su
+ * una macchina che non e' nostra non ha piu' niente che la fermi.
+ */
+export function createExecutionCap(ms: number) {
+  let kind: CapKind = 'unknown';
+
+  const apply = async (query: (sql: string) => Promise<unknown>): Promise<CapKind> => {
+    if (kind === 'none') return kind;
+
+    if (kind === 'unknown') {
+      try {
+        await query(`SET SESSION max_execution_time = ${Number(ms)}`);
+        kind = 'mysql';
+        return kind;
+      } catch (err) {
+        if (!isUnknownVariable(err)) throw err;
+      }
+      try {
+        // MariaDB conta in SECONDI, e accetta i decimali: dieci secondi qui
+        // sono `10`, non `10000`. Passare i millisecondi vorrebbe dire un
+        // tetto di due ore e quaranta, cioe' nessun tetto.
+        await query(`SET SESSION max_statement_time = ${Number(ms) / 1_000}`);
+        kind = 'mariadb';
+        return kind;
+      } catch (err) {
+        if (!isUnknownVariable(err)) throw err;
+      }
+      kind = 'none';
+      return kind;
+    }
+
+    if (kind === 'mysql') await query(`SET SESSION max_execution_time = ${Number(ms)}`);
+    else await query(`SET SESSION max_statement_time = ${Number(ms) / 1_000}`);
+    return kind;
+  };
+
+  return { apply, kind: () => kind };
+}
 
 /**
  * Il tetto del BACKFILL, che e' un'altra cosa.
@@ -51,6 +125,8 @@ export const BACKFILL_MAX_EXECUTION_MS = 120_000;
 export type DuelsMysql = {
   /** Una SELECT, con il tetto di esecuzione gia' applicato. */
   rows: <T>(sql: string, params?: unknown[]) => Promise<T[]>;
+  /** Quale tetto e' in vigore. `none` e' un degrado da dire. */
+  cap: () => CapKind;
   close: () => Promise<void>;
 };
 
@@ -77,17 +153,20 @@ export function createDuelsMysql(url: string, maxExecutionMs = MAX_EXECUTION_MS)
     timezone: 'Z',
   });
 
+  const cap = createExecutionCap(maxExecutionMs);
+
   return {
     rows: async <T>(sql: string, params: unknown[] = []): Promise<T[]> => {
       const conn = await pool.getConnection();
       try {
-        await conn.query(`SET SESSION max_execution_time = ${Number(maxExecutionMs)}`);
+        await cap.apply((statement) => conn.query(statement));
         const [result] = await conn.query(sql, params);
         return result as T[];
       } finally {
         conn.release();
       }
     },
+    cap: cap.kind,
     close: () => pool.end(),
   };
 }

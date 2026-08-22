@@ -70,6 +70,7 @@ export function fakeDuelsMysql(source: FakeDuelsSource): DuelsMysql {
         .sort((a, b) => Number(a.id) - Number(b.id))
         .slice(0, limit) as T[];
     },
+    cap: () => 'mysql' as const,
     close: async () => undefined,
   };
 }

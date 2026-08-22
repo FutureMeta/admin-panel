@@ -56,6 +56,14 @@ export const AUDIT_ACTIONS = {
   statsModeDeleted: 'stats.mode.delete',
   statsModeAliasesChanged: 'stats.mode.aliases.change',
 
+  // L'UNICA azione di LETTURA di tutto il registro, e c'e' una ragione: il
+  // fatto sensibile non e' aver aperto le valutazioni, e' aver cercato
+  // QUALCUNO. Il termine cercato finisce nei metadati.
+  //
+  // Registrare ogni consultazione della lista produrrebbe una riga per ogni
+  // pagina sfogliata e renderebbe il registro illeggibile proprio dove serve.
+  duelsRatingSearch: 'duels.rating.search',
+
   // --- sessioni -------------------------------------------------------------
   loginSucceeded: 'auth.login.success',
   loginFailed: 'auth.login.failure',

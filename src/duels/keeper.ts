@@ -92,7 +92,18 @@ export async function startDuelsIngest(opts: DuelsIngestOptions): Promise<DuelsI
   // qualunque.
   try {
     await my.rows('SELECT 1');
-    opts.logger.info({ job: 'duels-ingest' }, 'MySQL del gioco raggiungibile');
+    const cap = my.cap();
+    if (cap === 'none') {
+      // Nessuna delle due variabili esiste: si legge lo stesso, ma una query
+      // fuori controllo su una macchina che non e' nostra non ha piu' niente
+      // che la fermi lato server. Va detto forte, non nascosto in un info.
+      opts.logger.warn(
+        { job: 'duels-ingest', cap },
+        'nessun tetto di esecuzione lato server: il database del gioco non conosce ne` max_execution_time ne` max_statement_time',
+      );
+    } else {
+      opts.logger.info({ job: 'duels-ingest', cap }, 'MySQL del gioco raggiungibile');
+    }
   } catch (err) {
     opts.logger.error(
       { job: 'duels-ingest', err },

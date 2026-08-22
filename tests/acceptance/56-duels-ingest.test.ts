@@ -17,7 +17,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { runDuelsIngest } from '#src/duels/ingest.ts';
-import type { DuelsMysql } from '#src/duels/mysql.ts';
+import { createExecutionCap, type DuelsMysql } from '#src/duels/mysql.ts';
 import { fakeDuelsMysql } from '#tests/support/duels-mysql.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
@@ -307,6 +307,7 @@ describe('due ingeritori insieme non raddoppiano niente', () => {
     const base = fakeMysql({ modes: MODES, maps: MAPS, matches: MATCHES });
     let interfered = false;
     const conteso: DuelsMysql = {
+      cap: base.cap,
       close: base.close,
       rows: async <T>(query: string, params: unknown[] = []): Promise<T[]> => {
         const out = await base.rows<T>(query, params);
@@ -338,5 +339,78 @@ describe('due ingeritori insieme non raddoppiano niente', () => {
     const res = await runDuelsIngest(db, fakeMysql({ modes: MODES, maps: MAPS, matches: MATCHES }));
     expect(res.contended).toBe(false);
     expect(res.matches).toBe(3);
+  });
+});
+
+describe('il tetto di esecuzione ha due nomi su due database diversi', () => {
+  /** L'errore che MariaDB restituisce per una variabile che non conosce. */
+  function unknownVariable(): Error & { errno: number } {
+    const err = new Error("Unknown system variable 'max_execution_time'") as Error & { errno: number };
+    err.errno = 1193;
+    return err;
+  }
+
+  it('su MySQL si usa `max_execution_time`, in millisecondi', async () => {
+    const seen: string[] = [];
+    const cap = createExecutionCap(10_000);
+    await cap.apply(async (s) => void seen.push(s));
+
+    expect(cap.kind()).toBe('mysql');
+    expect(seen).toEqual(['SET SESSION max_execution_time = 10000']);
+  });
+
+  it('su MariaDB si ripiega su `max_statement_time`, in SECONDI', async () => {
+    // COSTATO UN GUASTO IN PRODUZIONE: il database del gioco e` MariaDB, e
+    // l'errno 1193 arrivava prima di ogni singola query — quindi l'ingestione
+    // non ne ha eseguita nemmeno una. E i secondi non sono un dettaglio:
+    // passare 10000 a MariaDB vorrebbe dire un tetto di due ore e quaranta,
+    // cioe` nessun tetto.
+    const seen: string[] = [];
+    const cap = createExecutionCap(10_000);
+    await cap.apply(async (s) => {
+      seen.push(s);
+      if (s.includes('max_execution_time')) throw unknownVariable();
+    });
+
+    expect(cap.kind()).toBe('mariadb');
+    expect(seen.at(-1)).toBe('SET SESSION max_statement_time = 10');
+  });
+
+  it('il dialetto si ricorda: non si ritenta a ogni query', async () => {
+    const seen: string[] = [];
+    const cap = createExecutionCap(10_000);
+    const query = async (s: string) => {
+      seen.push(s);
+      if (s.includes('max_execution_time')) throw unknownVariable();
+    };
+    await cap.apply(query);
+    seen.length = 0;
+    await cap.apply(query);
+
+    expect(seen).toEqual(['SET SESSION max_statement_time = 10']);
+  });
+
+  it('senza nessuna delle due si continua, ma si sa di essere senza tetto', async () => {
+    // Il giro deve andare avanti: rinunciare a leggere perche` il server non
+    // ha un tetto sarebbe peggio. Ma `none` e` un degrado, e il keeper lo
+    // registra come avviso invece che come «tutto bene».
+    const cap = createExecutionCap(10_000);
+    await cap.apply(async () => {
+      throw unknownVariable();
+    });
+    expect(cap.kind()).toBe('none');
+  });
+
+  it('un errore che NON e` «variabile sconosciuta» non si assorbe', async () => {
+    // Una connessione caduta a meta` non deve diventare «questo server non ha
+    // il tetto»: sarebbe una diagnosi sbagliata che si porta dietro per tutta
+    // la vita del processo.
+    const cap = createExecutionCap(10_000);
+    await expect(
+      cap.apply(async () => {
+        throw new Error('connessione persa');
+      }),
+    ).rejects.toThrow(/connessione persa/);
+    expect(cap.kind()).toBe('unknown');
   });
 });

@@ -223,6 +223,7 @@ describe('un secondo scrittore ferma il backfill, non lo fa sbagliare', () => {
     const base = fakeDuelsMysql(TUTTO);
     let interfered = false;
     const conteso: DuelsMysql = {
+      cap: base.cap,
       close: base.close,
       rows: async <T>(query: string, params: unknown[] = []): Promise<T[]> => {
         const out = await base.rows<T>(query, params);

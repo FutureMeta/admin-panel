@@ -129,21 +129,47 @@ describe('la mappa di attivita` non ruota di una riga', () => {
 describe('gli invarianti dei feedback li impone il database', () => {
   it('un voto fuori dalla scala 1..5 non entra', async () => {
     // La UI lo assume ovunque: `colori[rating - 1]` va fuori array per 0 o 6.
-    // L'origine non lo garantisce, quindi lo garantisce questa colonna.
+    // L'origine il vincolo ce l'ha — `CONSTRAINT chk_rating` nel DDL del
+    // plugin — ma i CHECK di MySQL valgono solo dalla 8.0.16 in avanti e una
+    // tabella creata prima li conserva come commento. Un vincolo la cui
+    // efficacia dipende dalla versione di un server altrui non e` una
+    // garanzia: qui e` nostro.
     for (const bad of [0, 6, -1]) {
       await expect(
         mig.query(
-          `INSERT INTO stats.duels_rating (rating_id, created_at, player_uuid, rating)
-           VALUES ($1, now(), gen_random_uuid(), $2)`,
+          `INSERT INTO stats.duels_rating (rating_id, created_at, match_id, player_id, rating)
+           VALUES ($1, now(), gen_random_uuid(), 1, $2)`,
           [900 + bad, bad],
         ),
         String(bad),
       ).rejects.toThrow();
     }
     await mig.query(
-      `INSERT INTO stats.duels_rating (rating_id, created_at, player_uuid, rating)
-       VALUES (1, now(), gen_random_uuid(), 5)`,
+      `INSERT INTO stats.duels_rating (rating_id, created_at, match_id, player_id, rating)
+       VALUES (1, now(), gen_random_uuid(), 1, 5)`,
     );
+  });
+
+  it('un feedback senza giocatore non si scrive, senza uuid si`', async () => {
+    // `player_id` e` l'unica identita` che la riga porta davvero con se`
+    // all'origine: e` NOT NULL. Lo uuid si risolve con una lettura in piu` su
+    // `duels_userdata`, e quella lettura puo` non trovare la riga — un
+    // giocatore cancellato, un'anagrafica non allineata. Se fosse NOT NULL,
+    // l'ingestione fallirebbe su un caso che non e` un errore.
+    await expect(
+      mig.query(
+        `INSERT INTO stats.duels_rating (rating_id, created_at, match_id, rating)
+         VALUES (2, now(), gen_random_uuid(), 4)`,
+      ),
+    ).rejects.toThrow();
+
+    await mig.query(
+      `INSERT INTO stats.duels_rating (rating_id, created_at, match_id, player_id, rating)
+       VALUES (3, now(), gen_random_uuid(), 77, 4)`,
+    );
+    expect(
+      await one<string>(mig, `SELECT count(*)::text FROM stats.duels_rating WHERE player_uuid IS NULL`),
+    ).not.toBe('0');
   });
 
   it('le cinque barre devono fare il totale', async () => {
@@ -206,6 +232,7 @@ describe('la ricerca ha i suoi indici, e sono usabili', () => {
       'duels_rating_comment_trgm',
       'duels_rating_by_score',
       'duels_rating_by_mode',
+      'duels_rating_by_player',
     ]) {
       expect(names, wanted).toContain(wanted);
     }

@@ -37,8 +37,8 @@ SET LOCAL statement_timeout = '60s';
 -- ---------------------------------------------------------------------------
 CREATE TABLE stats.duels_match_hour (
   bucket_at  timestamptz NOT NULL,
-  mode_id    smallint    NOT NULL,
-  map_id     smallint    NOT NULL,
+  mode_id    integer     NOT NULL,
+  map_id     integer     NOT NULL,
   -- `type` e `context` sono VARCHAR liberi in origine, non enum: in
   -- produzione possono esistere valori che il legacy non contempla e che
   -- finivano indistinti dentro «ALL». Si trasportano come testo per non
@@ -59,8 +59,8 @@ CREATE TABLE stats.duels_match_hour (
 -- quante sono perche' chi guarda possa saperlo.
 CREATE TABLE stats.duels_match_day_untimed (
   day        date     NOT NULL,
-  mode_id    smallint NOT NULL,
-  map_id     smallint NOT NULL,
+  mode_id    integer  NOT NULL,
+  map_id     integer  NOT NULL,
   match_type text     NOT NULL,
   context    text     NOT NULL,
   matches    integer  NOT NULL CHECK (matches > 0),
@@ -77,7 +77,7 @@ CREATE TABLE stats.duels_match_day_untimed (
 -- fissa una volta, nel job.
 -- ---------------------------------------------------------------------------
 CREATE TABLE stats.duels_mode (
-  mode_id      smallint PRIMARY KEY,
+  mode_id      integer  PRIMARY KEY,
   name         text NOT NULL,
   display_name text NOT NULL,
   ranking      text,
@@ -89,7 +89,7 @@ CREATE TABLE stats.duels_mode (
 );
 
 CREATE TABLE stats.duels_map (
-  map_id       smallint PRIMARY KEY,
+  map_id       integer  PRIMARY KEY,
   name         text,
   display_name text,
   map_type     text,
@@ -104,11 +104,14 @@ CREATE TABLE stats.duels_map (
 -- facoltativo. In tutta la schermata non esiste aritmetica oltre COUNT, AVG e
 -- SUM.
 --
--- `rating BETWEEN 1 AND 5` E' IMPOSTO QUI perche' l'origine non lo garantisce
--- (§7.9): la UI lo assume ovunque, e un 0 o un 6 la manderebbe fuori array.
--- L'ingestione scarta i fuori scala e li CONTA, perche' altrimenti la somma
--- delle cinque barre non torna con il totale — difetto silenzioso gia'
--- presente nel legacy.
+-- `rating BETWEEN 1 AND 5` c'e' GIA' all'origine — il DDL del plugin porta
+-- `CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5)` — e resta comunque
+-- qui: i CHECK di MySQL sono applicati solo dalla 8.0.16 in avanti, e una
+-- tabella creata prima li conserva come commento senza farli valere. Un
+-- vincolo la cui efficacia dipende dalla versione di un server altrui non e'
+-- una garanzia su cui appoggiare la UI, che lo assume ovunque: `colori[r-1]`
+-- va fuori array per 0 o 6. L'ingestione scarta i fuori scala e li CONTA,
+-- perche' altrimenti la somma delle cinque barre non tornerebbe col totale.
 --
 -- `player_name` e' denormalizzato in ingestione: e' cio' che fa sparire il
 -- join su `UNHEX(REPLACE(uuid,'-',''))` e le due materializzazioni complete di
@@ -118,13 +121,36 @@ CREATE TABLE stats.duels_map (
 -- browser con un try/catch silenzioso: un JSON malformato sparisce senza
 -- traccia ne' log.
 -- ---------------------------------------------------------------------------
+-- L'IDENTITA' DEL GIOCATORE VIENE DALL'ORIGINE, e l'origine non ha uno uuid
+-- su questa riga. Il DDL del plugin dice
+--
+--     player_id INT NOT NULL,
+--     FOREIGN KEY (player_id) REFERENCES duels_userdata(id)
+--
+-- cioe' un intero, chiave esterna verso l'anagrafica del gioco. Lo uuid sta
+-- una tabella piu' in la'. Quindi:
+--
+--   * `player_id` e' NOT NULL, perche' e' l'unica identita' che il feedback
+--     porta davvero con se';
+--   * `player_uuid` e' NULLABILE, perche' si risolve con una lettura in piu'
+--     e quella lettura puo' non trovare la riga — un giocatore cancellato,
+--     un'anagrafica non allineata. Dichiararlo NOT NULL avrebbe fatto fallire
+--     l'ingestione su un caso che non e' un errore.
+--
+-- `match_id` e' `BINARY(16) NOT NULL` all'origine: e' uno uuid in forma
+-- binaria e si converte, non si tiene come byte.
 CREATE TABLE stats.duels_rating (
   rating_id   bigint      NOT NULL,
   created_at  timestamptz NOT NULL,
-  match_id    uuid,
-  player_uuid uuid        NOT NULL,
+  match_id    uuid        NOT NULL,
+  player_id   integer     NOT NULL,
+  player_uuid uuid,
   player_name text,
-  mode_id     smallint,
+  mode_id     integer,
+  -- L'origine ha gia' `CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5)`.
+  -- Questo vincolo resta comunque: i CHECK di MySQL sono applicati solo dalla
+  -- 8.0.16 in avanti e una tabella creata prima li porta come commento. Un
+  -- vincolo che dipende dalla versione del server altrui non e' una garanzia.
   rating      smallint    NOT NULL CHECK (rating BETWEEN 1 AND 5),
   comment     text,
   dialog      jsonb,
@@ -143,7 +169,7 @@ COMMENT ON TABLE stats.duels_rating IS
 -- risolta). Non e' un id valido, quindi non collide.
 CREATE TABLE stats.duels_rating_day (
   day          date     NOT NULL,
-  mode_id      smallint NOT NULL DEFAULT -1,
+  mode_id      integer  NOT NULL DEFAULT -1,
   n            integer  NOT NULL CHECK (n >= 0),
   sum_rating   integer  NOT NULL CHECK (sum_rating >= 0),
   with_comment integer  NOT NULL CHECK (with_comment >= 0),
@@ -242,7 +268,7 @@ FROM stats.duels_rating_day;
 -- interroga passa da `requireLevel(actor, 'duels_feedback', 1)`: il confine e'
 -- nella rotta, questo e' solo il canale.
 CREATE VIEW stats.v_duels_rating AS
-SELECT rating_id, created_at, match_id, player_uuid, player_name, mode_id, rating, comment, dialog
+SELECT rating_id, created_at, match_id, player_id, player_uuid, player_name, mode_id, rating, comment, dialog
 FROM stats.duels_rating;
 
 -- `since_day` serve alla schermata per dichiarare da quando esiste il dato.
@@ -315,3 +341,9 @@ REVOKE ALL ON
   stats.duels_map, stats.duels_rating, stats.duels_rating_day,
   stats.duels_ingest_state
   FROM metamc_stats;
+
+-- L'origine indicizza `(player_id, created_at)`: si tiene la stessa forma.
+-- «Tutti i feedback di questo giocatore» e' la domanda che verra' fatta il
+-- giorno in cui qualcuno segnala un commento, ed e' anche il verso in cui si
+-- cancella un profilo.
+CREATE INDEX duels_rating_by_player ON stats.duels_rating (player_id, created_at DESC);

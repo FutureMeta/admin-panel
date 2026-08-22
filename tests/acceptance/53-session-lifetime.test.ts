@@ -24,9 +24,15 @@ import { startTestApp, type TestApp } from '#tests/support/app.ts';
 
 let t: TestApp;
 
+/** Un valore che NON coincide con nessun default: 3 giorni. */
+const ABSOLUTE_SECONDS = 3 * 24 * 60 * 60;
+
 beforeAll(async () => {
-  // Zero, come in produzione dopo D-11.
-  t = await startTestApp({ label: 'lifetime', idleSeconds: 0 });
+  // Zero come in produzione dopo D-11, e un tetto DIVERSO sia dal default
+  // della variabile (28800) sia da quello della colonna (8 ore). Con tre
+  // numeri uguali non si distingue chi comanda: e' esattamente cosi' che il
+  // difetto qui sotto e' rimasto nascosto per mesi.
+  t = await startTestApp({ label: 'lifetime', idleSeconds: 0, absoluteSeconds: ABSOLUTE_SECONDS });
 }, 180_000);
 
 afterAll(async () => {
@@ -74,6 +80,38 @@ describe('con l`inattività spenta la sessione non scade per inattività', () =>
   });
 });
 
+describe('il tetto assoluto viene dalla CONFIGURAZIONE, non dal database', () => {
+  it('`absolute_expires_at` vale quanto SESSION_ABSOLUTE_SECONDS dice', async () => {
+    // IL DIFETTO CHE QUESTO TEST ESISTE PER PRENDERE. La colonna ha un default
+    // nella migration 002 — `now() + interval '8 hours'` — e per mesi e` stato
+    // lui il tetto vero: la variabile governava `expiresIn` di better-auth,
+    // cioe` il cookie, e non la colonna che il middleware guarda per prima.
+    // Portata a quattordici giorni non spostava niente: chi entrava la sera si
+    // ritrovava fuori la mattina dopo.
+    //
+    // La versione precedente di questo file non poteva vederlo: invecchiava
+    // `updatedAt` e lasciava stare il tetto, dicendo a chiare lettere «cosi` il
+    // test non dipende da quanto vale SESSION_ABSOLUTE_SECONDS». Era proprio
+    // quella la dipendenza da provare.
+    const user = await seedUser(t, { email: 'tetto@metamc.it' });
+    await loginAs(t, user);
+
+    const row = await t.ctx.db
+      .selectFrom('auth.session')
+      .select(['absolute_expires_at', 'createdAt'])
+      .orderBy('createdAt', 'desc')
+      .limit(1)
+      .executeTakeFirstOrThrow();
+
+    const durata = (new Date(row.absolute_expires_at).getTime() - new Date(row.createdAt).getTime()) / 1000;
+    // Qualche secondo di scarto fra la INSERT e la promozione ad aal=2.
+    expect(durata).toBeGreaterThan(ABSOLUTE_SECONDS - 30);
+    expect(durata).toBeLessThan(ABSOLUTE_SECONDS + 30);
+    // E soprattutto: NON e` il default della colonna.
+    expect(durata).toBeGreaterThan(8 * 60 * 60);
+  });
+});
+
 describe('il tetto assoluto e` rimasto l`unico limite, e morde', () => {
   it('oltre `absolute_expires_at` la sessione non vale piu`', async () => {
     // Non si sposta l'orologio: si sposta la COLONNA, che e` il modo in cui
@@ -105,13 +143,20 @@ describe('il tetto assoluto e` rimasto l`unico limite, e morde', () => {
     // potesse esistere senza scadenza non morirebbe mai piu`.
     await seedUser(t, { email: 'senzatetto@metamc.it' }).then((u) => loginAs(t, u));
 
-    await expect(
-      sql`
-        UPDATE auth.session
-           SET absolute_expires_at = NULL
-         WHERE id = (SELECT id FROM auth.session ORDER BY "createdAt" DESC LIMIT 1)
-      `.execute(t.ctx.db),
-    ).rejects.toThrow(/not-null|null value/i);
+    // Si aggancia lo SQLSTATE, non il messaggio: `23502` e` «not null
+    // violation» in qualunque lingua, e questo cluster risponde in italiano.
+    // Un test che legge il testo dell'errore passa o fallisce a seconda del
+    // `lc_messages` di chi lo esegue.
+    const rifiutata = await sql`
+      UPDATE auth.session
+         SET absolute_expires_at = NULL
+       WHERE id = (SELECT id FROM auth.session ORDER BY "createdAt" DESC LIMIT 1)
+    `
+      .execute(t.ctx.db)
+      .then(() => null)
+      .catch((err: unknown) => err);
+
+    expect((rifiutata as { code?: string } | null)?.code).toBe('23502');
   });
 });
 

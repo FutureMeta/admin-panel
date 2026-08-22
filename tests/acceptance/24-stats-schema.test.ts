@@ -275,15 +275,28 @@ describe('il grezzo: la convenzione sparsa e` un vincolo, non un accordo verbale
   beforeAll(async () => {
     await mig.query(
       `INSERT INTO stats.poll_cycle (tick_at, run_id, status, delta_s, players)
-       VALUES ('2026-08-20 10:02:00+00', $1, 'ok', 30, 7)`,
+       VALUES (((current_date - 1)::timestamp AT TIME ZONE 'UTC' + interval '10 hours 2 minutes'), $1, 'ok', 30, 7)`,
       [RUN],
     );
   });
 
+  // L'ISTANTE E' RELATIVO A IERI, non una data scritta a mano.
+  //
+  // Qui c'era `2026-08-20`, e ha funzionato finche' quella data e' rimasta
+  // dentro la finestra delle partizioni: `ensure_partitions` ne crea da
+  // `current_date - 1` in avanti, e `sample_server` e' partizionata per
+  // GIORNO. Il 22 agosto la data era scivolata a `current_date - 2` e
+  // l'inserimento e' fallito per «nessuna partizione trovata» — un test che
+  // misurava il calendario invece del codice, e che sarebbe diventato rosso da
+  // solo qualunque cosa si toccasse.
+  //
+  // Peggio: i due test qui sotto si aspettano un RIFIUTO, e con la partizione
+  // mancante lo ottenevano per la ragione sbagliata. Passavano dicendo di aver
+  // verificato un vincolo che non era stato nemmeno raggiunto.
   it('un server con giocatori si scrive', async () => {
     await mig.query(
       `INSERT INTO stats.sample_server (tick_at, server_id, delta_s, players)
-       SELECT '2026-08-20 10:02:00+00', server_id, 30, 7
+       SELECT ((current_date - 1)::timestamp AT TIME ZONE 'UTC' + interval '10 hours 2 minutes'), server_id, 30, 7
          FROM stats.server WHERE server_key = 'bedwars_solo_2'`,
     );
   });
@@ -295,7 +308,7 @@ describe('il grezzo: la convenzione sparsa e` un vincolo, non un accordo verbale
     await expect(
       mig.query(
         `INSERT INTO stats.sample_server (tick_at, server_id, delta_s, players)
-         VALUES ('2026-08-20 10:02:00+00', 1, 30, 0)`,
+         VALUES (((current_date - 1)::timestamp AT TIME ZONE 'UTC' + interval '10 hours 2 minutes'), 1, 30, 0)`,
       ),
     ).rejects.toThrow();
   });
@@ -307,7 +320,7 @@ describe('il grezzo: la convenzione sparsa e` un vincolo, non un accordo verbale
     await expect(
       mig.query(
         `INSERT INTO stats.sample_server (tick_at, server_id, delta_s, players)
-         VALUES ('2026-08-20 10:02:00+00', 0, 30, 7)`,
+         VALUES (((current_date - 1)::timestamp AT TIME ZONE 'UTC' + interval '10 hours 2 minutes'), 0, 30, 7)`,
       ),
     ).rejects.toThrow();
   });

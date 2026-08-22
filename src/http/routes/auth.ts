@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
+import { absoluteCap } from '#src/auth/auth.ts';
 import { withPepperSubject } from '#src/auth/pepper-context.ts';
 import { visibleModules } from '#src/authz/can.ts';
 import { issueCsrfCookie } from '../csrf.ts';
@@ -336,7 +337,12 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
           // authenticated_at: e' cio' che lo step-up misura.
           await ctx.db
             .updateTable('auth.session')
-            .set({ aal: 2, authenticated_at: new Date(), amr: ['pwd', 'totp'] })
+            .set({
+              aal: 2,
+              authenticated_at: new Date(),
+              amr: ['pwd', 'totp'],
+              absolute_expires_at: absoluteCap(ctx.env.SESSION_ABSOLUTE_SECONDS),
+            })
             .where('userId', '=', userId)
             .where('aal', '<', 2)
             .execute();

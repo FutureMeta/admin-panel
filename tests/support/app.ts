@@ -39,6 +39,8 @@ export type TestAppOptions = {
   label?: string;
   /** Secondi di validita' dello step-up. Abbassarlo permette di verificarne la scadenza. */
   idleSeconds?: number;
+  /** Secondi del tetto assoluto. Serve a provare che sia la CONFIGURAZIONE a deciderlo. */
+  absoluteSeconds?: number;
   /** SEC-40: alza la versione del pepper per riprodurre lo stato post-rotazione. */
   pepperVersion?: number;
   /**
@@ -179,7 +181,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     UV_THREADPOOL_SIZE: '8',
     MAIL_FROM: 'MetaMC Admin <no-reply@metamc.it>',
     RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from('segreto-webhook-di-test-0123456789').toString('base64')}`,
-    SESSION_ABSOLUTE_SECONDS: '28800',
+    SESSION_ABSOLUTE_SECONDS: String(opts.absoluteSeconds ?? 28800),
     SESSION_IDLE_SECONDS: String(opts.idleSeconds ?? 1800),
     LOG_LEVEL: 'fatal',
     ...(opts.statsDb ? { DATABASE_STATS_URL: db.statsUrl } : {}),

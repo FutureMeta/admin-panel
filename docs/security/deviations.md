@@ -285,3 +285,15 @@ richiedono che qualcuno se ne accorga, mentre il timeout non lo richiedeva.
 Vale la pena rileggere questa voce se un giorno il pannello viene usato da
 postazioni condivise, o da fuori sede su macchine non gestite: sono i due
 scenari in cui il conto qui sopra cambia di segno.
+
+**Nota, aggiunta dopo.** Quando questa voce è stata scritta la prima volta,
+`SESSION_ABSOLUTE_SECONDS` **non arrivava** a `absolute_expires_at`: governava
+`expiresIn` di better-auth — cioè `expiresAt` e la durata del cookie — mentre
+la colonna che il middleware controlla per prima prendeva il default della
+migration 002, `now() + interval '8 hours'`. Portare la variabile a quattordici
+giorni non spostava il tetto vero, e chi entrava la sera si ritrovava fuori la
+mattina dopo. Non si era visto perché i due numeri erano d'accordo nella
+configurazione di partenza: finché la variabile valeva 28800 il default diceva
+la stessa cosa, e nessuno aveva motivo di chiedersi quale dei due comandasse.
+Ora il valore si scrive esplicitamente alla promozione ad `aal = 2`, una volta
+sola, e quanto dice questa voce è vero.

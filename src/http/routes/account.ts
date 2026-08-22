@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction, writeAudit } from '#src/audit/log.ts';
+import { absoluteCap } from '#src/auth/auth.ts';
 import { HibpUnavailable, PasswordCompromised } from '#src/auth/hibp.ts';
 import { PASSWORD_MAX, PASSWORD_MIN } from '#src/auth/password.ts';
 import {
@@ -104,7 +105,12 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
         // nell'audit e nello step-up.
         await trx
           .updateTable('auth.session')
-          .set({ aal: 2, authenticated_at: new Date(), amr: ['pwd', 'recovery'] })
+          .set({
+            aal: 2,
+            authenticated_at: new Date(),
+            amr: ['pwd', 'recovery'],
+            absolute_expires_at: absoluteCap(ctx.env.SESSION_ABSOLUTE_SECONDS),
+          })
           .where('userId', '=', userId)
           .where('aal', '<', 2)
           .execute();

@@ -138,3 +138,28 @@ export function createAuth(deps: AuthDeps) {
     telemetry: { enabled: false },
   });
 }
+
+/**
+ * Il tetto assoluto di una sessione appena autenticata. SEC-05, D-11.
+ *
+ * SI SCRIVE, NON SI EREDITA. La colonna ha un default nella migration 002 —
+ * `now() + interval '8 hours'` — e per mesi e' stato lui il tetto vero:
+ * `SESSION_ABSOLUTE_SECONDS` governa `expiresIn` di better-auth, cioe'
+ * `expiresAt` e la durata del cookie, e NON tocca la colonna che il middleware
+ * controlla per prima. Portare quella variabile a quattordici giorni non
+ * spostava niente e le sessioni continuavano a cadere alle otto ore.
+ *
+ * NON SI VEDEVA perche' i due numeri erano d'accordo nella configurazione di
+ * partenza: finche' la variabile valeva 28800, il default della colonna diceva
+ * la stessa cosa e nessuno aveva motivo di chiedersi quale dei due comandasse.
+ * Si e' visto solo cambiandone uno.
+ *
+ * SI SCRIVE UNA VOLTA SOLA. Il tetto non si proroga, quindi la scrittura sta
+ * sulla promozione ad `aal = 2` — il momento in cui l'autenticazione si
+ * completa, e che i tre punti di ingresso fanno gia' con `WHERE aal < 2`.
+ * Rifarla a ogni verifica del secondo fattore trasformerebbe il tetto in una
+ * scadenza scorrevole, cioe' nel suo contrario.
+ */
+export function absoluteCap(seconds: number, from: number = Date.now()): Date {
+  return new Date(from + seconds * 1000);
+}

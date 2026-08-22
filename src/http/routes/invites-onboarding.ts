@@ -9,6 +9,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction, writeAudit } from '#src/audit/log.ts';
+import { absoluteCap } from '#src/auth/auth.ts';
 import { HibpUnavailable, PasswordCompromised } from '#src/auth/hibp.ts';
 import { PASSWORD_MAX, PASSWORD_MIN } from '#src/auth/password.ts';
 import { formatRecoveryCode, issueRecoveryCodes } from '#src/auth/recovery-codes.ts';
@@ -376,8 +377,15 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
         // del §9 richiede e cio' che lo step-up misura.
         await trx
           .updateTable('auth.session')
-          .set({ aal: 2, authenticated_at: new Date(), amr: ['pwd', 'totp'] })
+          .set({
+            aal: 2,
+            authenticated_at: new Date(),
+            amr: ['pwd', 'totp'],
+            absolute_expires_at: absoluteCap(ctx.env.SESSION_ABSOLUTE_SECONDS),
+          })
           .where('userId', '=', userId)
+          // Una volta sola: il tetto assoluto non si proroga (SEC-05).
+          .where('aal', '<', 2)
           .execute();
 
         const { codes, generation } = await issueRecoveryCodes(trx, userId);

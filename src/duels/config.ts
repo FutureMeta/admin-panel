@@ -30,6 +30,7 @@ import {
   MODE_SETTING_GROUPS,
   MODE_SETTINGS,
   MODE_TYPES,
+  normaliseValue,
   RANKING_TYPES,
   type SettingSpec,
   settingValueIsValid,
@@ -162,7 +163,7 @@ export async function modeDetail(my: DuelsMysql, id: number): Promise<ModeDetail
       ranking: row.ranking,
       overrides,
     },
-    settings: settings.map((s) => ({ key: s.type, value: String(s.value) })),
+    settings: normalised(MODE_SETTINGS, settings),
   };
 }
 
@@ -214,7 +215,7 @@ export async function mapDetail(my: DuelsMysql, id: number): Promise<MapDetail |
     map: toMap(row),
     modeIds: modes.map((m) => Number(m.mode_id)),
     eventTypes: events.map((e) => e.event_type),
-    settings: settings.map((s) => ({ key: s.type, value: String(s.value) })),
+    settings: normalised(MAP_SETTINGS, settings),
     teams: teams.map((t) => ({
       id: Number(t.id),
       name: t.name,
@@ -323,6 +324,7 @@ export async function saveMode(my: DuelsMysql, id: number, edit: ModeEdit): Prom
 
     const current = await currentSettings(
       t,
+      MODE_SETTINGS,
       `SELECT type, value FROM duels_mode_setting WHERE mode_id = ?`,
       id,
     );
@@ -363,6 +365,7 @@ export async function saveMap(my: DuelsMysql, id: number, edit: MapEdit): Promis
 
     const current = await currentSettings(
       t,
+      MAP_SETTINGS,
       `SELECT type, value FROM duels_map_setting WHERE map_id = ?`,
       id,
     );
@@ -474,9 +477,36 @@ function coreFields(specs: FieldSpec[], what: string): Record<string, string> {
   return out;
 }
 
-async function currentSettings(t: DuelsTx, sql: string, id: number): Promise<Map<string, string>> {
+async function currentSettings(
+  t: DuelsTx,
+  specs: readonly SettingSpec[],
+  sql: string,
+  id: number,
+): Promise<Map<string, string>> {
   const rows = await t.rows<{ type: string; value: string }>(sql, [id]);
-  return new Map(rows.map((r) => [r.type, String(r.value)]));
+  // NORMALIZZATE ANCHE QUI, o il piano confronterebbe `true` con `1` e li
+  // vedrebbe diversi: ogni salvataggio riscriverebbe righe che non sono
+  // cambiate, e il registro si riempirebbe di modifiche che non modificano.
+  return new Map(rows.map((r) => [r.type, canonical(specs, r.type, String(r.value))]));
+}
+
+/**
+ * Il valore come lo scriviamo noi, qualunque forma avesse nel database.
+ *
+ * Una chiave che il registro non conosce passa intatta: non e' compito nostro
+ * decidere che un valore sconosciuto e' sbagliato.
+ */
+function canonical(specs: readonly SettingSpec[], key: string, value: string): string {
+  const spec = specs.find((s) => s.key === key);
+  return spec ? normaliseValue(spec, value) : value;
+}
+
+/** Le righe presenti, con i valori riportati alla forma canonica. */
+function normalised(
+  specs: readonly SettingSpec[],
+  rows: Array<{ type: string; value: string }>,
+): SettingValue[] {
+  return rows.map((r) => ({ key: r.type, value: canonical(specs, r.type, String(r.value)) }));
 }
 
 function planFor(

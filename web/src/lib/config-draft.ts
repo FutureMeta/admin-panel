@@ -117,24 +117,3 @@ export function sameSet<T extends string | number>(a: readonly T[], b: readonly 
 export function toggleIn<T extends string | number>(list: readonly T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
-
-/**
- * Il valore ha una forma che il server accettera'?
- *
- * NON SOSTITUISCE IL CONTROLLO DEL SERVER e non prova a: quello resta l'unico
- * che conta, perche' quello che arriva dal client non e' fidato nemmeno quando
- * arriva dalla nostra schermata. Serve a non far premere Salva per farsi dire
- * di no — un campo numerico con dentro «3,5» si vede prima di mandarlo.
- */
-export function looksValid(spec: SettingSpec, value: string): boolean {
-  switch (spec.kind) {
-    case 'bool':
-      return value === '1' || value === '0';
-    case 'int':
-      return /^-?\d+$/.test(value);
-    case 'double':
-      return /^-?\d+(\.\d+)?$/.test(value);
-    case 'enum':
-      return (spec.options ?? []).includes(value);
-  }
-}

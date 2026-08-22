@@ -20,6 +20,7 @@ import {
   MODE_SETTING_BY_KEY,
   MODE_SETTING_GROUPS,
   MODE_SETTINGS,
+  normaliseValue,
   type SettingKind,
   type SettingSpec,
   settingValueIsValid,
@@ -257,5 +258,37 @@ describe('gli enum si allargano con quello che il database usa gia`', () => {
   it('e non tocca i settings che non sono enum', async () => {
     const door = withObservedOptions(MAP_SETTINGS, new Map([['DOOR', ['SI']]])).find((s) => s.key === 'DOOR');
     expect(door?.options).toBeUndefined();
+  });
+});
+
+describe('quello che il gioco ha scritto viene riletto per quello che e`', () => {
+  it('`true` e `1` sono lo stesso booleano', async () => {
+    // LA COLONNA E' `TEXT` e il plugin la rilegge con `getBoolean`: per lui
+    // `1`, `0`, `true` e `false` sono tutti validi. Il pannello ne scrive una
+    // forma sola, ma deve saperle leggere entrambe.
+    //
+    // IL DIFETTO CHE QUESTO TOGLIE: su una mappa reale la schermata mostrava
+    // «un valore non ha la forma giusta» su `DOOR` e `MOVE_DURING_COOLDOWN` —
+    // due settings che nel gioco erano perfettamente validi. Aveva letto
+    // `true` e si aspettava `1`. Un pannello che dichiara sbagliato cio' che
+    // il gioco accetta e' peggio di un pannello che non controlla niente.
+    const door = spec('DOOR');
+    expect(normaliseValue(door, 'true')).toBe('1');
+    expect(normaliseValue(door, '1')).toBe('1');
+    expect(normaliseValue(door, 'false')).toBe('0');
+    expect(normaliseValue(door, '0')).toBe('0');
+  });
+
+  it('e dopo la normalizzazione il valore e` scrivibile', async () => {
+    const door = spec('DOOR');
+    expect(settingValueIsValid(door, normaliseValue(door, 'true'))).toBe(true);
+  });
+
+  it('quello che non si riconosce si lascia com`e`', async () => {
+    // Non e' compito di questa funzione decidere che un valore e' sbagliato:
+    // riscriverlo a caso cancellerebbe una configurazione vera.
+    expect(normaliseValue(spec('DOOR'), 'forse')).toBe('forse');
+    expect(normaliseValue(spec('MOB_TIMER'), '30')).toBe('30');
+    expect(normaliseValue(spec('DIFFICULTY'), 'HARD')).toBe('HARD');
   });
 });

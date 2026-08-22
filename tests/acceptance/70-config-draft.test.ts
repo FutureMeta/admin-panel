@@ -20,7 +20,6 @@ import {
   changedSettings,
   effectiveValues,
   isOverride,
-  looksValid,
   overrideCount,
   type SettingSpec,
   sameSet,
@@ -129,19 +128,6 @@ describe('gli insiemi: modalita` di una mappa, event type', () => {
     const partenza = ['UHC'];
     toggleIn(partenza, 'PILLARS');
     expect(partenza).toEqual(['UHC']);
-  });
-});
-
-describe('quello che si vede prima di premere Salva', () => {
-  it('un numero con la virgola si riconosce senza chiedere al server', async () => {
-    // `1,5` e' come si scrive in italiano ed e' esattamente cio' che il plugin
-    // non sa rileggere. Non sostituisce il controllo del server: evita di far
-    // premere Salva per farsi dire di no.
-    expect(looksValid(DBL, '1.5')).toBe(true);
-    expect(looksValid(DBL, '1,5')).toBe(false);
-    expect(looksValid(INT, '3.5')).toBe(false);
-    expect(looksValid(ENUM, 'hard')).toBe(false);
-    expect(looksValid(BOOL, 'true')).toBe(false);
   });
 });
 

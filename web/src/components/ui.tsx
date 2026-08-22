@@ -434,10 +434,13 @@ export function RelativeTime({ value }: { value: string | Date }) {
 export function Icon({
   path,
   size = 17,
+  stroke = 1.5,
   style,
 }: {
   path: string;
   size?: number;
+  /** I mockup usano 2 per il «+», 3 per la spunta, 1.8 per il ripristino. */
+  stroke?: number;
   /** Si SOMMA a `flex: none`, non lo sostituisce: senza, un'icona con uno
    *  stile suo tornerebbe a restringersi dentro un flex, e il difetto si
    *  vedrebbe solo nella barra più stretta. */
@@ -450,7 +453,7 @@ export function Icon({
       height={size}
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
+      strokeWidth={stroke}
       strokeLinecap="round"
       strokeLinejoin="round"
       style={{ flex: 'none', ...style }}

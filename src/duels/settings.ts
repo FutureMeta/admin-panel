@@ -269,3 +269,28 @@ export function isDefaultValue(spec: SettingSpec, value: string): boolean {
   }
   return value === spec.fallback;
 }
+
+/**
+ * Il valore letto dal database, riportato alla forma canonica.
+ *
+ * SERVE PERCHE' IL GIOCO NON SCRIVE SEMPRE ALLO STESSO MODO. La colonna e'
+ * `TEXT` e un booleano ci finisce come `1`, `0`, `true` o `false` a seconda di
+ * chi lo ha scritto: il plugin li rilegge tutti con `getBoolean`, e per lui
+ * sono lo stesso valore.
+ *
+ * Senza questo passaggio il pannello mostrava un errore su `DOOR` e
+ * `MOVE_DURING_COOLDOWN` — «il valore non ha la forma giusta» — su due
+ * settings che nel gioco erano perfettamente validi: aveva letto `true` e si
+ * aspettava `1`. Un pannello che dichiara sbagliato cio' che il gioco accetta
+ * e' peggio di un pannello che non controlla niente.
+ *
+ * Quello che non si riconosce si lascia com'e': non e' compito di questa
+ * funzione decidere che un valore e' sbagliato, e riscriverlo a caso
+ * cancellerebbe una configurazione vera.
+ */
+export function normaliseValue(spec: SettingSpec, raw: string): string {
+  if (spec.kind !== 'bool') return raw;
+  if (raw === 'true' || raw === '1') return '1';
+  if (raw === 'false' || raw === '0') return '0';
+  return raw;
+}

@@ -6,33 +6,38 @@
 // eventi, i settings della mappa — ed eliminare una mappa NON cancella il suo
 // mondo.
 //
-// STESSA REGOLA DI MODES: tutto resta locale, e la barra del salvataggio
-// compare solo quando la bozza si discosta da cio' che e' scritto. Qui conta
-// anche di piu', perche' le tab nascondono le modifiche: si aggiunge una
-// modalita', si passa a «Settings», e senza una barra che lo dica non ci
-// sarebbe piu' niente sullo schermo che ricordi la modifica fatta prima.
+// LE MISURE VENGONO DAL MOCKUP, non da una sua interpretazione: le quattro tab,
+// il pulsante accento che le chiude a destra, le pastiglie degli event type, le
+// righe delle modalita' con «Rimuovi» in rosso tenue. Vedi il commento in testa
+// a `config-panels.tsx` per come mi era andata la prima volta.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BlockHeader,
+  AccentBtn,
   ConfirmDelete,
+  DangerBtn,
+  DetailHead,
+  ICON_CHECK,
+  ICON_PLUS,
   MasterDetail,
+  MenuFilter,
+  ON_ACCENT,
   Picker,
-  SaveBar,
+  QuietBtn,
+  RaisedBtn,
+  SearchField,
+  Section,
+  SectionHead,
+  Segmented,
   SettingRow,
+  TextField,
+  Toast,
 } from '../components/config-panels.tsx';
-import { FilterSelect, PageHeader, Panel, SearchBox } from '../components/page.tsx';
-import { Button, EmptyState, Modal, Notice, SkeletonRows } from '../components/ui.tsx';
+import { PageHeader } from '../components/page.tsx';
+import { Icon, Modal, Notice, SkeletonRows } from '../components/ui.tsx';
 import { api, type Me } from '../lib/api.ts';
-import {
-  changedSettings,
-  effectiveValues,
-  looksValid,
-  sameSet,
-  toggleIn,
-  type Vocabulary,
-} from '../lib/config-draft.ts';
+import { changedSettings, effectiveValues, sameSet, toggleIn, type Vocabulary } from '../lib/config-draft.ts';
 import { canOpen } from '../lib/modules.ts';
 
 type ConfigMap = {
@@ -55,7 +60,7 @@ type MapDetail = {
 };
 
 const ALL = '__tutte__';
-const TABS = ['Modalità', 'Event type', 'Settings', 'Team'] as const;
+const TABS = ['Modalità supportate', 'Event type', 'Settings mappa', 'Team'] as const;
 type Tab = (typeof TABS)[number];
 
 export function DuelsMapsRoute({ me }: { me: Me }) {
@@ -134,7 +139,7 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
     <main style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <PageHeader
         title="Duels · Maps"
-        sub={`${list.data.maps.length} mappe · la geometria dei blocchi resta in gioco`}
+        sub="Metadati e riferimenti geometrici delle mappe · la geometria dei blocchi resta in-game"
       />
       {error ? <Notice tone="err" title="Salvataggio non riuscito" description={error} /> : null}
 
@@ -146,6 +151,10 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
               title: m.displayName,
               name: m.name,
               tags: [m.type, m.context],
+              tagColors: [m.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9', 'var(--tx-muted)'],
+              // Le mappe disattivate si attenuano: e' l'unica cosa che le
+              // distingue nell'elenco, e senza sembrano attive come le altre.
+              dim: !m.enabled,
             }))}
             selected={selected}
             onSelect={(id) => {
@@ -154,20 +163,22 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
             }}
             empty="Nessuna mappa corrisponde ai filtri."
           >
-            <SearchBox value={search} onChange={setSearch} placeholder="Cerca mappa" label="Cerca mappa" />
-            <FilterSelect
+            <SearchField value={search} onChange={setSearch} placeholder="Cerca mappa" label="Cerca mappa" />
+            <MenuFilter
               label="Tipo"
               value={type}
               onChange={setType}
+              width={120}
               options={[
-                { value: ALL, label: 'Tutti i tipi' },
+                { value: ALL, label: 'Tutti' },
                 ...vocab.matchTypes.map((v) => ({ value: v, label: v })),
               ]}
             />
-            <FilterSelect
+            <MenuFilter
               label="Contesto"
               value={context}
               onChange={setContext}
+              width={130}
               options={[
                 { value: ALL, label: 'Tutti' },
                 ...vocab.matchContexts.map((v) => ({ value: v, label: v })),
@@ -177,29 +188,25 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
         }
         detail={
           selected === null ? (
-            <Panel>
-              <EmptyState
-                title="Nessuna mappa"
-                description="Le mappe si creano con l’editor in gioco: questa schermata ne modifica i metadati."
-              />
-            </Panel>
+            <Section padded>
+              <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
+                Nessuna mappa: si creano con l’editor in gioco, questa schermata ne modifica i metadati.
+              </div>
+            </Section>
           ) : (
             <MapPanel
               key={selected}
               id={selected}
               vocab={vocab}
               modes={modes.data?.modes ?? []}
+              canSave={canOpen(me, 'duels_maps', 2)}
+              canDelete={canOpen(me, 'duels_maps', 3)}
               onSaved={() => void qc.invalidateQueries({ queryKey: ['duels-config', 'maps'] })}
               onDeleted={() => {
                 setSelected(null);
                 void qc.invalidateQueries({ queryKey: ['duels-config', 'maps'] });
               }}
               onError={setError}
-              // COSA PUO FARE, deciso una volta sola qui: 2 salva, 3 elimina.
-              // Ricalcolarlo dentro il pannello vorrebbe dire due risposte alla
-              // stessa domanda, e la seconda prima o poi diverge.
-              canSave={canOpen(me, 'duels_maps', 2)}
-              canDelete={canOpen(me, 'duels_maps', 3)}
             />
           )
         }
@@ -208,24 +215,26 @@ export function DuelsMapsRoute({ me }: { me: Me }) {
   );
 }
 
+type CoreDraft = { displayName: string; type: string; context: string };
+
 function MapPanel({
   id,
   vocab,
   modes,
+  canSave,
+  canDelete,
   onSaved,
   onDeleted,
   onError,
-  canSave,
-  canDelete,
 }: {
   id: number;
   vocab: Vocabulary;
   modes: ConfigMode[];
+  canSave: boolean;
+  canDelete: boolean;
   onSaved: () => void;
   onDeleted: () => void;
   onError: (message: string | undefined) => void;
-  canSave: boolean;
-  canDelete: boolean;
 }) {
   const qc = useQueryClient();
   const detail = useQuery({
@@ -233,12 +242,12 @@ function MapPanel({
     queryFn: () => api<MapDetail>(`/api/duels/config/maps/${id}`),
   });
 
-  const [core, setCore] = useState<{ displayName: string; type: string; context: string } | null>(null);
+  const [core, setCore] = useState<CoreDraft | null>(null);
   const [values, setValues] = useState<Record<string, string> | null>(null);
   const [modeIds, setModeIds] = useState<number[] | null>(null);
   const [events, setEvents] = useState<string[] | null>(null);
-  const [tab, setTab] = useState<Tab>('Modalità');
-  const [editingCore, setEditingCore] = useState(false);
+  const [tab, setTab] = useState<Tab>('Modalità supportate');
+  const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [adding, setAdding] = useState(false);
   const [note, setNote] = useState<string | undefined>();
@@ -262,50 +271,13 @@ function MapPanel({
     [values, savedValues, vocab.mapSettings],
   );
 
-  const coreChanges = useMemo(() => {
-    if (!saved || !core) return [] as string[];
-    const out: string[] = [];
-    if (core.displayName.trim() !== saved.map.displayName) out.push('displayName');
-    if (core.type !== saved.map.type) out.push('type');
-    if (core.context !== saved.map.context) out.push('context');
-    return out;
-  }, [saved, core]);
-
-  const modesChanged = saved && modeIds ? !sameSet(saved.modeIds, modeIds) : false;
-  const eventsChanged = saved && events ? !sameSet(saved.eventTypes, events) : false;
-
-  const invalid = useMemo(
-    () =>
-      values
-        ? vocab.mapSettings.filter((s) => !looksValid(s, values[s.key] ?? s.fallback)).map((s) => s.key)
-        : [],
-    [values, vocab.mapSettings],
-  );
-
   const save = useMutation({
-    mutationFn: async () => {
-      if (!values || !core || !modeIds || !events) return null;
-      const settings: Record<string, string> = {};
-      for (const key of changedKeys) settings[key] = values[key] ?? '';
-      return api<{ note: string }>(`/api/duels/config/maps/${id}`, {
-        method: 'PATCH',
-        body: {
-          ...(coreChanges.includes('displayName') ? { displayName: core.displayName.trim() } : {}),
-          ...(coreChanges.includes('type') ? { type: core.type } : {}),
-          ...(coreChanges.includes('context') ? { context: core.context } : {}),
-          ...(changedKeys.length > 0 ? { settings } : {}),
-          // Si mandano SOLO se sono cambiati: mandarli sempre farebbe
-          // ricalcolare al server una differenza che si sa gia' essere vuota,
-          // e ogni salvataggio toccherebbe piu' tabelle del necessario.
-          ...(modesChanged ? { modeIds } : {}),
-          ...(eventsChanged ? { eventTypes: events } : {}),
-        },
-      });
-    },
+    mutationFn: (body: Record<string, unknown>) =>
+      api<{ note: string }>(`/api/duels/config/maps/${id}`, { method: 'PATCH', body }),
     onSuccess: (res) => {
       onError(undefined);
-      setEditingCore(false);
-      setNote(res?.note);
+      setEditing(false);
+      setNote(res.note);
       void qc.invalidateQueries({ queryKey: ['duels-config', 'map', id] });
       onSaved();
     },
@@ -324,93 +296,100 @@ function MapPanel({
   if (detail.isError) return <Notice tone="err" title="Mappa non leggibile" />;
   if (!saved || !core || !values || !modeIds || !events) return <SkeletonRows rows={6} />;
 
-  const changes = coreChanges.length + changedKeys.length + (modesChanged ? 1 : 0) + (eventsChanged ? 1 : 0);
+  const modesChanged = !sameSet(saved.modeIds, modeIds);
+  const eventsChanged = !sameSet(saved.eventTypes, events);
+  const configChanges = changedKeys.length + (modesChanged ? 1 : 0) + (eventsChanged ? 1 : 0);
 
-  const reset = () => {
+  const cancelCore = () => {
     setCore({ displayName: saved.map.displayName, type: saved.map.type, context: saved.map.context });
-    setValues(effectiveValues(vocab.mapSettings, saved.settings));
-    setModeIds(saved.modeIds);
-    setEvents(saved.eventTypes);
-    setEditingCore(false);
-    setNote(undefined);
+    setEditing(false);
   };
 
-  const byId = new Map(modes.map((m) => [m.id, m]));
+  const saveConfig = () => {
+    const settings: Record<string, string> = {};
+    for (const key of changedKeys) settings[key] = values[key] ?? '';
+    save.mutate({
+      // Si manda SOLO cio' che e' cambiato: mandare tutto farebbe ricalcolare
+      // al server differenze che si sanno gia' vuote, e ogni salvataggio
+      // toccherebbe piu' tabelle del necessario.
+      ...(changedKeys.length > 0 ? { settings } : {}),
+      ...(modesChanged ? { modeIds } : {}),
+      ...(eventsChanged ? { eventTypes: events } : {}),
+    });
+  };
 
   return (
     <>
-      {/* CHI NON PUO SALVARE NON VEDE LA BARRA. Vedrebbe un pulsante che
-          risponde 403, e su una schermata dove tutto e locale finche non si
-          salva sarebbe anche peggio: le modifiche fatte sembrerebbero in
-          attesa di essere scritte, e non lo sarebbero mai. */}
-      <SaveBar
-        changes={canSave && invalid.length === 0 ? changes : 0}
-        saving={save.isPending}
-        onSave={() => save.mutate()}
-        onReset={reset}
-      />
-      {invalid.length > 0 ? (
-        <Notice
-          tone="err"
-          title="Un valore non ha la forma giusta"
-          description={`${invalid.join(', ')}: i decimali usano il punto, e gli interi non ammettono decimali.`}
-        />
-      ) : null}
-      {note ? <Notice tone="info" title="Salvato" description={note} /> : null}
-
-      <Panel>
-        <BlockHeader
+      <Section padded>
+        <DetailHead
           title={saved.map.displayName}
-          sub={`${saved.map.name} · ${saved.map.type} · ${saved.map.context}`}
-        >
-          {editingCore ? null : (
-            <>
-              {canSave ? (
-                <Button size="sm" onClick={() => setEditingCore(true)}>
-                  Modifica
-                </Button>
-              ) : null}
-              {/* ELIMINARE STA UN GRADINO SOPRA: e la sola cosa irreversibile
-                  di questa schermata, e chi puo cambiare un valore non per
-                  questo puo portarsi via una riga e le sue cascate. */}
-              {canDelete ? (
-                <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
-                  Elimina
-                </Button>
-              ) : null}
-            </>
-          )}
-        </BlockHeader>
+          name={saved.map.name}
+          tags={[saved.map.type, saved.map.context]}
+          tagColor={saved.map.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9'}
+          actions={
+            editing ? (
+              <>
+                <QuietBtn onClick={cancelCore} disabled={save.isPending}>
+                  Annulla
+                </QuietBtn>
+                <AccentBtn
+                  height={30}
+                  disabled={save.isPending}
+                  onClick={() =>
+                    save.mutate({
+                      displayName: core.displayName.trim(),
+                      type: core.type,
+                      context: core.context,
+                    })
+                  }
+                >
+                  Salva
+                </AccentBtn>
+              </>
+            ) : (
+              <>
+                {canSave ? <RaisedBtn onClick={() => setEditing(true)}>Modifica</RaisedBtn> : null}
+                {canDelete ? <DangerBtn onClick={() => setConfirming(true)}>Elimina</DangerBtn> : null}
+              </>
+            )
+          }
+        />
 
         {confirming ? (
           <ConfirmDelete
             what={saved.map.displayName}
-            cascade="Rimuove a cascata modalità supportate, event type, settings, aree, location e team di questa mappa. Il mondo non viene toccato."
+            cascade="Rimuove a cascata modalità supportate, event type, settings, aree, location e team di questa mappa. Il mondo slime non viene toccato."
             busy={remove.isPending}
             onConfirm={() => remove.mutate()}
             onCancel={() => setConfirming(false)}
           />
         ) : null}
 
-        {editingCore ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '0 14px 14px' }}>
-            <label style={{ display: 'block', gridColumn: '1 / -1' }}>
-              <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tx-muted)', marginBottom: 5 }}>
-                Nome visualizzato
-              </span>
-              <input
-                className="input"
+        {editing ? (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 14,
+              marginTop: 18,
+              paddingTop: 18,
+              borderTop: '1px solid var(--bd-subtle)',
+            }}
+          >
+            <div style={{ gridColumn: 'span 2' }}>
+              <TextField
+                label="Nome visualizzato"
                 value={core.displayName}
-                onChange={(e) => setCore({ ...core, displayName: e.target.value })}
+                onChange={(v) => setCore({ ...core, displayName: v })}
               />
-            </label>
-            <Choice
+            </div>
+            <Segmented
               label="Tipo"
               value={core.type}
               options={vocab.matchTypes}
               onChange={(v) => setCore({ ...core, type: v })}
             />
-            <Choice
+            <Segmented
               label="Contesto"
               value={core.context}
               options={vocab.matchContexts}
@@ -418,164 +397,183 @@ function MapPanel({
             />
           </div>
         ) : null}
-      </Panel>
+      </Section>
 
-      <Panel>
-        <BlockHeader title="Configurazione mappa" sub="Modalità supportate, event type, settings e team">
-          {tab === 'Modalità' ? (
-            <Button size="sm" onClick={() => setAdding(true)}>
-              Aggiungi modalità
-            </Button>
-          ) : null}
-        </BlockHeader>
-
-        <div style={{ display: 'flex', gap: 6, padding: '0 14px 12px' }}>
-          {TABS.map((name) => (
-            <Button
-              key={name}
-              size="sm"
-              variant={name === tab ? 'primary' : 'ghost'}
-              onClick={() => setTab(name)}
+      <Section>
+        <SectionHead
+          title="Configurazione mappa"
+          sub="Modalità supportate, event type e settings"
+          action={
+            <AccentBtn
+              onClick={saveConfig}
+              disabled={save.isPending}
+              style={{ visibility: canSave && configChanges > 0 ? 'visible' : 'hidden' }}
             >
-              {name}
-            </Button>
-          ))}
+              Salva
+            </AccentBtn>
+          }
+        />
+
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            padding: '12px 20px',
+            borderBottom: '1px solid var(--bd-subtle)',
+          }}
+        >
+          {TABS.filter((name) => name !== 'Team' || saved.map.type === 'DUEL').map((name) => {
+            const on = name === tab;
+            return (
+              <button
+                key={name}
+                type="button"
+                onClick={() => setTab(name)}
+                style={{
+                  border: 'none',
+                  borderRadius: 'var(--r-sm)',
+                  background: on ? 'var(--s-overlay)' : 'transparent',
+                  color: on ? 'var(--tx-primary)' : 'var(--tx-muted)',
+                  fontFamily: 'var(--font-ui)',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  padding: '7px 12px',
+                  cursor: 'pointer',
+                }}
+              >
+                {name}
+              </button>
+            );
+          })}
+          {tab === 'Modalità supportate' && canSave ? (
+            <AccentBtn height={28} onClick={() => setAdding(true)} style={{ marginLeft: 'auto' }}>
+              <Icon path={ICON_PLUS} size={13} stroke={2} />
+              Aggiungi modalità
+            </AccentBtn>
+          ) : null}
         </div>
 
-        {tab === 'Modalità' ? (
-          modeIds.length === 0 ? (
-            <div style={{ padding: '14px', fontSize: 12.5, color: 'var(--tx-muted)' }}>
-              Nessuna modalità supportata da questa mappa.
-            </div>
-          ) : (
-            modeIds.map((modeId) => {
-              const mode = byId.get(modeId);
-              const nuovo = !saved.modeIds.includes(modeId);
-              return (
-                <div
-                  key={modeId}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '9px 14px',
-                    borderTop: '1px solid var(--bd-subtle)',
-                    background: nuovo ? 'var(--ac-soft)' : 'transparent',
-                  }}
-                >
-                  <span style={{ fontSize: 13 }}>{mode?.displayName ?? `#${modeId}`}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--tx-muted)' }}>
-                    {mode?.name ?? ''}
-                  </span>
-                  <span style={{ fontSize: 10.5, color: 'var(--tx-muted)' }}>{mode?.type ?? ''}</span>
-                  <span style={{ marginLeft: 'auto' }}>
-                    <Button size="sm" onClick={() => setModeIds(toggleIn(modeIds, modeId))}>
-                      Rimuovi
-                    </Button>
-                  </span>
-                </div>
-              );
-            })
-          )
+        {tab === 'Modalità supportate' ? (
+          <div style={{ padding: '6px 20px 16px' }}>
+            {modeIds.length === 0 && saved.modeIds.length === 0 ? (
+              <div style={{ padding: '16px 0', fontSize: 12.5, color: 'var(--tx-muted)' }}>
+                Nessuna modalità supportata da questa mappa.
+              </div>
+            ) : null}
+
+            {/* UNA LISTA SOLA, nell'ordine dell'elenco modalità: una riga tolta
+                resta al suo posto invece di saltare in fondo, e ciò che cambia
+                è il colore. Spostarla renderebbe due modifiche — quella fatta e
+                il riordino — dove ce n'è una sola. */}
+            {modes
+              .filter((mode) => modeIds.includes(mode.id) || saved.modeIds.includes(mode.id))
+              .map((mode) => {
+                const aggiunta = !saved.modeIds.includes(mode.id);
+                const tolta = !modeIds.includes(mode.id);
+                return (
+                  <ModeRow
+                    key={mode.id}
+                    name={mode.displayName}
+                    type={mode.type}
+                    tone={aggiunta ? 'added' : tolta ? 'removed' : 'plain'}
+                    action={
+                      aggiunta || tolta ? (
+                        <RowUndoBtn onClick={() => setModeIds(toggleIn(modeIds, mode.id))} />
+                      ) : canSave ? (
+                        <RowRemoveBtn onClick={() => setModeIds(toggleIn(modeIds, mode.id))} />
+                      ) : null
+                    }
+                  />
+                );
+              })}
+          </div>
         ) : null}
 
-        {/* Le modalita' TOLTE restano visibili finche' non si salva: sparendo,
-            annullare vorrebbe dire ricordarsi quale si era tolta. */}
-        {tab === 'Modalità'
-          ? saved.modeIds
-              .filter((m) => !modeIds.includes(m))
-              .map((modeId) => (
-                <div
-                  key={`tolto-${modeId}`}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 10,
-                    padding: '9px 14px',
-                    borderTop: '1px solid var(--bd-subtle)',
-                    background: 'var(--err-soft)',
-                  }}
-                >
-                  <span style={{ fontSize: 13, textDecoration: 'line-through', color: 'var(--tx-muted)' }}>
-                    {byId.get(modeId)?.displayName ?? `#${modeId}`}
-                  </span>
-                  <span style={{ fontSize: 11, color: 'var(--tx-muted)' }}>da rimuovere</span>
-                  <span style={{ marginLeft: 'auto' }}>
-                    <Button size="sm" onClick={() => setModeIds(toggleIn(modeIds, modeId))}>
-                      Annulla
-                    </Button>
-                  </span>
-                </div>
-              ))
-          : null}
-
         {tab === 'Event type' ? (
-          <div style={{ padding: 14 }}>
-            <div style={{ fontSize: 11.5, color: 'var(--tx-muted)', marginBottom: 10 }}>
-              Righe in <span className="mono">duels_map_event_type</span>. L’elenco contiene anche i valori
-              già presenti nel database, per non toglierne uno che questo pannello non conosce.
+          <div style={{ padding: '6px 20px 14px' }}>
+            <div style={{ fontSize: 12, color: 'var(--tx-muted)', padding: '10px 0 4px' }}>
+              Righe in duels_map_event_type · elenco indicativo, verifica l’enum EventType del plugin prima di
+              pubblicare
             </div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {vocab.eventTypes.map((type) => {
-                const on = events.includes(type);
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 6 }}>
+              {vocab.eventTypes.map((eventType) => {
+                const on = events.includes(eventType);
                 return (
-                  <Button
-                    key={type}
-                    size="sm"
-                    variant={on ? 'primary' : 'secondary'}
-                    onClick={() => setEvents(toggleIn(events, type))}
+                  <button
+                    key={eventType}
+                    type="button"
+                    aria-pressed={on}
+                    disabled={!canSave}
+                    onClick={() => setEvents(toggleIn(events, eventType))}
+                    style={{
+                      height: 30,
+                      padding: '0 12px',
+                      border: `1px solid ${on ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)'}`,
+                      borderRadius: 'var(--r-full)',
+                      background: on ? 'var(--ac-soft)' : 'transparent',
+                      color: on ? 'var(--ac-text)' : 'var(--tx-secondary)',
+                      fontFamily: 'var(--font-ui)',
+                      fontSize: 12,
+                      fontWeight: 500,
+                      cursor: canSave ? 'pointer' : 'default',
+                    }}
                   >
-                    {type}
-                  </Button>
+                    {eventType}
+                  </button>
                 );
               })}
             </div>
           </div>
         ) : null}
 
-        {tab === 'Settings'
+        {tab === 'Settings mappa'
           ? vocab.mapSettings.map((spec) => (
               <SettingRow
                 key={spec.key}
                 spec={spec}
                 value={values[spec.key] ?? spec.fallback}
-                changed={changedKeys.includes(spec.key)}
+                columns="1fr 60px 200px 110px"
+                padding="10px 20px"
+                variant="maps"
                 onChange={(v) => setValues({ ...values, [spec.key]: v })}
               />
             ))
           : null}
 
         {tab === 'Team' ? (
-          saved.teams.length === 0 ? (
-            <div style={{ padding: 14, fontSize: 12.5, color: 'var(--tx-muted)' }}>
-              Nessun team assegnato a questa mappa.
-            </div>
-          ) : (
-            <div style={{ padding: 14, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {/* SOLA LETTURA, come nel disegno: spawn e aree dei team si
-                  posizionano in gioco, e un elenco che si potesse modificare
-                  qui prometterebbe piu' di quello che fa. */}
-              {saved.teams.map((team) => (
-                <div key={team.id} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ padding: '14px 20px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {saved.teams.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
+                Nessun team assegnato a questa mappa.
+              </div>
+            ) : (
+              // SOLA LETTURA, come nel disegno: spawn e aree dei team si
+              // posizionano in gioco, e un elenco modificabile qui
+              // prometterebbe piu' di quello che fa.
+              saved.teams.map((team) => (
+                <div
+                  key={team.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 11,
+                    padding: '11px 14px',
+                    border: '1px solid var(--bd-subtle)',
+                    borderRadius: 'var(--r-md)',
+                    background: 'var(--s-base)',
+                  }}
+                >
                   <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: 3,
-                      background: team.color,
-                      flex: 'none',
-                    }}
+                    style={{ width: 10, height: 10, borderRadius: 2, background: team.color, flex: 'none' }}
                   />
-                  <span style={{ fontSize: 13 }}>{team.displayName}</span>
-                  <span className="mono" style={{ fontSize: 11, color: 'var(--tx-muted)' }}>
-                    {team.name}
-                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>{team.displayName}</span>
                 </div>
-              ))}
-            </div>
-          )
+              ))
+            )}
+          </div>
         ) : null}
-      </Panel>
+      </Section>
 
       {adding ? (
         <AddModes
@@ -587,7 +585,111 @@ function MapPanel({
           }}
         />
       ) : null}
+
+      {note ? <Toast message={note} onDone={() => setNote(undefined)} /> : null}
     </>
+  );
+}
+
+/**
+ * I due pulsanti che stanno DENTRO una riga: 26px, misure del mockup.
+ *
+ * Non sono QuietBtn e DangerBtn con un'altezza diversa: il disegno li vuole
+ * con dieci pixel di lato invece di dodici, e «Rimuovi» senza grassetto. Sono
+ * differenze piccole ed è proprio il tipo di differenza che, messa accanto al
+ * disegno, fa sembrare due schermate disegnate da due persone.
+ */
+function RowUndoBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        height: 26,
+        padding: '0 10px',
+        border: '1px solid var(--bd-strong)',
+        borderRadius: 'var(--r-sm)',
+        background: 'var(--s-elevated)',
+        color: 'var(--tx-primary)',
+        fontFamily: 'var(--font-ui)',
+        fontSize: 11.5,
+        fontWeight: 500,
+        cursor: 'pointer',
+        flex: 'none',
+      }}
+    >
+      Annulla
+    </button>
+  );
+}
+
+function RowRemoveBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        height: 26,
+        padding: '0 10px',
+        border: '1px solid rgba(219,52,52,.4)',
+        borderRadius: 'var(--r-sm)',
+        background: 'var(--err-soft)',
+        color: 'var(--err)',
+        fontFamily: 'var(--font-ui)',
+        fontSize: 11.5,
+        cursor: 'pointer',
+        flex: 'none',
+      }}
+    >
+      Rimuovi
+    </button>
+  );
+}
+
+/** Una riga della tab «Modalità supportate»: nome, tipo, e l'azione a destra. */
+function ModeRow({
+  name,
+  type,
+  tone,
+  action,
+}: {
+  name: string;
+  type: string;
+  tone: 'plain' | 'added' | 'removed';
+  action: React.ReactNode;
+}) {
+  // AGGIUNTA E' VERDE, non arancione: nel disegno l'arancione e' l'accento
+  // dell'interfaccia — i pulsanti, la selezione — e il verde e' «questa riga
+  // sta per entrare». Usare l'accento per uno stato dei dati confonde le due
+  // cose in una schermata che ne ha tre contemporaneamente.
+  const border =
+    tone === 'added'
+      ? '1px solid rgba(34,197,94,.5)'
+      : tone === 'removed'
+        ? '1px solid rgba(219,52,52,.5)'
+        : '1px solid transparent';
+  const background =
+    tone === 'added' ? 'var(--ok-soft)' : tone === 'removed' ? 'var(--err-soft)' : 'transparent';
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '9px 8px',
+        borderBottom: '1px solid var(--bd-subtle)',
+        border,
+        background,
+        borderRadius: 'var(--r-sm)',
+      }}
+    >
+      <span style={{ fontSize: 13, flex: 1, color: 'var(--tx-primary)' }}>{name}</span>
+      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', color: 'var(--tx-muted)' }}>
+        {type}
+      </span>
+      {action}
+    </div>
   );
 }
 
@@ -601,37 +703,71 @@ function AddModes({
   onAdd: (ids: number[]) => void;
 }) {
   const [search, setSearch] = useState('');
+  const [type, setType] = useState(ALL);
+  const [ranking, setRanking] = useState(ALL);
   const [picked, setPicked] = useState<number[]>([]);
 
   const q = search.trim().toLowerCase();
   const rows = modes.filter(
-    (m) => q === '' || m.name.toLowerCase().includes(q) || m.displayName.toLowerCase().includes(q),
+    (m) =>
+      (type === ALL || m.type === type) &&
+      (ranking === ALL || m.ranking === ranking) &&
+      (q === '' || m.name.toLowerCase().includes(q) || m.displayName.toLowerCase().includes(q)),
   );
 
   return (
     <Modal
       title="Aggiungi modalità"
-      subtitle="La modifica resta locale: nel gioco arriva quando si salva."
-      width={520}
+      width={440}
       onClose={onClose}
       footer={
         <>
-          <Button size="sm" onClick={onClose}>
+          <QuietBtn onClick={onClose} height={34}>
             Annulla
-          </Button>
-          <Button size="sm" variant="primary" disabled={picked.length === 0} onClick={() => onAdd(picked)}>
+          </QuietBtn>
+          <AccentBtn height={34} disabled={picked.length === 0} onClick={() => onAdd(picked)}>
             {picked.length > 0 ? `Aggiungi (${picked.length})` : 'Aggiungi'}
-          </Button>
+          </AccentBtn>
         </>
       }
     >
-      <div style={{ marginBottom: 12 }}>
-        <SearchBox value={search} onChange={setSearch} placeholder="Cerca modalità" label="Cerca modalità" />
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <SearchField
+          value={search}
+          onChange={setSearch}
+          placeholder="Cerca modalità"
+          label="Cerca modalità"
+        />
+        <MenuFilter
+          label="Tipo"
+          value={type}
+          onChange={setType}
+          width={120}
+          options={[
+            { value: ALL, label: 'Tutti' },
+            { value: 'DUEL', label: 'DUEL' },
+            { value: 'FFA', label: 'FFA' },
+          ]}
+        />
+        <MenuFilter
+          label="Ranking"
+          value={ranking}
+          onChange={setRanking}
+          width={130}
+          options={[
+            { value: ALL, label: 'Tutti' },
+            { value: 'RANKED', label: 'RANKED' },
+            { value: 'UNRANKED', label: 'UNRANKED' },
+          ]}
+        />
       </div>
+
       {rows.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>Nessuna modalità da aggiungere.</div>
+        <div style={{ padding: 20, textAlign: 'center', fontSize: 12.5, color: 'var(--tx-muted)' }}>
+          Nessuna modalità corrisponde ai filtri.
+        </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 320, overflowY: 'auto' }}>
+        <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {rows.map((mode) => {
             const on = picked.includes(mode.id);
             return (
@@ -640,33 +776,43 @@ function AddModes({
                 type="button"
                 onClick={() => setPicked(toggleIn(picked, mode.id))}
                 style={{
+                  width: '100%',
+                  textAlign: 'left',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: 10,
-                  padding: '8px 10px',
+                  gap: 12,
+                  padding: '10px 8px',
                   border: 'none',
+                  borderBottom: '1px solid var(--bd-subtle)',
                   borderRadius: 'var(--r-sm)',
                   background: on ? 'var(--ac-soft)' : 'transparent',
                   cursor: 'pointer',
-                  textAlign: 'left',
                 }}
               >
                 <span
                   style={{
-                    width: 14,
-                    height: 14,
+                    width: 16,
+                    height: 16,
                     borderRadius: 'var(--r-xs)',
-                    border: `1px solid ${on ? 'var(--ac)' : 'var(--bd-strong)'}`,
+                    border: `1.5px solid ${on ? 'transparent' : 'var(--bd-strong)'}`,
                     background: on ? 'var(--ac)' : 'transparent',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     flex: 'none',
+                    color: ON_ACCENT,
                   }}
-                />
-                <span style={{ fontSize: 13 }}>{mode.displayName}</span>
-                <span className="mono" style={{ fontSize: 11, color: 'var(--tx-muted)' }}>
-                  {mode.name}
+                >
+                  {on ? <Icon path={ICON_CHECK} size={11} stroke={3} /> : null}
                 </span>
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: 'var(--tx-muted)' }}>
-                  {mode.type} · {mode.ranking}
+                <span style={{ fontSize: 13, color: 'var(--tx-primary)', flex: 1 }}>{mode.displayName}</span>
+                <span
+                  style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', color: 'var(--tx-muted)' }}
+                >
+                  {mode.type}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--tx-muted)', width: 64, textAlign: 'right' }}>
+                  {mode.ranking}
                 </span>
               </button>
             );
@@ -674,37 +820,5 @@ function AddModes({
         </div>
       )}
     </Modal>
-  );
-}
-
-function Choice({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly string[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tx-muted)', marginBottom: 5 }}>
-        {label}
-      </span>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {options.map((option) => (
-          <Button
-            key={option}
-            size="sm"
-            variant={option === value ? 'primary' : 'secondary'}
-            onClick={() => onChange(option)}
-          >
-            {option}
-          </Button>
-        ))}
-      </div>
-    </div>
   );
 }

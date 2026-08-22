@@ -1,16 +1,10 @@
 // Duels · Modes. Le modalita' del gioco, modificabili.
 //
-// TUTTO RESTA LOCALE FINCHE' NON SI SALVA. Spegnere un interruttore, cambiare
-// un numero, rinominare una modalita' non manda niente da nessuna parte: si
-// modifica una bozza, e la barra del salvataggio compare solo quando quella
-// bozza si discosta da cio' che e' scritto nel database.
-//
-// UN SOLO SALVA PER TUTTO IL DETTAGLIO, e non uno per riquadro come nel
-// disegno. Due ragioni, e la seconda conta piu' della prima: il pulsante e' la
-// risposta alla domanda «quello che ho fatto e' nel gioco o soltanto qui?», e
-// con due pulsanti la risposta e' due risposte; e i campi e i settings di una
-// modalita' finiscono cosi' in UNA transazione, invece di due scritture di cui
-// la seconda puo' fallire lasciando la prima.
+// TUTTO RESTA LOCALE FINCHE' NON SI SALVA, e i due Salva sono due perche' il
+// disegno ne ha due: quello del riquadro principale compare entrando in
+// modifica, quello dei settings compare solo quando un setting e' cambiato —
+// nel mockup e' `visibility`, quindi lo spazio resta occupato e l'intestazione
+// non si muove.
 //
 // SI LEGGE DAL MYSQL DEL GIOCO, non dall'aggregato di Postgres che disegna
 // trends e ratings: quello ha trenta secondi di ritardo, e qui si
@@ -19,20 +13,30 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  BlockHeader,
+  AccentBtn,
   ConfirmDelete,
+  DangerBtn,
+  DetailHead,
   MasterDetail,
+  MenuFilter,
   Picker,
-  SaveBar,
+  prettyKey,
+  QuietBtn,
+  RaisedBtn,
+  SearchField,
+  Section,
+  SectionHead,
+  Segmented,
   SettingRow,
+  TextField,
+  Toast,
 } from '../components/config-panels.tsx';
-import { FilterSelect, PageHeader, Panel, SearchBox } from '../components/page.tsx';
-import { Button, EmptyState, ICONS, Icon, Notice, SkeletonRows } from '../components/ui.tsx';
+import { PageHeader } from '../components/page.tsx';
+import { ICONS, Icon, Notice, SkeletonRows } from '../components/ui.tsx';
 import { api, type Me } from '../lib/api.ts';
 import {
   changedSettings,
   effectiveValues,
-  looksValid,
   overrideCount,
   type SettingSpec,
   type Vocabulary,
@@ -80,8 +84,8 @@ export function DuelsModesRoute({ me }: { me: Me }) {
     );
   }, [list.data, search, type, ranking]);
 
-  // La prima della lista si apre da sola: una schermata elenco+dettaglio che
-  // parte con il dettaglio vuoto chiede un clic per mostrare qualunque cosa.
+  // La prima della lista si apre da sola: un elenco+dettaglio che parte con il
+  // dettaglio vuoto chiede un clic per mostrare qualunque cosa.
   useEffect(() => {
     if (selected === null && rows.length > 0) setSelected(rows[0]?.id ?? null);
   }, [rows, selected]);
@@ -126,7 +130,7 @@ export function DuelsModesRoute({ me }: { me: Me }) {
     <main style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <PageHeader
         title="Duels · Modes"
-        sub={`${list.data.modes.length} modalità · lette dalla stessa tabella dei server di gioco`}
+        sub="Modalità Duel/FFA · lette dalla stessa cache in memoria dei server di gioco"
       />
       {error ? <Notice tone="err" title="Salvataggio non riuscito" description={error} /> : null}
 
@@ -138,6 +142,10 @@ export function DuelsModesRoute({ me }: { me: Me }) {
               title: m.displayName,
               name: m.name,
               tags: [m.type, m.ranking],
+              tagColors: [
+                m.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9',
+                m.ranking === 'RANKED' ? 'var(--ac-text)' : 'var(--tx-muted)',
+              ],
             }))}
             selected={selected}
             onSelect={(id) => {
@@ -146,58 +154,56 @@ export function DuelsModesRoute({ me }: { me: Me }) {
             }}
             empty="Nessuna modalità corrisponde ai filtri."
           >
-            <SearchBox
+            <SearchField
               value={search}
               onChange={setSearch}
               placeholder="Cerca modalità"
               label="Cerca modalità"
             />
-            <FilterSelect
+            <MenuFilter
               label="Tipo"
               value={type}
               onChange={setType}
+              width={120}
               options={[
-                { value: ALL, label: 'Tutti i tipi' },
+                { value: ALL, label: 'Tutti' },
                 ...vocab.modeTypes.map((v) => ({ value: v, label: v })),
               ]}
             />
-            <FilterSelect
+            <MenuFilter
               label="Ranking"
               value={ranking}
               onChange={setRanking}
+              width={130}
               options={[
                 { value: ALL, label: 'Tutti' },
-                ...vocab.rankingTypes.map((v) => ({ value: v, label: v })),
+                // RANKED prima di UNRANKED, come nel disegno: l'ordine del
+                // vocabolario e' quello del database, non quello del menu.
+                ...['RANKED', 'UNRANKED'].map((v) => ({ value: v, label: v })),
               ]}
             />
           </Picker>
         }
         detail={
           selected === null ? (
-            <Panel>
-              <EmptyState
-                title="Nessuna modalità"
-                description="Le modalità si creano in gioco: questa schermata le modifica."
-              />
-            </Panel>
+            <Section padded>
+              <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
+                Nessuna modalità: si creano in gioco, questa schermata le modifica.
+              </div>
+            </Section>
           ) : (
             <ModePanel
               key={selected}
               id={selected}
               vocab={vocab}
-              onSaved={() => {
-                void qc.invalidateQueries({ queryKey: ['duels-config', 'modes'] });
-              }}
+              canSave={canOpen(me, 'duels_modes', 2)}
+              canDelete={canOpen(me, 'duels_modes', 3)}
+              onSaved={() => void qc.invalidateQueries({ queryKey: ['duels-config', 'modes'] })}
               onDeleted={() => {
                 setSelected(null);
                 void qc.invalidateQueries({ queryKey: ['duels-config', 'modes'] });
               }}
               onError={setError}
-              // COSA PUO FARE, deciso una volta sola qui: 2 salva, 3 elimina.
-              // Ricalcolarlo dentro il pannello vorrebbe dire due risposte alla
-              // stessa domanda, e la seconda prima o poi diverge.
-              canSave={canOpen(me, 'duels_modes', 2)}
-              canDelete={canOpen(me, 'duels_modes', 3)}
             />
           )
         }
@@ -206,22 +212,24 @@ export function DuelsModesRoute({ me }: { me: Me }) {
   );
 }
 
+type CoreDraft = { displayName: string; type: string; ranking: string };
+
 function ModePanel({
   id,
   vocab,
+  canSave,
+  canDelete,
   onSaved,
   onDeleted,
   onError,
-  canSave,
-  canDelete,
 }: {
   id: number;
   vocab: Vocabulary;
+  canSave: boolean;
+  canDelete: boolean;
   onSaved: () => void;
   onDeleted: () => void;
   onError: (message: string | undefined) => void;
-  canSave: boolean;
-  canDelete: boolean;
 }) {
   const qc = useQueryClient();
   const detail = useQuery({
@@ -229,9 +237,9 @@ function ModePanel({
     queryFn: () => api<ModeDetail>(`/api/duels/config/modes/${id}`),
   });
 
-  const [core, setCore] = useState<{ displayName: string; type: string; ranking: string } | null>(null);
+  const [core, setCore] = useState<CoreDraft | null>(null);
   const [values, setValues] = useState<Record<string, string> | null>(null);
-  const [editingCore, setEditingCore] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [filter, setFilter] = useState('');
   const [open, setOpen] = useState<Record<string, boolean>>({});
@@ -239,9 +247,9 @@ function ModePanel({
 
   const saved = detail.data;
 
-  // LA BOZZA SI RIPRENDE DA CIO' CHE ARRIVA, ogni volta che arriva. Senza
-  // questo, dopo un salvataggio la schermata continuerebbe a mostrare la bozza
-  // vecchia e il pulsante resterebbe acceso su modifiche gia' scritte.
+  // LA BOZZA SI RIPRENDE DA CIO' CHE ARRIVA, ogni volta che arriva. Senza,
+  // dopo un salvataggio la schermata continuerebbe a mostrare la bozza vecchia
+  // e il Salva resterebbe acceso su modifiche gia' scritte.
   useEffect(() => {
     if (!saved) return;
     setCore({ displayName: saved.mode.displayName, type: saved.mode.type, ranking: saved.mode.ranking });
@@ -252,48 +260,18 @@ function ModePanel({
     () => (saved ? effectiveValues(vocab.modeSettings, saved.settings) : {}),
     [saved, vocab.modeSettings],
   );
-
   const changedKeys = useMemo(
     () => (values ? changedSettings(vocab.modeSettings, savedValues, values) : []),
     [values, savedValues, vocab.modeSettings],
   );
 
-  const coreChanges = useMemo(() => {
-    if (!saved || !core) return [] as string[];
-    const out: string[] = [];
-    if (core.displayName.trim() !== saved.mode.displayName) out.push('displayName');
-    if (core.type !== saved.mode.type) out.push('type');
-    if (core.ranking !== saved.mode.ranking) out.push('ranking');
-    return out;
-  }, [saved, core]);
-
-  const invalid = useMemo(
-    () =>
-      values
-        ? vocab.modeSettings.filter((s) => !looksValid(s, values[s.key] ?? s.fallback)).map((s) => s.key)
-        : [],
-    [values, vocab.modeSettings],
-  );
-
   const save = useMutation({
-    mutationFn: async () => {
-      if (!values || !core) return null;
-      const settings: Record<string, string> = {};
-      for (const key of changedKeys) settings[key] = values[key] ?? '';
-      return api<{ note: string }>(`/api/duels/config/modes/${id}`, {
-        method: 'PATCH',
-        body: {
-          ...(coreChanges.includes('displayName') ? { displayName: core.displayName.trim() } : {}),
-          ...(coreChanges.includes('type') ? { type: core.type } : {}),
-          ...(coreChanges.includes('ranking') ? { ranking: core.ranking } : {}),
-          ...(changedKeys.length > 0 ? { settings } : {}),
-        },
-      });
-    },
+    mutationFn: (body: Record<string, unknown>) =>
+      api<{ note: string }>(`/api/duels/config/modes/${id}`, { method: 'PATCH', body }),
     onSuccess: (res) => {
       onError(undefined);
-      setEditingCore(false);
-      setNote(res?.note);
+      setEditing(false);
+      setNote(res.note);
       void qc.invalidateQueries({ queryKey: ['duels-config', 'mode', id] });
       onSaved();
     },
@@ -312,218 +290,234 @@ function ModePanel({
   if (detail.isError) return <Notice tone="err" title="Modalità non leggibile" />;
   if (!saved || !core || !values) return <SkeletonRows rows={6} />;
 
-  const changes = coreChanges.length + changedKeys.length;
-  // L ORDINE DELLE SEZIONI LO DICE IL SERVER, e non lo si ricava dai dati:
-  // nel disegno «Blocchi & mappa» viene prima di «Oggetti & inventario», mentre
-  // nella tabella compare dopo. Costruendo la mappa scorrendo i settings si
-  // otterrebbero le stesse sei sezioni in un ordine che nessuno ha scelto.
-  const groups = new Map<string, SettingSpec[]>(vocab.modeSettingGroups.map((g) => [g, []]));
-  for (const spec of vocab.modeSettings) {
-    // Un setting senza gruppo, o con un gruppo che l elenco non dichiara, non
-    // sparisce: finisce in fondo, in una sezione con il suo nome. Sparire
-    // sarebbe il modo silenzioso di rendere immodificabile un setting.
-    const key = spec.group ?? 'Altri';
-    const bucket = groups.get(key);
-    if (bucket) bucket.push(spec);
-    else groups.set(key, [spec]);
-  }
   const query = filter.trim().toLowerCase();
-  const matches = (spec: SettingSpec) => query === '' || spec.key.toLowerCase().includes(query);
+  // Cerca sia nella costante sia nell'etichetta: chi legge «Shield Stun»
+  // scrive «shield stun», e non trovare niente sembra «non esiste».
+  const matches = (spec: SettingSpec) =>
+    query === '' ||
+    spec.key.toLowerCase().includes(query) ||
+    prettyKey(spec.key).toLowerCase().includes(query);
 
-  const reset = () => {
+  // CON LA RICERCA ATTIVA I SEI GRUPPI SPARISCONO e resta una sezione sola,
+  // «Risultati», sempre aperta. È ciò che fa il mockup, ed è anche l'unica
+  // cosa sensata: cercando fra sei sezioni che si aprono tutte da sole
+  // restano sei intestazioni in mezzo ai risultati, ognuna con un conteggio
+  // che è quello dei risultati e non quello del gruppo.
+  const groups = new Map<string, SettingSpec[]>();
+  if (query === '') {
+    for (const group of vocab.modeSettingGroups) groups.set(group, []);
+    for (const spec of vocab.modeSettings) {
+      // Un setting con un gruppo che l'elenco non dichiara non sparisce:
+      // finisce in fondo, in una sezione con il suo nome. Sparire sarebbe il
+      // modo silenzioso di rendere immodificabile un setting.
+      const key = spec.group ?? 'Altri';
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(spec);
+      else groups.set(key, [spec]);
+    }
+  } else {
+    groups.set('Risultati', vocab.modeSettings.filter(matches));
+  }
+
+  const cancelCore = () => {
     setCore({ displayName: saved.mode.displayName, type: saved.mode.type, ranking: saved.mode.ranking });
-    setValues(effectiveValues(vocab.modeSettings, saved.settings));
-    setEditingCore(false);
-    setNote(undefined);
+    setEditing(false);
   };
 
   return (
     <>
-      {/* CHI NON PUO SALVARE NON VEDE LA BARRA. Vedrebbe un pulsante che
-          risponde 403, e su una schermata dove tutto e locale finche non si
-          salva sarebbe anche peggio: le modifiche fatte sembrerebbero in
-          attesa di essere scritte, e non lo sarebbero mai. */}
-      <SaveBar
-        changes={canSave && invalid.length === 0 ? changes : 0}
-        saving={save.isPending}
-        onSave={() => save.mutate()}
-        onReset={reset}
-      />
-      {invalid.length > 0 ? (
-        <Notice
-          tone="err"
-          title="Un valore non ha la forma giusta"
-          description={`${invalid.join(', ')}: i decimali usano il punto, e gli interi non ammettono decimali. Il plugin non saprebbe rileggerlo.`}
-        />
-      ) : null}
-      {note ? <Notice tone="info" title="Salvato" description={note} /> : null}
-
-      <Panel>
-        <BlockHeader
+      <Section padded>
+        <DetailHead
           title={saved.mode.displayName}
-          sub={`${saved.mode.name} · ${saved.mode.type} · ${saved.mode.ranking}`}
-        >
-          {editingCore ? null : (
-            <>
-              {canSave ? (
-                <Button size="sm" onClick={() => setEditingCore(true)}>
-                  Modifica
-                </Button>
-              ) : null}
-              {/* ELIMINARE STA UN GRADINO SOPRA: e la sola cosa irreversibile
-                  di questa schermata, e chi puo cambiare un valore non per
-                  questo puo portarsi via una riga e le sue cascate. */}
-              {canDelete ? (
-                <Button size="sm" variant="danger" onClick={() => setConfirming(true)}>
-                  Elimina
-                </Button>
-              ) : null}
-            </>
-          )}
-        </BlockHeader>
+          name={saved.mode.name}
+          tags={[saved.mode.type, saved.mode.ranking]}
+          tagColor={saved.mode.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9'}
+          actions={
+            editing ? (
+              <>
+                <QuietBtn onClick={cancelCore} disabled={save.isPending}>
+                  Annulla
+                </QuietBtn>
+                <AccentBtn
+                  height={30}
+                  disabled={save.isPending}
+                  onClick={() =>
+                    save.mutate({
+                      displayName: core.displayName.trim(),
+                      type: core.type,
+                      ranking: core.ranking,
+                    })
+                  }
+                >
+                  Salva
+                </AccentBtn>
+              </>
+            ) : (
+              <>
+                {canSave ? <RaisedBtn onClick={() => setEditing(true)}>Modifica</RaisedBtn> : null}
+                {/* ELIMINARE STA UN GRADINO SOPRA: è la sola cosa irreversibile
+                    di questa schermata, e chi può cambiare un valore non per
+                    questo può portarsi via una riga e le sue cascate. */}
+                {canDelete ? <DangerBtn onClick={() => setConfirming(true)}>Elimina</DangerBtn> : null}
+              </>
+            )
+          }
+        />
 
         {confirming ? (
           <ConfirmDelete
             what={saved.mode.displayName}
-            cascade="Rimuove a cascata i suoi settings, i kit e i preferiti dei giocatori."
+            cascade="Rimuove a cascata i suoi settings, i kit e i preferiti dei giocatori. Non è reversibile."
             busy={remove.isPending}
             onConfirm={() => remove.mutate()}
             onCancel={() => setConfirming(false)}
           />
         ) : null}
 
-        {editingCore ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, padding: '0 14px 14px' }}>
-            <label style={{ display: 'block', gridColumn: '1 / -1' }}>
-              <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tx-muted)', marginBottom: 5 }}>
-                Nome visualizzato
-              </span>
-              <input
-                className="input"
-                value={core.displayName}
-                onChange={(e) => setCore({ ...core, displayName: e.target.value })}
-              />
-            </label>
-            <Choice
+        {editing ? (
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 14,
+              marginTop: 18,
+              paddingTop: 18,
+              borderTop: '1px solid var(--bd-subtle)',
+            }}
+          >
+            <TextField
+              label="Nome visualizzato"
+              value={core.displayName}
+              onChange={(v) => setCore({ ...core, displayName: v })}
+            />
+            <Segmented
               label="Tipo"
               value={core.type}
               options={vocab.modeTypes}
               onChange={(v) => setCore({ ...core, type: v })}
             />
-            <Choice
+            <Segmented
               label="Ranking"
               value={core.ranking}
               options={vocab.rankingTypes}
               onChange={(v) => setCore({ ...core, ranking: v })}
             />
-            {/* Il nome interno e l'icona non ci sono: il primo e' la chiave con
-                cui i preferiti dei giocatori puntano a questa modalita'. */}
+            {/* Il nome interno e l'icona non ci sono, come nel disegno: il primo
+                è la chiave con cui i preferiti dei giocatori puntano qui. */}
           </div>
         ) : null}
-      </Panel>
+      </Section>
 
-      <Panel>
-        <BlockHeader
+      <Section>
+        <SectionHead
           title="Impostazioni di modalità"
-          sub={`${vocab.modeSettings.length} settings in ${groups.size} categorie · ${overrideCount(vocab.modeSettings, values)} personalizzati`}
+          sub={`${vocab.modeSettings.length} settings in ${vocab.modeSettingGroups.length} categorie · ${overrideCount(vocab.modeSettings, values)} personalizzati`}
+          action={
+            <AccentBtn
+              onClick={() => {
+                const settings: Record<string, string> = {};
+                for (const key of changedKeys) settings[key] = values[key] ?? '';
+                save.mutate({ settings });
+              }}
+              disabled={save.isPending}
+              // `visibility` E NON UN RAMO: e' quello che fa il mockup, e tiene
+              // ferma l'altezza dell'intestazione. Con il pulsante che entra ed
+              // esce dal flusso, il titolo si sposterebbe a ogni modifica.
+              style={{ visibility: canSave && changedKeys.length > 0 ? 'visible' : 'hidden' }}
+            >
+              Salva
+            </AccentBtn>
+          }
         />
-        <div style={{ padding: '0 14px 12px' }}>
-          <SearchBox
+
+        <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--bd-subtle)' }}>
+          <SearchField
             value={filter}
             onChange={setFilter}
             placeholder="Filtra tutti i settings"
             label="Filtra i settings"
+            maxWidth={320}
           />
         </div>
 
-        {[...groups.entries()].map(([group, specs]) => {
-          const shown = specs.filter(matches);
-          if (shown.length === 0) return null;
-          // Con un filtro attivo i gruppi si aprono da soli: cercare e non
-          // vedere niente perche' la sezione e' chiusa sembra «non c'e'».
-          const isOpen = query !== '' || (open[group] ?? false);
-          const custom = specs.filter((s) => (values[s.key] ?? s.fallback) !== s.fallback).length;
+        <div style={{ maxHeight: 560, overflowY: 'auto' }}>
+          {[...groups.entries()].map(([group, specs]) => {
+            const shown = specs.filter(matches);
+            if (shown.length === 0) return null;
+            // Con un filtro attivo i gruppi si aprono da soli: cercare e non
+            // vedere niente perche' la sezione e' chiusa sembra «non c'e'».
+            const isOpen = query !== '' || (open[group] ?? false);
+            const custom = overrideCount(specs, values);
 
-          return (
-            <div key={group}>
-              <button
-                type="button"
-                onClick={() => setOpen({ ...open, [group]: !isOpen })}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  width: '100%',
-                  padding: '9px 14px',
-                  border: 'none',
-                  borderTop: '1px solid var(--bd-subtle)',
-                  background: 'var(--s-inset)',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                }}
-              >
-                <Icon
-                  path={ICONS.chevron}
-                  size={13}
-                  style={{ transform: isOpen ? 'rotate(90deg)' : 'none', transition: 'transform var(--dur)' }}
-                />
-                <span style={{ fontSize: 12.5, fontWeight: 500 }}>{group}</span>
-                <span style={{ fontSize: 11, color: 'var(--tx-muted)' }}>{shown.length} settings</span>
-                {custom > 0 ? (
-                  <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--ac-text)' }}>
-                    {custom} personalizzati
+            return (
+              <div key={group} style={{ borderBottom: '1px solid var(--bd-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => setOpen({ ...open, [group]: !isOpen })}
+                  aria-expanded={isOpen}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 11,
+                    width: '100%',
+                    padding: '12px 20px',
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: 'var(--s-base)',
+                    textAlign: 'left',
+                  }}
+                >
+                  <span
+                    style={{
+                      color: 'var(--tx-muted)',
+                      display: 'flex',
+                      transform: isOpen ? 'rotate(90deg)' : 'none',
+                      transition: 'transform var(--dur-fast) var(--ease)',
+                      flex: 'none',
+                    }}
+                  >
+                    <Icon path={ICONS.chevron} size={13} />
                   </span>
-                ) : null}
-              </button>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--tx-primary)', flex: 1 }}>
+                    {group}
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--tx-muted)' }}>{shown.length} settings</span>
+                  {custom > 0 ? (
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 600,
+                        padding: '2px 7px',
+                        borderRadius: 'var(--r-xs)',
+                        background: 'var(--ac-soft)',
+                        color: 'var(--ac-text)',
+                      }}
+                    >
+                      {custom} personalizzati
+                    </span>
+                  ) : null}
+                </button>
 
-              {isOpen
-                ? shown.map((spec) => (
-                    <SettingRow
-                      key={spec.key}
-                      spec={spec}
-                      value={values[spec.key] ?? spec.fallback}
-                      changed={changedKeys.includes(spec.key)}
-                      onChange={(v) => setValues({ ...values, [spec.key]: v })}
-                    />
-                  ))
-                : null}
-            </div>
-          );
-        })}
-      </Panel>
+                {isOpen
+                  ? shown.map((spec) => (
+                      <SettingRow
+                        key={spec.key}
+                        spec={spec}
+                        value={values[spec.key] ?? spec.fallback}
+                        columns="1fr 56px 190px 100px"
+                        padding="9px 20px 9px 44px"
+                        variant="modes"
+                        onChange={(v) => setValues({ ...values, [spec.key]: v })}
+                      />
+                    ))
+                  : null}
+              </div>
+            );
+          })}
+        </div>
+      </Section>
+
+      {note ? <Toast message={note} onDone={() => setNote(undefined)} /> : null}
     </>
-  );
-}
-
-/** Due o tre scelte affiancate: piu' corto di un elenco a discesa da leggere. */
-function Choice({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly string[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <span style={{ display: 'block', fontSize: 11.5, color: 'var(--tx-muted)', marginBottom: 5 }}>
-        {label}
-      </span>
-      <div style={{ display: 'flex', gap: 6 }}>
-        {options.map((option) => (
-          <Button
-            key={option}
-            size="sm"
-            variant={option === value ? 'primary' : 'secondary'}
-            onClick={() => onChange(option)}
-          >
-            {option}
-          </Button>
-        ))}
-      </div>
-    </div>
   );
 }

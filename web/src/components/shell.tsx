@@ -6,8 +6,9 @@
 
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Me, ModuleKey } from '../lib/api.ts';
+import type { Me } from '../lib/api.ts';
 import { canOpen } from '../lib/modules.ts';
+import { NAV, type NavEntry } from '../lib/nav.ts';
 import {
   areaOf,
   COLLAPSED_KEY,
@@ -23,125 +24,38 @@ import { loadWorld } from '../lib/world.ts';
 import { Avatar, ICONS, Icon } from './ui.tsx';
 
 /**
- * Voci di navigazione: quelle di `frontend/metamc-shared.js` (`NAV`), meno il
- * gruppo "Analisi" che è la fase 2.
+ * Icona e prefetch di ogni voce, per percorso.
  *
- * "Utenti & Ruoli" è UNA voce, non tre: nel prototipo utenti, matrice dei
- * permessi e inviti stanno sulla stessa schermata. Una voce compare se
- * l'utente ha accesso ad almeno uno dei moduli che quella schermata mostra —
- * e la schermata poi disegna solo le sezioni che gli competono.
+ * IL RESTO STA IN `lib/nav.ts`: percorsi, nomi, moduli e livelli sono dati, e
+ * li leggono anche il breadcrumb, la palette e il selettore del periodo. Qui
+ * resta solo ciò che è di questo componente — un tracciato SVG e una funzione
+ * che anticipa un file — perché un file di dati che importasse dai componenti
+ * sarebbe una libreria che dipende dal disegno, e non si potrebbe provare
+ * senza montare React.
  */
-type NavItem = {
-  modules: ModuleKey[];
-  label: string;
-  to: string;
-  area: string;
-  icon: string;
-  /**
-   * Da chiamare al passaggio del mouse. §8.9
-   *
-   * Il file dei contorni pesa 108 kB e serve a una schermata sola: scaricarlo
-   * per tutti sarebbe uno spreco, scaricarlo all'apertura significa vedere il
-   * riquadro vuoto per un istante. Anticiparlo al passaggio del mouse toglie
-   * la latenza senza costare un byte a chi quella schermata non la apre mai.
-   */
-  prefetch?: () => void;
+const DECOR: Record<string, { icon: string; prefetch?: () => void }> = {
+  // Il file dei contorni pesa 108 kB e serve a una schermata sola: scaricarlo
+  // per tutti sarebbe uno spreco, scaricarlo all'apertura significa vedere il
+  // riquadro vuoto per un istante. §8.9
+  '/panoramica': { icon: ICONS.grid, prefetch: () => void loadWorld().catch(() => undefined) },
+  '/dettaglio-modalita': { icon: ICONS.modes },
+  '/duels/trends': { icon: ICONS.trend },
+  '/duels/ratings': { icon: ICONS.star },
+  '/duels/modes': { icon: ICONS.cfg },
+  '/duels/maps': { icon: ICONS.grid },
+  '/utenti': { icon: ICONS.users },
+  '/registro': { icon: ICONS.log },
 };
 
-const NAV: NavItem[] = [
-  // L'ordine di questo array E' l'ordine della barra: i gruppi si formano
-  // nell'ordine in cui compaiono le voci. «Analisi» sta sopra, come nel
-  // design — e' la ragione per cui il pannello esiste, l'amministrazione e'
-  // cio' che serve per farlo funzionare.
-  //
-  // I nomi vengono da `frontend/support.js`, che porta i dati veri dietro i
-  // segnaposto dei mockup: area «Analisi», voci «Panoramica network» e
-  // «Dettaglio modalita'».
-  {
-    modules: ['statistiche'],
-    label: 'Panoramica network',
-    to: '/panoramica',
-    area: 'Analisi',
-    icon: ICONS.grid,
-    prefetch: () => void loadWorld().catch(() => undefined),
-  },
-  // Porta all'INGRESSO, non a una modalità fissata: la rotta risolve la più
-  // popolata in questo momento e rimanda lì. Una chiave scritta qui sarebbe
-  // quella giusta il primo giorno e quella sbagliata tutti gli altri.
-  //
-  // E' UNA VOCE SOLA perché la schermata è una sola. Il dizionario — creare
-  // una modalità, cambiarne nome, colore e regole — stava su una schermata sua
-  // accanto a questa, e chiedeva di uscire dai grafici per andare a cambiare
-  // ciò che i grafici mostrano. Adesso i due pulsanti stanno nell'intestazione
-  // del dettaglio, come nel mockup, e si modifica la modalità mentre la si
-  // guarda.
-  {
-    modules: ['statistiche'],
-    label: 'Dettaglio modalità',
-    to: '/dettaglio-modalita',
-    area: 'Analisi',
-    icon: ICONS.modes,
-  },
-  // Il gruppo «Duels» sta fra Analisi e Amministrazione, come nei mockup.
-  //
-  // Il MODULO E' `duels`, non `statistiche`: sono due permessi distinti perché
-  // sono due domande distinte su chi può vedere cosa. Chi ha le statistiche
-  // del network non ha per questo il diritto di guardare le partite dei duels.
-  {
-    modules: ['duels'],
-    label: 'Trends',
-    to: '/duels/trends',
-    area: 'Duels',
-    icon: ICONS.trend,
-  },
-  // `duels_feedback` e non `duels`: qui ci sono i nomi dei giocatori e il
-  // testo che hanno scritto loro, ed è una domanda diversa su chi può vederli.
-  {
-    modules: ['duels_feedback'],
-    label: 'Ratings',
-    to: '/duels/ratings',
-    area: 'Duels',
-    icon: ICONS.star,
-  },
-  // Le due di configurazione hanno un MODULO PROPRIO (migration 018), e con
-  // quello la regola torna a essere una sola per tutte le voci: livello 1 vuol
-  // dire «puoi aprirla».
-  //
-  // Per un momento questa struttura ha avuto un campo `minLevel`, che serviva
-  // finché le due schermate vivevano su `duels` a 3. Con i moduli propri non lo
-  // usa più nessuno, ed è stato tolto invece di restare lì come manopola che
-  // non gira: salvare ed eliminare chiedono 2 e 3, ma quello lo decidono le
-  // rotte e la schermata, non il menu.
-  {
-    modules: ['duels_modes'],
-    label: 'Modes',
-    to: '/duels/modes',
-    area: 'Duels',
-    icon: ICONS.cfg,
-  },
-  {
-    modules: ['duels_maps'],
-    label: 'Maps',
-    to: '/duels/maps',
-    area: 'Duels',
-    icon: ICONS.grid,
-  },
-  {
-    modules: ['utenti', 'ruoli', 'inviti'],
-    label: 'Utenti & Ruoli',
-    to: '/utenti',
-    area: 'Amministrazione',
-    icon: ICONS.users,
-  },
-  {
-    modules: ['audit'],
-    label: 'Registro attività',
-    to: '/registro',
-    area: 'Amministrazione',
-    icon: ICONS.log,
-  },
-];
-
+/**
+ * Le voci che questa persona puo' aprire.
+ *
+ * La usa anche la palette ⌘K, o si otterrebbero due elenchi: e' gia'
+ * successo, e la palette non nominava due schermate che esistevano da mesi.
+ */
+export function visibleNav(me: Me): NavEntry[] {
+  return NAV.filter((n) => n.modules.some((m) => canOpen(me, m, n.minLevel ?? 1)));
+}
 export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -153,8 +67,8 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
   // livelli, e una dipendenza più stretta di ciò che si legge è il modo in cui
   // una voce resta visibile dopo che il permesso è stato tolto.
   const groups = useMemo(() => {
-    const visible = NAV.filter((n) => n.modules.some((m) => canOpen(me, m)));
-    const map = new Map<string, typeof visible>();
+    const visible = visibleNav(me);
+    const map = new Map<string, NavEntry[]>();
     for (const item of visible) {
       const list = map.get(item.area) ?? [];
       list.push(item);
@@ -280,19 +194,22 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
             </button>
             {open ? (
               <div id={`nav-${area}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {items.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className="nav-item"
-                    data-active={isActive(pathname, item.to)}
-                    onMouseEnter={item.prefetch}
-                    onFocus={item.prefetch}
-                  >
-                    <Icon path={item.icon} />
-                    <span className="nav-label">{item.label}</span>
-                  </Link>
-                ))}
+                {items.map((item) => {
+                  const decor = DECOR[item.to];
+                  return (
+                    <Link
+                      key={item.to}
+                      to={item.to}
+                      className="nav-item"
+                      data-active={isActive(pathname, item.to)}
+                      onMouseEnter={decor?.prefetch}
+                      onFocus={decor?.prefetch}
+                    >
+                      <Icon path={decor?.icon ?? ICONS.grid} />
+                      <span className="nav-label">{item.label}</span>
+                    </Link>
+                  );
+                })}
               </div>
             ) : null}
           </div>

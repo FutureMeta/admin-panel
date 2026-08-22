@@ -17,11 +17,12 @@ import {
 } from '@tanstack/react-router';
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { type Command, CommandPalette, Sidebar, Topbar } from './components/shell.tsx';
+import { type Command, CommandPalette, Sidebar, Topbar, visibleNav } from './components/shell.tsx';
 import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
 import { ratingsSearch } from './lib/duels.ts';
 import { canOpen } from './lib/modules.ts';
+import { hasPeriod, titleOf } from './lib/nav.ts';
 import { rangeSearch } from './lib/range.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
@@ -106,69 +107,24 @@ function AppShell() {
   }
 
   const data = me.data;
-  // I comandi sono filtrati con la stessa regola della sidebar: si elencano
-  // solo quelli che l'utente puo' davvero eseguire.
+
+  // I COMANDI VENGONO DALLA STESSA TABELLA DELLA BARRA LATERALE.
+  //
+  // Erano un elenco a mano, e si era dimenticato la Panoramica network e il
+  // Dettaglio modalita': due schermate che esistono da mesi e che la palette
+  // non nominava. Non e' un difetto che produce un errore — e' una schermata
+  // che c'e' e che da un posto non si raggiunge, e la si scopre solo quando
+  // qualcuno la cerca e non la trova.
+  //
+  // `visibleNav` applica gli stessi permessi della barra, quindi la palette
+  // non può offrire una scorciatoia che poi risponde 403.
   const commands: Command[] = [
-    ...((['utenti', 'ruoli', 'inviti'] as const).some((m) => data.modules.includes(m))
-      ? [
-          {
-            id: 'users',
-            label: 'Vai a Utenti & Ruoli',
-            hint: 'g u',
-            run: () => void navigate({ to: '/utenti' }),
-          },
-        ]
-      : []),
-    ...(data.modules.includes('duels')
-      ? [
-          {
-            id: 'duels-trends',
-            label: 'Vai a Duels · Trends',
-            hint: 'andamento delle partite',
-            run: () => void navigate({ to: '/duels/trends' }),
-          },
-        ]
-      : []),
-    ...(data.modules.includes('duels_feedback')
-      ? [
-          {
-            id: 'duels-ratings',
-            label: 'Vai a Duels · Ratings',
-            hint: 'feedback dei giocatori',
-            run: () => void navigate({ to: '/duels/ratings' }),
-          },
-        ]
-      : []),
-    ...(canOpen(data, 'duels_modes')
-      ? [
-          {
-            id: 'duels-modes',
-            label: 'Vai a Duels · Modes',
-            hint: 'configurazione delle modalità',
-            run: () => void navigate({ to: '/duels/modes' }),
-          },
-        ]
-      : []),
-    ...(canOpen(data, 'duels_maps')
-      ? [
-          {
-            id: 'duels-maps',
-            label: 'Vai a Duels · Maps',
-            hint: 'configurazione delle mappe',
-            run: () => void navigate({ to: '/duels/maps' }),
-          },
-        ]
-      : []),
-    ...(data.modules.includes('audit')
-      ? [
-          {
-            id: 'audit',
-            label: 'Vai al Registro attività',
-            hint: 'g r',
-            run: () => void navigate({ to: '/registro' }),
-          },
-        ]
-      : []),
+    ...visibleNav(data).map((entry) => ({
+      id: entry.to,
+      label: `Vai a ${entry.title}`,
+      hint: entry.hint ?? '',
+      run: () => void navigate({ to: entry.to }),
+    })),
     {
       id: 'logout-all',
       label: 'Chiudi tutte le mie sessioni',
@@ -179,43 +135,12 @@ function AppShell() {
     },
   ];
 
-  // Il titolo della pagina corrente, per il breadcrumb della topbar.
-  // Sono le etichette di `BREAD` in frontend/metamc-shared.js.
-  //
-  // ELENCO ESPLICITO, e il ripiego è l'ULTIMA voce, non la prima. Prima erano
-  // due `startsWith` e poi `'Console'` per tutto il resto: ogni schermata
-  // aggiunta dopo — la panoramica, il dettaglio modalità, le due dei duels —
-  // finiva nel ripiego, e la barra in alto scriveva «Console › Console» invece
-  // del nome della pagina. Un ripiego che copre il caso normale non è un
-  // ripiego: è l'unico comportamento, e non fallisce mai abbastanza da farsi
-  // notare.
-  const breadcrumb =
-    (
-      [
-        ['/utenti', 'Utenti & Ruoli'],
-        ['/registro', 'Registro attività'],
-        ['/panoramica', 'Panoramica network'],
-        ['/dettaglio-modalita', 'Dettaglio modalità'],
-        ['/duels/trends', 'Duels · Trends'],
-        ['/duels/ratings', 'Duels · Ratings'],
-        ['/duels/modes', 'Duels · Modes'],
-        ['/duels/maps', 'Duels · Maps'],
-      ] as const
-    ).find(([prefix]) => pathname.startsWith(prefix))?.[1] ?? 'Console';
-
-  // Il periodo governa solo le schermate che HANNO un periodo, e l'elenco dice
-  // quali sono invece di dire quali non lo sono.
-  //
-  // ERA UN ELENCO DI ESCLUSIONI — «tutto tranne utenti e registro» — ed è lo
-  // stesso difetto del breadcrumb qui sopra, con la stessa forma: ogni
-  // schermata aggiunta dopo ereditava il selettore senza che nessuno lo
-  // decidesse. Modes e Maps ci sono cadute subito: due schermate di
-  // configurazione con sopra «24h · 7g · 30g», che non governano niente. Un
-  // comando che non fa niente si prova una volta e poi non ci si fida più
-  // nemmeno dove funziona.
-  const showFilters = ['/panoramica', '/dettaglio-modalita', '/duels/trends', '/duels/ratings'].some(
-    (prefix) => pathname.startsWith(prefix),
-  );
+  // Anche questi due vengono da lì: erano due elenchi tenuti a mano, e ognuno
+  // si era dimenticato qualcosa — il breadcrumb scriveva «Console › Console»
+  // sulle schermate aggiunte dopo, e il periodo compariva su Modes e Maps, che
+  // non ce l'hanno. Vedi il commento in testa a `lib/nav.ts`.
+  const breadcrumb = titleOf(pathname);
+  const showFilters = hasPeriod(pathname);
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--s-base)' }}>

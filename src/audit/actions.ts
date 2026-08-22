@@ -64,6 +64,19 @@ export const AUDIT_ACTIONS = {
   // pagina sfogliata e renderebbe il registro illeggibile proprio dove serve.
   duelsRatingSearch: 'duels.rating.search',
 
+  // --- configurazione del gioco --------------------------------------------
+  //
+  // Sono le uniche azioni del registro che cambiano qualcosa FUORI dai nostri
+  // database: toccano le tabelle da cui i server di gioco prendono le loro
+  // regole. I metadati portano il piano — cosa e' stato scritto e cosa
+  // cancellato — perche' «modalita' aggiornata» da solo non permette di
+  // ricostruire cosa e' cambiato, e qui la domanda arriva quando qualcosa in
+  // gioco si comporta diversamente da ieri.
+  duelsModeUpdated: 'duels.mode.update',
+  duelsModeDeleted: 'duels.mode.delete',
+  duelsMapUpdated: 'duels.map.update',
+  duelsMapDeleted: 'duels.map.delete',
+
   // --- sessioni -------------------------------------------------------------
   loginSucceeded: 'auth.login.success',
   loginFailed: 'auth.login.failure',

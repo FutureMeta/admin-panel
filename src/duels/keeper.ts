@@ -83,7 +83,14 @@ export async function startDuelsIngest(opts: DuelsIngestOptions): Promise<DuelsI
     searchPath: 'stats, public',
   });
   const db = createKysely(pool);
+
+  // CHI CREA CHIUDE. Da quando esistono le schermate di configurazione il pool
+  // MySQL puo' arrivare da fuori — e' lo stesso database, e aprirne due sarebbe
+  // il doppio delle connessioni verso una macchina che non e' nostra. Ma un
+  // pool ricevuto non e' un pool nostro: chiudendolo allo stop del job si
+  // porterebbe via anche le rotte, che con l'ingestione non c'entrano niente.
   const my = opts.mysql ?? createDuelsMysql(opts.mysqlUrl);
+  const ownsMysql = opts.mysql === undefined;
 
   // Si prova la connessione SUBITO e lo si dice.
   //
@@ -216,7 +223,7 @@ export async function startDuelsIngest(opts: DuelsIngestOptions): Promise<DuelsI
     runOnce,
     stop: async () => {
       for (const job of jobs) job.stop();
-      await my.close().catch(() => undefined);
+      if (ownsMysql) await my.close().catch(() => undefined);
       await db.destroy().catch(() => undefined);
     },
   };

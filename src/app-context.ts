@@ -20,6 +20,7 @@ import type { Env } from '#src/config/env.ts';
 import { type DerivedKeys, deriveKeys, pepperRing } from '#src/crypto/keys.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { type DuelsIngest, startDuelsIngest } from '#src/duels/keeper.ts';
+import { createDuelsMysql, type DuelsMysql } from '#src/duels/mysql.ts';
 import { PgDuelsProvider } from '#src/duels/pg.ts';
 import type { DuelsProvider } from '#src/duels/provider.ts';
 import { type DuelsWarmDeps, warmDuelsAllClosed } from '#src/duels/warm.ts';
@@ -67,6 +68,13 @@ export type AppContext = {
    * rispondono 503 e il resto del pannello non cambia.
    */
   duels: DuelsProvider | null;
+  /**
+   * Il database del gioco, per le schermate di configurazione.
+   *
+   * `null` senza `DUELS_MYSQL_URL`. E' l'unico oggetto del pannello che puo'
+   * SCRIVERE fuori dai nostri database, e chi lo usa lo fa dentro `tx`.
+   */
+  duelsMysql: DuelsMysql | null;
   /**
    * L'ingestione dei duels. `null` finche' non la si accende con
    * DUELS_INGEST_ENABLED: senza, nessuna connessione al MySQL del gioco viene
@@ -309,12 +317,27 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   // Sta QUI e non accanto al campionamento perche' ha bisogno della cache e
   // del provider: e' lo stesso ciclo che ingerisce a ricostruire la fetta
   // viva, e senza quei due non avrebbe dove scriverla.
+  // IL POOL MYSQL NASCE QUI, non piu' dentro il job.
+  //
+  // Apparteneva all'ingestione, ed era giusto finche' l'ingestione era l'unica
+  // cosa che parlasse con il database del gioco. Le schermate Modes e Maps
+  // leggono e scrivono quelle stesse tabelle, e devono poterlo fare anche a
+  // ingestione spenta: configurare le modalita' non ha niente a che vedere con
+  // l'importazione dello storico, e legare le due cose vorrebbe dire che
+  // fermare un job spegne una schermata.
+  //
+  // Uno solo, passato al job: sono connessioni verso una macchina che non e'
+  // nostra, e due serie per lo stesso database sarebbero il doppio del peso
+  // per la stessa cosa.
+  const duelsMysql = env.DUELS_MYSQL_URL ? createDuelsMysql(env.DUELS_MYSQL_URL) : null;
+
   let duelsIngest: DuelsIngest | null = null;
   if (env.DUELS_INGEST_ENABLED && env.DUELS_MYSQL_URL && env.DATABASE_INGEST_URL && opts.startJobs) {
     try {
       duelsIngest = await startDuelsIngest({
         databaseUrl: env.DATABASE_INGEST_URL,
         mysqlUrl: env.DUELS_MYSQL_URL,
+        ...(duelsMysql ? { mysql: duelsMysql } : {}),
         tz: env.DUELS_SOURCE_TZ,
         logger,
         registry: maintenance.registry,
@@ -347,6 +370,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     duelsIngest,
     statsDb,
     duels,
+    duelsMysql,
     statsCache,
     cacheRedis,
     // Si accende DOPO `listen()`, in `startStatsWarming`.
@@ -368,6 +392,8 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       maintenance.stop();
       await statsIngest?.stop().catch(() => undefined);
       await duelsIngest?.stop().catch(() => undefined);
+      // Chi crea chiude: il job lo ha ricevuto, quindi non lo chiude lui.
+      await duelsMysql?.close().catch(() => undefined);
       context.statsWarm?.stop();
       await statsDb?.destroy().catch(() => undefined);
       await cacheRedis.quit().catch(() => undefined);

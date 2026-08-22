@@ -47,6 +47,19 @@ function readCookie(name: string): string | undefined {
   return undefined;
 }
 
+/**
+ * Il token CSRF, per chi non passa da `api()`.
+ *
+ * Lo stream di Svetlana legge il corpo della risposta a mano e non puo' usare
+ * l'aiuto qui sotto, ma deve comunque mandare l'intestazione: e' una POST, e
+ * SEC-17 vale per ogni richiesta che non e' una GET. Esporre la lettura del
+ * cookie e' meglio di un secondo lettore scritto altrove — sarebbe la seconda
+ * copia di una cosa che deve restare una.
+ */
+export function csrfToken(): string | undefined {
+  return readCookie('__Host-metamc_csrf');
+}
+
 type RequestOptions = {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;

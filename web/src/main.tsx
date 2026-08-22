@@ -18,12 +18,14 @@ import {
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { type Command, CommandPalette, Sidebar, Topbar, visibleNav } from './components/shell.tsx';
+import { Svetlana } from './components/svetlana.tsx';
 import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
 import { ratingsSearch } from './lib/duels.ts';
 import { canOpen } from './lib/modules.ts';
 import { hasPeriod, titleOf } from './lib/nav.ts';
-import { rangeSearch } from './lib/range.ts';
+import { rangeSearch, useRange } from './lib/range.ts';
+import { pageFilters } from './lib/svetlana.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
@@ -64,6 +66,10 @@ function AppShell() {
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // Il periodo serve QUI e non solo alla barra in alto: e' meta' del contesto
+  // che Svetlana riceve, e sta gia' nella URL — leggerlo e' meglio che farlo
+  // viaggiare come prop attraverso il guscio.
+  const { range } = useRange();
 
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
 
@@ -163,6 +169,9 @@ function AppShell() {
       </div>
 
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      {/* Sta nel guscio e non in una schermata: e' un pannello sopra a
+          qualunque pagina, e la pagina e' meta' di cio' che lo rende utile. */}
+      <Svetlana me={data} page={{ path: pathname, breadcrumb, ...pageFilters(pathname, range) }} />
     </div>
   );
 }

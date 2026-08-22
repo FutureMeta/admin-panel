@@ -131,7 +131,7 @@ function unavailable(what: string): string {
   return reply({
     ok: false,
     error: 'non_disponibile',
-    detail: `la sorgente ${what} non e` + "' configurata su questa installazione",
+    detail: `la sorgente ${what} non risulta configurata su questa installazione`,
   });
 }
 

@@ -237,10 +237,6 @@ function reads(
   if (/FROM duels_map_setting WHERE map_id = \?/.test(q)) {
     return { rows: state.mapSettings.filter((r) => r.map_id === Number(p[0])), affectedRows: 0 };
   }
-  if (/FROM duels_map_team mt/.test(q)) {
-    const ids = state.mapTeams.filter((r) => r.map_id === Number(p[0])).map((r) => r.team_id);
-    return { rows: state.teams.filter((t) => ids.includes(t.id)), affectedRows: 0 };
-  }
   if (/SELECT DISTINCT event_type/.test(q)) {
     return {
       rows: [...new Set(state.mapEvents.map((e) => e.event_type))].map((v) => ({ event_type: v })),

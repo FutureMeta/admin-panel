@@ -56,11 +56,10 @@ type MapDetail = {
   modeIds: number[];
   eventTypes: string[];
   settings: Array<{ key: string; value: string }>;
-  teams: Array<{ id: number; name: string; displayName: string; color: string }>;
 };
 
 const ALL = '__tutte__';
-const TABS = ['Modalità supportate', 'Event type', 'Settings mappa', 'Team'] as const;
+const TABS = ['Modalità supportate', 'Event type', 'Settings mappa'] as const;
 type Tab = (typeof TABS)[number];
 
 export function DuelsMapsRoute({ me }: { me: Me }) {
@@ -443,7 +442,7 @@ function MapPanel({
             borderBottom: '1px solid var(--bd-subtle)',
           }}
         >
-          {TABS.filter((name) => name !== 'Team' || saved.map.type === 'DUEL').map((name) => {
+          {TABS.map((name) => {
             const on = name === tab;
             return (
               <button
@@ -475,7 +474,12 @@ function MapPanel({
         </div>
 
         {tab === 'Modalità supportate' ? (
-          <div style={{ padding: '6px 20px 16px' }}>
+          // OLTRE LE DIECI RIGHE SI SCORRE. Una mappa con trenta modalità
+          // allungava il riquadro finché il pulsante Salva usciva dallo
+          // schermo: si tolgono due modalità e poi si cerca dove è finito ciò
+          // che le rende vere. Il taglio cade a metà dell'undicesima riga
+          // apposta — una riga tagliata dice «ce n'è ancora» senza scriverlo.
+          <div style={{ padding: '6px 20px 16px', maxHeight: 456, overflowY: 'auto' }}>
             {modeIds.length === 0 && saved.modeIds.length === 0 ? (
               <div style={{ padding: '16px 0', fontSize: 12.5, color: 'var(--tx-muted)' }}>
                 Nessuna modalità supportata da questa mappa.
@@ -560,39 +564,6 @@ function MapPanel({
               />
             ))
           : null}
-
-        {tab === 'Team' ? (
-          <div style={{ padding: '14px 20px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {saved.teams.length === 0 ? (
-              <div style={{ fontSize: 12.5, color: 'var(--tx-muted)' }}>
-                Nessun team assegnato a questa mappa.
-              </div>
-            ) : (
-              // SOLA LETTURA, come nel disegno: spawn e aree dei team si
-              // posizionano in gioco, e un elenco modificabile qui
-              // prometterebbe piu' di quello che fa.
-              saved.teams.map((team) => (
-                <div
-                  key={team.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 11,
-                    padding: '11px 14px',
-                    border: '1px solid var(--bd-subtle)',
-                    borderRadius: 'var(--r-md)',
-                    background: 'var(--s-base)',
-                  }}
-                >
-                  <span
-                    style={{ width: 10, height: 10, borderRadius: 2, background: team.color, flex: 'none' }}
-                  />
-                  <span style={{ fontSize: 13, fontWeight: 600 }}>{team.displayName}</span>
-                </div>
-              ))
-            )}
-          </div>
-        ) : null}
       </Section>
 
       {adding ? (

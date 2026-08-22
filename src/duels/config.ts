@@ -69,14 +69,11 @@ export type ModeDetail = {
   settings: SettingValue[];
 };
 
-export type MapTeam = { id: number; name: string; displayName: string; color: string };
-
 export type MapDetail = {
   map: ConfigMap;
   modeIds: number[];
   eventTypes: string[];
   settings: SettingValue[];
-  teams: MapTeam[];
 };
 
 /**
@@ -195,20 +192,12 @@ export async function mapDetail(my: DuelsMysql, id: number): Promise<MapDetail |
   );
   if (!row) return null;
 
-  const [modes, events, settings, teams] = await Promise.all([
+  const [modes, events, settings] = await Promise.all([
     my.rows<{ mode_id: number }>(`SELECT mode_id FROM duels_map_mode WHERE map_id = ?`, [id]),
     my.rows<{ event_type: string }>(`SELECT event_type FROM duels_map_event_type WHERE map_id = ?`, [id]),
     my.rows<{ type: string; value: string }>(`SELECT type, value FROM duels_map_setting WHERE map_id = ?`, [
       id,
     ]),
-    my.rows<{ id: number; name: string; display_name: string; color: string }>(
-      `SELECT t.id, t.name, t.display_name, t.color
-         FROM duels_map_team mt
-         JOIN duels_team t ON t.id = mt.team_id
-        WHERE mt.map_id = ?
-        ORDER BY t.name`,
-      [id],
-    ),
   ]);
 
   return {
@@ -216,12 +205,6 @@ export async function mapDetail(my: DuelsMysql, id: number): Promise<MapDetail |
     modeIds: modes.map((m) => Number(m.mode_id)),
     eventTypes: events.map((e) => e.event_type),
     settings: normalised(MAP_SETTINGS, settings),
-    teams: teams.map((t) => ({
-      id: Number(t.id),
-      name: t.name,
-      displayName: t.display_name,
-      color: t.color,
-    })),
   };
 }
 

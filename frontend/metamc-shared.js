@@ -10,7 +10,11 @@
     {id:'towny', label:'Dettaglio Towny'},
     {id:'utenti', label:'Utenti & Ruoli'},
     {id:'registro', label:'Registro attività'},
-    {id:'responsive', label:'Responsive'}
+    {id:'responsive', label:'Responsive'},
+    {id:'duels-trends', label:'Duels · Trends'},
+    {id:'duels-ratings', label:'Duels · Ratings'},
+    {id:'duels-config', label:'Duels · Modes'},
+    {id:'duels-maps', label:'Duels · Maps'}
   ];
   
   const MODES = [
@@ -32,12 +36,22 @@
     cal:'M3.5 9h17M7.5 3.5v3.5M16.5 3.5v3.5M5 5.5h14v15H5z',
     globe:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.5 9h17M3.5 15h17M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18z',
     shield:'M12 21s7-3.2 7-9V5.6L12 3 5 5.6V12c0 5.8 7 9 7 9z',
-    panel:'M4 4h16v16H4zM9.5 4v16'
+    panel:'M4 4h16v16H4zM9.5 4v16',
+    trend:'M3 17l5-7 4 4 9-11',
+    star:'M12 3.5l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6-4.4-4.2 6-.8z',
+    cfg:'M4.5 7h15M4.5 12h15M4.5 17h15M8 5v4M16 10v4M11 15v4',
+    swords:'M6.5 17.5 17.5 6.5M14 6h4v4M6 14v4h4M17.5 17.5 6.5 6.5M10 6H6v4M18 14v4h-4'
   };
   const NAV = [
     { area:'Analisi', items:[
       { label:'Panoramica network', icon:I.grid, screen:'panoramica' },
       { label:'Dettaglio modalità', icon:I.modes, screen:'towny' }
+    ]},
+    { area:'Duels', items:[
+      { label:'Trends', icon:I.trend, screen:'duels-trends' },
+      { label:'Ratings', icon:I.star, screen:'duels-ratings' },
+      { label:'Modes', icon:I.swords, screen:'duels-config' },
+      { label:'Maps', icon:I.panel, screen:'duels-maps' }
     ]},
     { area:'Amministrazione', items:[
       { label:'Utenti & Ruoli', icon:I.users, screen:'utenti' },
@@ -46,7 +60,8 @@
   ];
   const BREAD = {
     shell:'App shell', panoramica:'Panoramica network', towny:'Dettaglio modalità · Towny',
-    utenti:'Utenti & Ruoli', registro:'Registro attività'
+    utenti:'Utenti & Ruoli', registro:'Registro attività',
+    'duels-trends':'Duels · Trends', 'duels-ratings':'Duels · Ratings', 'duels-config':'Duels · Modes', 'duels-maps':'Duels · Maps'
   };
   const RAMP = ['#0F212A','#16394B','#1E5670','#4C6E72','#8A7147','#C08129','#F0A63F'];
   const fmt = n => Number(n).toLocaleString('it-IT');
@@ -99,7 +114,8 @@
   const PAGE_OF = {
     sistema:'0-design-system.dc.html', login:'1-login.dc.html', invito:'2-accettazione-invito.dc.html',
     shell:'3-app-shell.dc.html', panoramica:'4-panoramica-network.dc.html', towny:'5-dettaglio-modalita.dc.html',
-    utenti:'6-utenti-e-ruoli.dc.html', registro:'7-registro-attivita.dc.html', responsive:'8-responsive.dc.html'
+    utenti:'6-utenti-e-ruoli.dc.html', registro:'7-registro-attivita.dc.html', responsive:'8-responsive.dc.html',
+    'duels-trends':'9-duels-trends.dc.html', 'duels-ratings':'10-duels-ratings.dc.html', 'duels-config':'11-duels-configurazione.dc.html', 'duels-maps':'12-duels-mappe.dc.html'
   };
 
   function hexField() {
@@ -283,6 +299,722 @@
       ]
     };
   }
+  const MODE_SETTINGS = [
+    {key:'START_COOLDOWN', type:'int', def:'3', group:'Round & partita'},
+    {key:'PLAYERS_TO_START', type:'int', def:'2', group:'Round & partita'},
+    {key:'ITEM_DAMAGE', type:'bool', def:'false', group:'Combattimento'},
+    {key:'PREVENT_ITEM_DROP', type:'bool', def:'false', group:'Oggetti & inventario'},
+    {key:'DROP_INVENTORY_ON_DEATH', type:'bool', def:'false', group:'Oggetti & inventario'},
+    {key:'PREVENT_ARMOR_TOOLS_DROP', type:'bool', def:'false', group:'Oggetti & inventario'},
+    {key:'PREVENT_ARMOR_MOVE', type:'bool', def:'false', group:'Oggetti & inventario'},
+    {key:'SATURATION', type:'bool', def:'true', group:'Combattimento'},
+    {key:'DIFFICULTY', type:'enum', def:'HARD', options:['PEACEFUL','EASY','NORMAL','HARD'], group:'Combattimento'},
+    {key:'DAMAGE_MULTIPLIER', type:'double', def:'1.0', group:'Combattimento'},
+    {key:'NATURAL_REGENERATION', type:'bool', def:'true', group:'Combattimento'},
+    {key:'HUNGER', type:'bool', def:'true', group:'Combattimento'},
+    {key:'PLACE_BLOCKS', type:'bool', def:'false', group:'Blocchi & mappa'},
+    {key:'BREAK_BLOCKS', type:'bool', def:'false', group:'Blocchi & mappa'},
+    {key:'BREAK_MAP_BLOCKS', type:'bool', def:'false', group:'Blocchi & mappa'},
+    {key:'DROP_PLAYER_BLOCKS', type:'bool', def:'true', group:'Oggetti & inventario'},
+    {key:'DROP_MAP_BLOCKS', type:'bool', def:'false', group:'Blocchi & mappa'},
+    {key:'EXPLOSION_GRIEFING', type:'bool', def:'false', group:'Combattimento'},
+    {key:'EXPLOSION_DESTROY_DROPS', type:'bool', def:'true', group:'Combattimento'},
+    {key:'BED_EXPLOSION', type:'bool', def:'false', group:'Combattimento'},
+    {key:'CREEPER_INSTANT_IGNITE', type:'bool', def:'false', group:'Combattimento'},
+    {key:'CREEPER_EXPLOSION_TIME', type:'int', def:'0', group:'Combattimento'},
+    {key:'MOB_TIMER', type:'int', def:'10', group:'Mob & ambiente'},
+    {key:'MOB_DROPS', type:'bool', def:'true', group:'Mob & ambiente'},
+    {key:'MAP_RESET', type:'bool', def:'true', group:'Blocchi & mappa'},
+    {key:'RESPAWN_COOLDOWN', type:'int', def:'0', group:'Round & partita'},
+    {key:'TEAM_OBJECTIVE_TYPE', type:'enum', def:'NONE', options:['NONE','DESTROY_BLOCK','ENTER_AREA'], group:'Round & partita'},
+    {key:'INSTANT_DEATH', type:'bool', def:'false', group:'Combattimento'},
+    {key:'FEED_DELAY', type:'int', def:'0', group:'Recupero & cure'},
+    {key:'FEED_AMOUNT', type:'int', def:'0', group:'Recupero & cure'},
+    {key:'HEAL_DELAY', type:'int', def:'0', group:'Recupero & cure'},
+    {key:'HEAL_AMOUNT', type:'double', def:'0.0', group:'Recupero & cure'},
+    {key:'HEALTH_INDICATOR', type:'bool', def:'true', group:'Combattimento'},
+    {key:'ARROW_RETURN_COOLDOWN', type:'int', def:'0', group:'Combattimento'},
+    {key:'TNT_JUMP', type:'bool', def:'false', group:'Combattimento'},
+    {key:'TNT_INSTANT', type:'bool', def:'false', group:'Combattimento'},
+    {key:'TNT_EXPLOSION_TIME', type:'int', def:'0', group:'Combattimento'},
+    {key:'FIREBALL_JUMP', type:'bool', def:'false', group:'Combattimento'},
+    {key:'FALL_DAMAGE', type:'bool', def:'true', group:'Combattimento'},
+    {key:'PEARL_GLITCH', type:'bool', def:'false', group:'Combattimento'},
+    {key:'AUTO_SMELT', type:'bool', def:'false', group:'Blocchi & mappa'},
+    {key:'RANDOM_ITEM_COOLDOWN', type:'int', def:'0', group:'Oggetti & inventario'},
+    {key:'MIN_ROUND', type:'int', def:'2', group:'Round & partita'},
+    {key:'REFILL_KIT_ON_KILL', type:'bool', def:'false', group:'Oggetti & inventario'},
+    {key:'TREECAPITATOR', type:'bool', def:'false', group:'Blocchi & mappa'},
+    {key:'LEAF_APPLE_DROP_CHANCE', type:'double', def:'0.0', group:'Oggetti & inventario'},
+    {key:'OPEN_MAP_CONTAINERS', type:'bool', def:'false', group:'Blocchi & mappa'},
+    {key:'SHIELD_STUN', type:'bool', def:'true', group:'Combattimento'}
+  ];
+  const MODE_SETTING_GROUPS = ['Round & partita','Combattimento','Blocchi & mappa','Oggetti & inventario','Mob & ambiente','Recupero & cure'];
+  const DUELS_MODES_SEED = [
+    {id:1, name:'skywars_duel', display_name:'SkyWars Duel', type:'DUEL', ranking:'RANKED', icon:'DIAMOND_SWORD',
+      overrides:{START_COOLDOWN:'5', DIFFICULTY:'HARD', FALL_DAMAGE:'false', SHIELD_STUN:'false'}},
+    {id:2, name:'bridge_1v1', display_name:'Bridge 1v1', type:'DUEL', ranking:'RANKED', icon:'IRON_SWORD',
+      overrides:{TEAM_OBJECTIVE_TYPE:'DESTROY_BLOCK', PLACE_BLOCKS:'true', BREAK_BLOCKS:'true', PLAYERS_TO_START:'2'}},
+    {id:3, name:'sumo', display_name:'Sumo', type:'DUEL', ranking:'UNRANKED', icon:'FEATHER',
+      overrides:{FALL_DAMAGE:'false', ITEM_DAMAGE:'false', PLACE_BLOCKS:'false'}},
+    {id:4, name:'boxing', display_name:'Boxing', type:'DUEL', ranking:'UNRANKED', icon:'GOLDEN_APPLE',
+      overrides:{DAMAGE_MULTIPLIER:'0.4', NATURAL_REGENERATION:'false'}},
+    {id:5, name:'battle_box', display_name:'Battle Box', type:'DUEL', ranking:'RANKED', icon:'BOW',
+      overrides:{PLACE_BLOCKS:'true', MAP_RESET:'true'}},
+    {id:6, name:'ffa_classic', display_name:'FFA Classic', type:'FFA', ranking:'UNRANKED', icon:'STONE_SWORD',
+      overrides:{PLAYERS_TO_START:'4', RESPAWN_COOLDOWN:'3', DROP_INVENTORY_ON_DEATH:'true'}},
+    {id:7, name:'gulag', display_name:'Gulag', type:'FFA', ranking:'UNRANKED', icon:'CROSSBOW',
+      overrides:{MIN_ROUND:'1', INSTANT_DEATH:'true'}},
+    {id:8, name:'nodebuff', display_name:'Nodebuff', type:'DUEL', ranking:'RANKED', icon:'WOODEN_SWORD',
+      overrides:{NATURAL_REGENERATION:'false', SATURATION:'false', HUNGER:'false'}}
+  ];
+
+  function fmtSettingLabel(key) {
+    return key.split('_').map(w => w[0]+w.slice(1).toLowerCase()).join(' ');
+  }
+
+  const MAP_SETTINGS = [
+    {key:'DOOR', type:'bool', def:'true'},
+    {key:'DOOR_DIRECTION', type:'enum', def:'UP', options:['UP','DOWN','NORTH','SOUTH','EAST','WEST']},
+    {key:'DOOR_DISTANCE', type:'int', def:'3'},
+    {key:'DOOR_TIME', type:'int', def:'2'},
+    {key:'MOVE_DURING_COOLDOWN', type:'bool', def:'true'},
+    {key:'TELEPORT_ON_PLAY', type:'bool', def:'false'}
+  ];
+  const EVENT_TYPES = ['UHC','MANHUNT','CRYSTAL_ROYALE','TNT_RUN','PILLARS','LAVA_RISE'];
+  const TEAM_LOC_TYPES = ['SPAWN','STUCK','WITHER'];
+  const TEAM_AREA_TYPES = ['ELEVATOR','DOOR','OBJECTIVE','SPAWN'];
+  const TEAM_CATALOG = [
+    {id:1, name:'red', display_name:'Rosso', color:'#DB3434'},
+    {id:2, name:'blue', display_name:'Blu', color:'#3FA3D4'},
+    {id:3, name:'green', display_name:'Verde', color:'#22C55E'},
+    {id:4, name:'yellow', display_name:'Giallo', color:'#E0A82E'}
+  ];
+  const emptyLoc = () => ({x:'0.0', y:'64.0', z:'0.0', yaw:'0.0', pitch:'0.0'});
+  const emptyArea = () => ({minX:'0.0', minY:'64.0', minZ:'0.0', maxX:'0.0', maxY:'64.0', maxZ:'0.0'});
+  const DUELS_MAPS_SEED = [
+    {id:1, name:'ancient_ashes', display_name:'Ancient Ashes', type:'DUEL', context:'NORMAL', enabled:true,
+      modeIds:[2,4], eventTypeSet:[], settingOverrides:{DOOR_DISTANCE:'4'},
+      teams:[
+        {teamId:1, locations:{SPAWN:{x:'12.5',y:'71.0',z:'-8.0',yaw:'90.0',pitch:'0.0'}, STUCK:emptyLoc(), WITHER:emptyLoc()},
+          areas:{SPAWN:{minX:'8.0',minY:'70.0',minZ:'-12.0',maxX:'17.0',maxY:'75.0',maxZ:'-4.0'}, ELEVATOR:emptyArea(), DOOR:emptyArea(), OBJECTIVE:emptyArea()}},
+        {teamId:2, locations:{SPAWN:{x:'-12.5',y:'71.0',z:'8.0',yaw:'270.0',pitch:'0.0'}, STUCK:emptyLoc(), WITHER:emptyLoc()},
+          areas:{SPAWN:{minX:'-17.0',minY:'70.0',minZ:'4.0',maxX:'-8.0',maxY:'75.0',maxZ:'12.0'}, ELEVATOR:emptyArea(), DOOR:emptyArea(), OBJECTIVE:emptyArea()}}
+      ]},
+    {id:2, name:'frostbite', display_name:'Frostbite', type:'FFA', context:'NORMAL', enabled:true,
+      modeIds:[6,7], eventTypeSet:[], settingOverrides:{}, teams:[]},
+    {id:3, name:'sandstorm', display_name:'Sandstorm', type:'DUEL', context:'EVENT', enabled:true,
+      modeIds:[3], eventTypeSet:['UHC','TNT_RUN'], settingOverrides:{TELEPORT_ON_PLAY:'true'},
+      teams:[
+        {teamId:1, locations:{SPAWN:{x:'40.0',y:'80.0',z:'0.0',yaw:'180.0',pitch:'0.0'}, STUCK:emptyLoc(), WITHER:emptyLoc()}, areas:{SPAWN:emptyArea(), ELEVATOR:emptyArea(), DOOR:emptyArea(), OBJECTIVE:emptyArea()}},
+        {teamId:3, locations:{SPAWN:{x:'-40.0',y:'80.0',z:'0.0',yaw:'0.0',pitch:'0.0'}, STUCK:emptyLoc(), WITHER:emptyLoc()}, areas:{SPAWN:emptyArea(), ELEVATOR:emptyArea(), DOOR:emptyArea(), OBJECTIVE:emptyArea()}}
+      ]},
+    {id:4, name:'neon_grid', display_name:'Neon Grid', type:'FFA', context:'EVENT', enabled:false,
+      modeIds:[7], eventTypeSet:['CRYSTAL_ROYALE'], settingOverrides:{DOOR:'false'}, teams:[]},
+    {id:5, name:'ruined_keep', display_name:'Ruined Keep', type:'DUEL', context:'NORMAL', enabled:true,
+      modeIds:[1,5], eventTypeSet:[], settingOverrides:{},
+      teams:[
+        {teamId:2, locations:{SPAWN:emptyLoc(), STUCK:emptyLoc(), WITHER:emptyLoc()}, areas:{SPAWN:emptyArea(), ELEVATOR:emptyArea(), DOOR:emptyArea(), OBJECTIVE:emptyArea()}},
+        {teamId:4, locations:{SPAWN:emptyLoc(), STUCK:emptyLoc(), WITHER:emptyLoc()}, areas:{SPAWN:emptyArea(), ELEVATOR:emptyArea(), DOOR:emptyArea(), OBJECTIVE:emptyArea()}}
+      ]}
+  ];
+
+  function duelsMaps(ctx) {
+    if (!ctx.state.duelsMapsData) ctx.state.duelsMapsData = JSON.parse(JSON.stringify(DUELS_MAPS_SEED));
+    const maps = ctx.state.duelsMapsData;
+    const search = ctx.state.duelsMapSearch || '';
+    const filterType = ctx.state.duelsMapFilterType || 'Tutti';
+    const filterCtx = ctx.state.duelsMapFilterContext || 'Tutti';
+    const selId = ctx.state.duelsSelMap || maps[0].id;
+    const sel = maps.find(m => m.id === selId) || maps[0];
+    sel.enabledLabel = sel.enabled ? 'Attiva' : 'Disattivata';
+    sel.enabledColor = sel.enabled ? 'var(--ok)' : 'var(--tx-disabled)';
+    sel.toggleLabel = sel.enabled ? 'Disattiva' : 'Attiva';
+    const draft = ctx.state.duelsMapEditingCore ? (ctx.state.duelsMapDraft || {...sel}) : {...sel};
+    const tab = ctx.state.duelsMapTab || 'modes';
+    const modesData = ctx.state.duelsModesData || DUELS_MODES_SEED;
+    const dirty = !!ctx.state.duelsMapDirty;
+
+    const list = maps
+      .filter(m => !search || m.display_name.toLowerCase().includes(search.toLowerCase()) || m.name.includes(search.toLowerCase()))
+      .filter(m => filterType === 'Tutti' || m.type === filterType)
+      .filter(m => filterCtx === 'Tutti' || m.context === filterCtx)
+      .map(m => ({
+        ...m,
+        selected: m.id === sel.id,
+        bg: m.id === sel.id ? 'var(--ac-soft)' : 'transparent',
+        bd: m.id === sel.id ? 'var(--ac)' : 'transparent',
+        typeColor: m.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9',
+        ctxColor: m.context === 'EVENT' ? 'var(--ac-text)' : 'var(--tx-muted)',
+        enabledColor: m.enabled ? 'var(--ok)' : 'var(--tx-disabled)',
+        enabledLabel: m.enabled ? 'Attiva' : 'Disattivata',
+        select: () => ctx.setState({duelsSelMap: m.id, duelsMapEditingCore:false, duelsMapDraft:null, duelsMapTab:'modes'})
+      }));
+
+    const touch = () => ctx.setState({duelsMapsData: maps, duelsMapDirty:true});
+
+    const tabs = [
+      {id:'modes', label:'Modalità supportate'},
+      {id:'events', label:'Event type'},
+      {id:'settings', label:'Settings mappa'},
+      ...(sel.type === 'DUEL' ? [{id:'teams', label:'Team'}] : [])
+    ].map(t => ({ ...t, go: () => ctx.setState({duelsMapTab:t.id}), active: t.id === tab,
+      bg: t.id === tab ? 'var(--s-overlay)' : 'transparent', fg: t.id === tab ? 'var(--tx-primary)' : 'var(--tx-muted)' }));
+
+    const pendingRemove = ctx.state.duelsMapPendingRemove || [];
+    const pendingAdd = ctx.state.duelsMapPendingAdd || [];
+    const modeRows = modesData
+      .filter(md => sel.modeIds.includes(md.id) || pendingAdd.includes(md.id))
+      .map(md => {
+        const isPendingAdd = pendingAdd.includes(md.id);
+        const isPendingRemove = pendingRemove.includes(md.id);
+        return {
+          id: md.id, name: md.display_name, type: md.type,
+          pendingAdd: isPendingAdd, pendingRemove: isPendingRemove, unchanged: !isPendingAdd && !isPendingRemove,
+          rowBorder: isPendingAdd ? '1px solid rgba(34,197,94,.5)' : isPendingRemove ? '1px solid rgba(219,52,52,.5)' : '1px solid transparent',
+          rowBg: isPendingAdd ? 'var(--ok-soft)' : isPendingRemove ? 'var(--err-soft)' : 'transparent',
+          remove: () => ctx.setState(s => ({duelsMapPendingRemove: [...(s.duelsMapPendingRemove||[]), md.id]})),
+          undoRemove: () => ctx.setState(s => ({duelsMapPendingRemove: (s.duelsMapPendingRemove||[]).filter(i => i !== md.id)})),
+          undoAdd: () => ctx.setState(s => ({duelsMapPendingAdd: (s.duelsMapPendingAdd||[]).filter(i => i !== md.id)}))
+        };
+      });
+    const addSearch = (ctx.state.duelsAddModeSearch || '').toLowerCase();
+    const addFilterType = ctx.state.duelsAddModeFilterType || 'Tutti';
+    const addFilterRank = ctx.state.duelsAddModeFilterRank || 'Tutti';
+    const addSelected = ctx.state.duelsAddModeSelected || [];
+    const availableModeRows = modesData
+      .filter(md => !sel.modeIds.includes(md.id) && !pendingAdd.includes(md.id))
+      .filter(md => !addSearch || md.display_name.toLowerCase().includes(addSearch) || md.name.includes(addSearch))
+      .filter(md => addFilterType === 'Tutti' || md.type === addFilterType)
+      .filter(md => addFilterRank === 'Tutti' || md.ranking === addFilterRank)
+      .map(md => {
+        const isSel = addSelected.includes(md.id);
+        return {
+          id: md.id, name: md.display_name, type: md.type, ranking: md.ranking, selected: isSel,
+          rowBg: isSel ? 'var(--ac-soft)' : 'transparent',
+          checkBg: isSel ? 'var(--ac)' : 'transparent',
+          checkBorder: isSel ? 'transparent' : 'var(--bd-strong)',
+          toggleSelect: () => ctx.setState(s => ({duelsAddModeSelected: isSel ? (s.duelsAddModeSelected||[]).filter(i=>i!==md.id) : [...(s.duelsAddModeSelected||[]), md.id]}))
+        };
+      });
+
+    const eventRows = EVENT_TYPES.map(et => {
+      const on = sel.eventTypeSet.includes(et);
+      return {
+        label: et, on,
+        bd: on ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+        bg: on ? 'var(--ac-soft)' : 'transparent',
+        fg: on ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        toggle: () => {
+          const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+          m.eventTypeSet = on ? m.eventTypeSet.filter(x => x !== et) : [...m.eventTypeSet, et];
+          touch();
+        }
+      };
+    });
+
+    const settingRows = MAP_SETTINGS.map(s => {
+      const overridden = sel.settingOverrides.hasOwnProperty(s.key);
+      const raw = overridden ? sel.settingOverrides[s.key] : s.def;
+      const setVal = (v) => {
+        const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+        if (v === null) delete m.settingOverrides[s.key]; else m.settingOverrides[s.key] = v;
+        touch();
+      };
+      return {
+        key:s.key, label:fmtSettingLabel(s.key), badge:s.type.toUpperCase(), overridden, value:raw, options:s.options||[],
+        statusLabel: overridden ? 'Personalizzato' : 'Predefinito',
+        statusColor: overridden ? 'var(--ac-text)' : 'var(--tx-disabled)',
+        statusSoft: overridden ? 'var(--ac-soft)' : 'transparent',
+        isBool: s.type==='bool', isNum: s.type==='int', isEnum: s.type==='enum',
+        boolOn: raw === 'true' || raw === '1',
+        trackBg: (raw === 'true' || raw === '1') ? 'var(--ac)' : 'var(--s-inset)',
+        thumbBg: (raw === 'true' || raw === '1') ? '#160A02' : 'var(--tx-muted)',
+        thumbLeft: (raw === 'true' || raw === '1') ? '18px' : '2px',
+        toggleBool: () => setVal((raw === 'true' || raw === '1') ? 'false' : 'true'),
+        onNumInput: (e) => setVal(e.target.value),
+        onEnumChange: (e) => setVal(e.target.value),
+        resetDefault: () => setVal(null)
+      };
+    });
+
+    const openTeamId = ctx.state.duelsOpenTeam;
+    const assignedTeams = sel.teams.map(t => {
+      const cat = TEAM_CATALOG.find(c => c.id === t.teamId);
+      const open = openTeamId === t.teamId;
+      return {
+        teamId: t.teamId, name: cat.display_name, color: cat.color, open,
+        toggleOpen: () => ctx.setState({duelsOpenTeam: open ? null : t.teamId}),
+        rot: open ? 'rotate(90deg)' : 'none',
+        remove: () => {
+          const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+          m.teams = m.teams.filter(x => x.teamId !== t.teamId);
+          touch();
+        },
+        locations: TEAM_LOC_TYPES.map(lt => ({
+          type: lt, ...t.locations[lt],
+          setField: (field) => (e) => {
+            const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+            const mt = m.teams.find(x => x.teamId === t.teamId);
+            mt.locations[lt][field] = e.target.value;
+            touch();
+          }
+        })),
+        areas: TEAM_AREA_TYPES.map(at => ({
+          type: at, ...t.areas[at],
+          setField: (field) => (e) => {
+            const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+            const mt = m.teams.find(x => x.teamId === t.teamId);
+            mt.areas[at][field] = e.target.value;
+            touch();
+          }
+        }))
+      };
+    });
+    const availableTeams = TEAM_CATALOG.filter(c => !sel.teams.some(t => t.teamId === c.id)).map(c => ({
+      ...c,
+      add: () => {
+        const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+        m.teams.push({ teamId:c.id, locations:{SPAWN:emptyLoc(),STUCK:emptyLoc(),WITHER:emptyLoc()}, areas:{SPAWN:emptyArea(),ELEVATOR:emptyArea(),DOOR:emptyArea(),OBJECTIVE:emptyArea()} });
+        touch();
+      }
+    }));
+
+    return {
+      duelsMapsList: list,
+      duelsMapSearch: search,
+      onMapSearchInput: (e) => ctx.setState({duelsMapSearch: e.target.value}),
+      duelsMapTypeLabel: filterType,
+      duelsMapContextLabel: filterCtx,
+      duelsMapTypeMenuOpen: !!ctx.state.duelsMapTypeMenuOpen,
+      duelsMapContextMenuOpen: !!ctx.state.duelsMapContextMenuOpen,
+      toggleDuelsMapTypeMenu: () => ctx.setState(s => ({duelsMapTypeMenuOpen: !s.duelsMapTypeMenuOpen, duelsMapContextMenuOpen:false})),
+      toggleDuelsMapContextMenu: () => ctx.setState(s => ({duelsMapContextMenuOpen: !s.duelsMapContextMenuOpen, duelsMapTypeMenuOpen:false})),
+      duelsMapTypeFilters: ['Tutti','DUEL','FFA'].map(t => ({
+        label:t, go:() => ctx.setState({duelsMapFilterType:t, duelsMapTypeMenuOpen:false}),
+        bg: t===filterType ? 'var(--ac-soft)' : 'transparent', fg: t===filterType ? 'var(--ac-text)' : 'var(--tx-secondary)'
+      })),
+      duelsMapContextFilters: ['Tutti','NORMAL','EVENT'].map(c => ({
+        label:c, go:() => ctx.setState({duelsMapFilterContext:c, duelsMapContextMenuOpen:false}),
+        bg: c===filterCtx ? 'var(--ac-soft)' : 'transparent', fg: c===filterCtx ? 'var(--ac-text)' : 'var(--tx-secondary)'
+      })),
+      duelsSelMap: sel,
+      duelsMapTabs: tabs,
+      duelsMapTabModes: tab === 'modes', duelsMapTabEvents: tab === 'events',
+      duelsMapTabSettings: tab === 'settings', duelsMapTabTeams: tab === 'teams',
+      duelsMapModeRows: modeRows,
+      duelsMapAvailableModeRows: availableModeRows,
+      duelsAddModeOpen: !!ctx.state.duelsAddModeOpen,
+      toggleAddMode: () => ctx.setState(s => ({duelsAddModeOpen: !s.duelsAddModeOpen, duelsAddModeSearch:'', duelsAddModeFilterType:'Tutti', duelsAddModeFilterRank:'Tutti', duelsAddModeSelected:[], duelsAddModeTypeMenuOpen:false, duelsAddModeRankMenuOpen:false})),
+      onAddModeSearch: (e) => ctx.setState({duelsAddModeSearch: e.target.value}),
+      duelsAddModeSearch: ctx.state.duelsAddModeSearch || '',
+      duelsAddModeTypeLabel: addFilterType,
+      duelsAddModeRankLabel: addFilterRank,
+      duelsAddModeTypeMenuOpen: !!ctx.state.duelsAddModeTypeMenuOpen,
+      duelsAddModeRankMenuOpen: !!ctx.state.duelsAddModeRankMenuOpen,
+      toggleAddModeTypeMenu: () => ctx.setState(s => ({duelsAddModeTypeMenuOpen: !s.duelsAddModeTypeMenuOpen, duelsAddModeRankMenuOpen:false})),
+      toggleAddModeRankMenu: () => ctx.setState(s => ({duelsAddModeRankMenuOpen: !s.duelsAddModeRankMenuOpen, duelsAddModeTypeMenuOpen:false})),
+      duelsAddModeTypeFilters: ['Tutti','DUEL','FFA'].map(t => ({
+        label:t, go:() => ctx.setState({duelsAddModeFilterType:t, duelsAddModeTypeMenuOpen:false}),
+        bg: t===addFilterType ? 'var(--ac-soft)' : 'transparent', fg: t===addFilterType ? 'var(--ac-text)' : 'var(--tx-secondary)'
+      })),
+      duelsAddModeRankFilters: ['Tutti','RANKED','UNRANKED'].map(r => ({
+        label:r, go:() => ctx.setState({duelsAddModeFilterRank:r, duelsAddModeRankMenuOpen:false}),
+        bg: r===addFilterRank ? 'var(--ac-soft)' : 'transparent', fg: r===addFilterRank ? 'var(--ac-text)' : 'var(--tx-secondary)'
+      })),
+      duelsAddModeCount: addSelected.length,
+      duelsAddModeHasSelection: addSelected.length > 0,
+      confirmAddModes: () => {
+        const newIds = (ctx.state.duelsAddModeSelected||[]).filter(id => !pendingAdd.includes(id) && !sel.modeIds.includes(id));
+        ctx.setState({duelsMapPendingAdd: [...pendingAdd, ...newIds], duelsAddModeOpen:false, duelsAddModeSelected:[], duelsAddModeSearch:''});
+      },
+      duelsMapEventRows: eventRows,
+      duelsMapSettingRows: settingRows,
+      duelsMapOverrideCount: MAP_SETTINGS.filter(s => sel.settingOverrides.hasOwnProperty(s.key)).length,
+      saveMapSettings: () => {
+        const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+        m.modeIds = [...m.modeIds.filter(i => !pendingRemove.includes(i)), ...pendingAdd];
+        ctx.setState({duelsMapsData: ctx.state.duelsMapsData, duelsMapPendingRemove:[], duelsMapPendingAdd:[], duelsMapDirty:false, duelsMapToast:'Configurazione salvata'});
+        setTimeout(() => ctx.setState({duelsMapToast:null}), 3200);
+      },
+      duelsMapHasChanges: dirty || pendingRemove.length > 0 || pendingAdd.length > 0,
+      duelsMapSaveVisibility: (dirty || pendingRemove.length > 0 || pendingAdd.length > 0) ? 'visible' : 'hidden',
+      duelsMapToast: ctx.state.duelsMapToast,
+      duelsMapTeams: assignedTeams,
+      duelsMapAvailableTeams: availableTeams,
+      duelsMapEditingCore: !!ctx.state.duelsMapEditingCore,
+      duelsMapDraft: draft,
+      startEditMapCore: () => ctx.setState({duelsMapEditingCore:true, duelsMapDraft:{...sel}}),
+      cancelEditMapCore: () => ctx.setState({duelsMapEditingCore:false, duelsMapDraft:null}),
+      onMapDraftName: (e) => ctx.setState(s => ({duelsMapDraft: {...(s.duelsMapDraft||sel), name:e.target.value}})),
+      onMapDraftDisplay: (e) => ctx.setState(s => ({duelsMapDraft: {...(s.duelsMapDraft||sel), display_name:e.target.value}})),
+      duelsMapTypeChoices: ['DUEL','FFA'].map(t => ({
+        label:t, go:() => ctx.setState(s => ({duelsMapDraft: {...(s.duelsMapDraft||sel), type:t}})),
+        bg: t === draft.type ? 'var(--s-overlay)' : 'transparent', fg: t === draft.type ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      duelsMapContextChoices: ['NORMAL','EVENT'].map(c => ({
+        label:c, go:() => ctx.setState(s => ({duelsMapDraft: {...(s.duelsMapDraft||sel), context:c}})),
+        bg: c === draft.context ? 'var(--s-overlay)' : 'transparent', fg: c === draft.context ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      saveMapCore: () => {
+        const mapsNow = ctx.state.duelsMapsData;
+        const idx = mapsNow.findIndex(m => m.id === sel.id);
+        const d = ctx.state.duelsMapDraft || sel;
+        mapsNow[idx] = { ...mapsNow[idx], display_name:d.display_name||sel.display_name, type:d.type||sel.type, context:d.context||sel.context };
+        ctx.setState({duelsMapsData: mapsNow, duelsMapEditingCore:false, duelsMapDraft:null, duelsMapDirty:true});
+      },
+      toggleMapEnabled: () => {
+        const m = ctx.state.duelsMapsData.find(x => x.id === sel.id);
+        m.enabled = !m.enabled;
+        touch();
+      },
+      duelsMapDeleteConfirm: ctx.state.duelsMapDeleteConfirm === sel.id,
+      askDeleteMap: () => ctx.setState({duelsMapDeleteConfirm: sel.id}),
+      cancelDeleteMap: () => ctx.setState({duelsMapDeleteConfirm: null}),
+      confirmDeleteMap: () => {
+        const mapsNow = ctx.state.duelsMapsData.filter(m => m.id !== sel.id);
+        ctx.setState({duelsMapsData: mapsNow, duelsSelMap: mapsNow[0] ? mapsNow[0].id : null, duelsMapDeleteConfirm:null});
+      },
+      newMapOpen: !!ctx.state.duelsNewMapOpen,
+      toggleNewMap: () => ctx.setState(s => ({duelsNewMapOpen: !s.duelsNewMapOpen, duelsNewMapDraft: s.duelsNewMapDraft || {name:'', display_name:'', type:'DUEL', context:'NORMAL'}})),
+      duelsNewMapDraft: ctx.state.duelsNewMapDraft || {name:'', display_name:'', type:'DUEL', context:'NORMAL'},
+      onNewMapName: (e) => ctx.setState(s => ({duelsNewMapDraft: {...s.duelsNewMapDraft, name:e.target.value}})),
+      onNewMapDisplay: (e) => ctx.setState(s => ({duelsNewMapDraft: {...s.duelsNewMapDraft, display_name:e.target.value}})),
+      duelsNewMapTypeChoices: ['DUEL','FFA'].map(t => ({
+        label:t, go:() => ctx.setState(s => ({duelsNewMapDraft: {...s.duelsNewMapDraft, type:t}})),
+        bg: t === (ctx.state.duelsNewMapDraft||{}).type ? 'var(--s-overlay)' : 'transparent', fg: t === (ctx.state.duelsNewMapDraft||{}).type ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      duelsNewMapContextChoices: ['NORMAL','EVENT'].map(c => ({
+        label:c, go:() => ctx.setState(s => ({duelsNewMapDraft: {...s.duelsNewMapDraft, context:c}})),
+        bg: c === (ctx.state.duelsNewMapDraft||{}).context ? 'var(--s-overlay)' : 'transparent', fg: c === (ctx.state.duelsNewMapDraft||{}).context ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      createMap: () => {
+        const d = ctx.state.duelsNewMapDraft || {};
+        const mapsNow = ctx.state.duelsMapsData;
+        const id = Math.max(0, ...mapsNow.map(m=>m.id)) + 1;
+        mapsNow.push({ id, name:(d.name||'nuova_mappa').toLowerCase().replace(/\s+/g,'_'), display_name:d.display_name||'Nuova mappa', type:d.type||'DUEL', context:d.context||'NORMAL', enabled:true, modeIds:[], eventTypeSet:[], settingOverrides:{}, teams:[] });
+        ctx.setState({duelsMapsData: mapsNow, duelsSelMap:id, duelsNewMapOpen:false});
+      },
+      duelsMapDirty: dirty,
+      ackMapReload: () => ctx.setState({duelsMapDirty:false})
+    };
+  }
+
+  function duelsModes(ctx) {
+    if (!ctx.state.duelsModesData) ctx.state.duelsModesData = JSON.parse(JSON.stringify(DUELS_MODES_SEED));
+    const modes = ctx.state.duelsModesData;
+    const search = ctx.state.duelsModeSearch || '';
+    const selId = ctx.state.duelsSelMode || modes[0].id;
+    const sel = modes.find(m => m.id === selId) || modes[0];
+    const settingSearch = (ctx.state.duelsSettingSearch || '').trim().toUpperCase();
+    const draft = ctx.state.duelsDraft || {};
+    const editing = !!ctx.state.duelsEditingCore;
+    const toast = ctx.state.duelsToast;
+
+    const filterType = ctx.state.duelsModeFilterType || 'Tutti';
+    const filterRank = ctx.state.duelsModeFilterRank || 'Tutti';
+    const list = modes
+      .filter(m => !search || m.display_name.toLowerCase().includes(search.toLowerCase()) || m.name.includes(search.toLowerCase()))
+      .filter(m => filterType === 'Tutti' || m.type === filterType)
+      .filter(m => filterRank === 'Tutti' || m.ranking === filterRank)
+      .map(m => ({
+        ...m,
+        selected: m.id === sel.id,
+        bg: m.id === sel.id ? 'var(--ac-soft)' : 'transparent',
+        bd: m.id === sel.id ? 'var(--ac)' : 'transparent',
+        typeColor: m.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9',
+        rankColor: m.ranking === 'RANKED' ? 'var(--ac-text)' : 'var(--tx-muted)',
+        select: () => ctx.setState({duelsSelMode: m.id, duelsEditingCore:false, duelsDraft:null})
+      }));
+
+    const settingsRowsAll = MODE_SETTINGS.map(s => {
+        const overridden = sel.overrides.hasOwnProperty(s.key);
+        const raw = overridden ? sel.overrides[s.key] : s.def;
+        const setVal = (v) => {
+          const modesNow = ctx.state.duelsModesData;
+          const m = modesNow.find(mm => mm.id === sel.id);
+          if (v === null) delete m.overrides[s.key]; else m.overrides[s.key] = v;
+          ctx.setState({duelsModesData: modesNow});
+        };
+        return {
+          key:s.key, label:fmtSettingLabel(s.key), type:s.type, group:s.group, overridden,
+          value:raw, options:s.options||[],
+          badge: s.type.toUpperCase(),
+          statusLabel: overridden ? 'Personalizzato' : 'Predefinito',
+          statusColor: overridden ? 'var(--ac-text)' : 'var(--tx-disabled)',
+          statusSoft: overridden ? 'var(--ac-soft)' : 'transparent',
+          isBool: s.type==='bool', isNum: s.type==='int'||s.type==='double', isEnum: s.type==='enum',
+          boolOn: raw === 'true' || raw === '1',
+          trackBg: (raw === 'true' || raw === '1') ? 'var(--ac)' : 'var(--s-inset)',
+          thumbBg: (raw === 'true' || raw === '1') ? '#160A02' : 'var(--tx-muted)',
+          thumbLeft: (raw === 'true' || raw === '1') ? '18px' : '2px',
+          toggleBool: () => setVal((raw === 'true' || raw === '1') ? 'false' : 'true'),
+          onNumInput: (e) => setVal(e.target.value),
+          onEnumChange: (e) => setVal(e.target.value),
+          resetDefault: () => setVal(null)
+        };
+      });
+    const filteredRows = settingsRowsAll.filter(s => !settingSearch || s.key.includes(settingSearch) || s.label.toUpperCase().includes(settingSearch));
+    const openGroups = ctx.state.duelsOpenGroups || {};
+    const settingGroups = settingSearch
+      ? [{ name:'Risultati', rows: filteredRows, count: filteredRows.length, overrideCount: filteredRows.filter(r=>r.overridden).length, open:true, forced:true }]
+      : MODE_SETTING_GROUPS.map(g => {
+          const rows = settingsRowsAll.filter(r => r.group === g);
+          const open = !!openGroups[g];
+          return { name:g, rows, count: rows.length, overrideCount: rows.filter(r=>r.overridden).length, open, forced:false };
+        });
+    const settingsRows = settingGroups.map(g => ({
+      ...g,
+      toggleOpen: g.forced ? (()=>{}) : (() => ctx.setState(s => ({duelsOpenGroups: {...(s.duelsOpenGroups||{}), [g.name]: !g.open}}))),
+      rot: g.open ? 'rotate(90deg)' : 'none'
+    }));
+
+    return {
+      duelsModesList: list,
+      duelsModeSearch: search,
+      onModeSearchInput: (e) => ctx.setState({duelsModeSearch: e.target.value}),
+      duelsModeTypeLabel: filterType,
+      duelsModeRankLabel: filterRank,
+      duelsTypeMenuOpen: !!ctx.state.duelsTypeMenuOpen,
+      duelsRankMenuOpen: !!ctx.state.duelsRankMenuOpen,
+      toggleDuelsTypeMenu: () => ctx.setState(s => ({duelsTypeMenuOpen: !s.duelsTypeMenuOpen, duelsRankMenuOpen:false})),
+      toggleDuelsRankMenu: () => ctx.setState(s => ({duelsRankMenuOpen: !s.duelsRankMenuOpen, duelsTypeMenuOpen:false})),
+      duelsModeTypeFilters: ['Tutti','DUEL','FFA'].map(t => ({
+        label:t, go:() => ctx.setState({duelsModeFilterType:t, duelsTypeMenuOpen:false}),
+        bg: t===filterType ? 'var(--ac-soft)' : 'transparent', fg: t===filterType ? 'var(--ac-text)' : 'var(--tx-secondary)'
+      })),
+      duelsModeRankFilters: ['Tutti','RANKED','UNRANKED'].map(r => ({
+        label:r, go:() => ctx.setState({duelsModeFilterRank:r, duelsRankMenuOpen:false}),
+        bg: r===filterRank ? 'var(--ac-soft)' : 'transparent', fg: r===filterRank ? 'var(--ac-text)' : 'var(--tx-secondary)'
+      })),
+      duelsSel: { ...sel, typeBadgeColor: sel.type === 'DUEL' ? 'var(--blu-viz)' : '#9B8FD9' },
+      duelsSettingSearch: ctx.state.duelsSettingSearch || '',
+      onSettingSearchInput: (e) => ctx.setState({duelsSettingSearch: e.target.value}),
+      duelsSettingsRows: settingsRows,
+      duelsOverrideCount: MODE_SETTINGS.filter(s => sel.overrides.hasOwnProperty(s.key)).length,
+      duelsEditingCore: editing,
+      duelsDraft: editing ? (draft.id === sel.id ? draft : { ...sel }) : { ...sel },
+      startEditCore: () => ctx.setState({duelsEditingCore:true, duelsDraft:{...sel}}),
+      cancelEditCore: () => ctx.setState({duelsEditingCore:false, duelsDraft:null}),
+      onDraftName: (e) => ctx.setState(s => ({duelsDraft: {...(s.duelsDraft||sel), name: e.target.value}})),
+      onDraftDisplay: (e) => ctx.setState(s => ({duelsDraft: {...(s.duelsDraft||sel), display_name: e.target.value}})),
+      onDraftIcon: (e) => ctx.setState(s => ({duelsDraft: {...(s.duelsDraft||sel), icon: e.target.value}})),
+      duelsTypeChoices: ['DUEL','FFA'].map(t => ({
+        label:t, go:() => ctx.setState(s => ({duelsDraft: {...(s.duelsDraft||sel), type:t}})),
+        bg: t === (draft.type||sel.type) ? 'var(--s-overlay)' : 'transparent', fg: t === (draft.type||sel.type) ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      duelsRankChoices: ['UNRANKED','RANKED'].map(r => ({
+        label:r, go:() => ctx.setState(s => ({duelsDraft: {...(s.duelsDraft||sel), ranking:r}})),
+        bg: r === (draft.ranking||sel.ranking) ? 'var(--s-overlay)' : 'transparent', fg: r === (draft.ranking||sel.ranking) ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      saveCore: () => {
+        const modesNow = ctx.state.duelsModesData;
+        const idx = modesNow.findIndex(m => m.id === sel.id);
+        const d = ctx.state.duelsDraft || sel;
+        modesNow[idx] = { ...modesNow[idx], display_name:d.display_name||sel.display_name, type:d.type||sel.type, ranking:d.ranking||sel.ranking };
+        ctx.setState({duelsModesData: modesNow, duelsEditingCore:false, duelsDraft:null, duelsToast:'Modalità aggiornata'});
+        setTimeout(() => ctx.setState({duelsToast:null}), 3200);
+      },
+      duelsDeleteConfirm: ctx.state.duelsDeleteConfirm === sel.id,
+      askDelete: () => ctx.setState({duelsDeleteConfirm: sel.id}),
+      cancelDelete: () => ctx.setState({duelsDeleteConfirm: null}),
+      confirmDelete: () => {
+        const modesNow = ctx.state.duelsModesData.filter(m => m.id !== sel.id);
+        ctx.setState({duelsModesData: modesNow, duelsSelMode: modesNow[0] ? modesNow[0].id : null, duelsDeleteConfirm:null, duelsToast:'Modalità eliminata'});
+        setTimeout(() => ctx.setState({duelsToast:null}), 3200);
+      },
+      newModeOpen2: !!ctx.state.duelsNewModeOpen,
+      toggleNewMode2: () => ctx.setState(s => ({duelsNewModeOpen: !s.duelsNewModeOpen, duelsNewDraft: s.duelsNewDraft || {name:'', display_name:'', type:'DUEL', ranking:'UNRANKED', icon:'IRON_SWORD'}})),
+      duelsNewDraft: ctx.state.duelsNewDraft || {name:'', display_name:'', type:'DUEL', ranking:'UNRANKED', icon:'IRON_SWORD'},
+      onNewName: (e) => ctx.setState(s => ({duelsNewDraft: {...s.duelsNewDraft, name: e.target.value}})),
+      onNewDisplay: (e) => ctx.setState(s => ({duelsNewDraft: {...s.duelsNewDraft, display_name: e.target.value}})),
+      onNewIcon: (e) => ctx.setState(s => ({duelsNewDraft: {...s.duelsNewDraft, icon: e.target.value}})),
+      duelsNewTypeChoices: ['DUEL','FFA'].map(t => ({
+        label:t, go:() => ctx.setState(s => ({duelsNewDraft: {...s.duelsNewDraft, type:t}})),
+        bg: t === (ctx.state.duelsNewDraft||{}).type ? 'var(--s-overlay)' : 'transparent', fg: t === (ctx.state.duelsNewDraft||{}).type ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      duelsNewRankChoices: ['UNRANKED','RANKED'].map(r => ({
+        label:r, go:() => ctx.setState(s => ({duelsNewDraft: {...s.duelsNewDraft, ranking:r}})),
+        bg: r === (ctx.state.duelsNewDraft||{}).ranking ? 'var(--s-overlay)' : 'transparent', fg: r === (ctx.state.duelsNewDraft||{}).ranking ? 'var(--tx-primary)' : 'var(--tx-muted)'
+      })),
+      createMode: () => {
+        const d = ctx.state.duelsNewDraft || {};
+        const modesNow = ctx.state.duelsModesData;
+        const id = Math.max(0, ...modesNow.map(m=>m.id)) + 1;
+        modesNow.push({ id, name:(d.name||'nuova_modalita').toLowerCase().replace(/\s+/g,'_'), display_name:d.display_name||'Nuova modalità', type:d.type||'DUEL', ranking:d.ranking||'UNRANKED', icon:d.icon||'IRON_SWORD', overrides:{} });
+        ctx.setState({duelsModesData: modesNow, duelsSelMode:id, duelsNewModeOpen:false, duelsToast:'Modalità creata'});
+        setTimeout(() => ctx.setState({duelsToast:null}), 3200);
+      },
+      saveSettings: () => {
+        ctx.setState({duelsToast:'Impostazioni salvate — pubblicato su duels:mode:update'});
+        setTimeout(() => ctx.setState({duelsToast:null}), 3600);
+      },
+      stopProp: (e) => e.stopPropagation(),
+      duelsToast: toast
+    };
+  }
+
+  function duels(ctx) {
+    const CY = '#3FA3D4', VI = '#9B8FD9', GR = '#57B8A6';
+    const dRange = ctx.state.period || '30g';
+    const dDaysMap = {'7g':7,'30g':30,'90g':90,'1y':365};
+    const is24h = dRange === '24h';
+    const dDays = dDaysMap[dRange] || 30;
+    const dType = ctx.state.duelsType || 'Tutte';
+    const dTypes = ['Tutte','Duel','FFA'].map(t => ({
+      label:t, go:() => ctx.setState({duelsType:t}),
+      bg: t===dType ? 'var(--s-overlay)' : 'transparent', fg: t===dType ? 'var(--tx-primary)' : 'var(--tx-muted)'
+    }));
+    const dCtxF = ctx.state.duelsCtx || 'Tutti';
+    const dCtxs = ['Tutti','Normali','Evento'].map(t => ({
+      label:t, go:() => ctx.setState({duelsCtx:t}),
+      bg: t===dCtxF ? 'var(--s-overlay)' : 'transparent', fg: t===dCtxF ? 'var(--tx-primary)' : 'var(--tx-muted)'
+    }));
+
+    const scaleFactor = dType==='Duel' ? 0.68 : dType==='FFA' ? 0.32 : 1;
+    const ctxFactor = dCtxF==='Normali' ? 0.82 : dCtxF==='Evento' ? 0.18 : 1;
+    const DX0=56, DX1=1108, DY0=16, DY1=250;
+    let dPathPts, dXTicks, dTotal;
+
+    if (is24h) {
+      const hourly = HOURLY.map(v => v == null ? null : Math.round(v*0.32*scaleFactor*ctxFactor));
+      const known = hourly.filter(v => v != null);
+      const hMax = Math.max(...known, 10);
+      const n = hourly.length;
+      const pts = hourly.map((v,i) => v==null ? null : [DX0+(i/(n-1))*(DX1-DX0), DY1-(v/hMax)*(DY1-DY0)]);
+      dPathPts = pts.filter(Boolean);
+      dTotal = known.reduce((s,v)=>s+v,0);
+      dXTicks = [0,4,8,12,16,20,23].map(i => ({ x: DX0+(i/(n-1))*(DX1-DX0), label: String(i).padStart(2,'0')+':00' }));
+    } else {
+      const base = 240;
+      const dailyPts = [];
+      for (let i=0;i<dDays;i++){
+        const wk = [1,1.04,1.1,1.14,1.28,1.5,1.36][i%7];
+        const v = Math.round(base*wk*scaleFactor*ctxFactor*(0.9+0.16*Math.sin(i*0.7))+i*0.6);
+        dailyPts.push({x:i, v});
+      }
+      const dMax = Math.max(...dailyPts.map(p=>p.v),10);
+      dPathPts = dailyPts.map((p,i)=>[DX0+(i/(dDays-1))*(DX1-DX0), DY1-(p.v/dMax)*(DY1-DY0)]);
+      dTotal = dailyPts.reduce((s,p)=>s+p.v,0);
+      const tickEvery = dDays<=7?1:dDays<=30?5:dDays<=90?15:60;
+      dXTicks = dailyPts.filter((p,i)=> i%tickEvery===0 || i===dDays-1).map(p=>{
+        const d = new Date(2026,7,16); d.setDate(d.getDate()-(dDays-1-p.x));
+        return { x: DX0+(p.x/(dDays-1))*(DX1-DX0), label: String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0') };
+      });
+    }
+
+    const dHeat = [];
+    ['Lun','Mar','Mer','Gio','Ven','Sab','Dom'].forEach((day,di)=>{
+      const cells=[];
+      for(let h=0;h<24;h++){
+        const evening = Math.exp(-Math.pow(h-21,2)/12);
+        const noon = Math.exp(-Math.pow(h-13,2)/20)*0.45;
+        const weekend = di>=5?1.25:1;
+        const night = h<6?0.15:1;
+        const t = Math.min(1,(evening+noon)*weekend*night*(0.9+0.14*Math.sin(di*1.4+h)));
+        cells.push({h, val:Math.round(t*312), color:rampColor(t*0.97+0.03), t});
+      }
+      dHeat.push({day, cells});
+    });
+
+    const topModes = [
+      {n:'SkyWars Duel', v:5820, type:'DUEL'}, {n:'Bridge 1v1', v:4930, type:'DUEL'},
+      {n:'Sumo', v:3710, type:'DUEL'}, {n:'Boxing', v:2980, type:'DUEL'},
+      {n:'Battle Box', v:2340, type:'DUEL'}, {n:'FFA Classic', v:1860, type:'FFA'},
+      {n:'Gulag', v:1420, type:'FFA'}, {n:'Nodebuff', v:1050, type:'DUEL'}
+    ];
+    const topMaps = [
+      {n:'Cubecraft Fusion', v:4210, type:'MAP'}, {n:'Ancient Ashes', v:3660, type:'MAP'},
+      {n:'Frostbite', v:2980, type:'MAP'}, {n:'Sandstorm', v:2510, type:'MAP'},
+      {n:'Neon Grid', v:1940, type:'MAP'}, {n:'Ruined Keep', v:1320, type:'MAP'}
+    ];
+    const mkList = (rows) => {
+      const max = Math.max(...rows.map(r=>r.v));
+      const total = rows.reduce((s,r)=>s+r.v,0);
+      return rows.map(r => ({ ...r, w:(r.v/max*100).toFixed(0)+'%', pct:(r.v/total*100).toFixed(1).replace('.',',')+'%' }));
+    };
+
+    const ratingModes = ['Tutte le modalità','SkyWars Duel','Bridge 1v1','Sumo','Boxing'];
+    const ratingMode = ctx.state.ratingMode || 'Tutte le modalità';
+    const dist = [
+      {r:5, c:2140}, {r:4, c:1380}, {r:3, c:560}, {r:2, c:210}, {r:1, c:140}
+    ];
+    const rTotal = dist.reduce((s,d)=>s+d.c,0);
+    const rAvg = dist.reduce((s,d)=>s+d.r*d.c,0)/rTotal;
+    const distColors = ['#DB3434','#E07A2E','#E0A82E','#8FBF6A','#22C55E'];
+
+    const ratingDaily = [];
+    for(let i=0;i<30;i++){
+      const avg = 4.1 + 0.35*Math.sin(i*0.5) + (Math.random()-0.5)*0.1;
+      ratingDaily.push({x:i, v: Math.max(1,Math.min(5,avg))});
+    }
+    const RX0=56, RX1=1108, RY0=16, RY1=230;
+    const rPts = ratingDaily.map((p,i)=>[RX0+(i/29)*(RX1-RX0), RY1-((p.v)/5)*(RY1-RY0)]);
+
+    const recentRatings = [
+      {name:'xNightingale', mode:'SkyWars Duel', type:'DUEL', rating:5, when:'4 min fa', comment:'Match perfetto, nessun lag.'},
+      {name:'ToRvane', mode:'Bridge 1v1', type:'DUEL', rating:4, when:'11 min fa', comment:null},
+      {name:'kaelthorne', mode:'Sumo', type:'DUEL', rating:2, when:'19 min fa', comment:'Spawn sbilanciato sulla mappa Frostbite.'},
+      {name:'MiraDusk', mode:'Boxing', type:'DUEL', rating:5, when:'27 min fa', comment:'Ottimo matchmaking stavolta.'},
+      {name:'ashfall_', mode:'FFA Classic', type:'FFA', rating:3, when:'34 min fa', comment:null},
+      {name:'ValdrinRK', mode:'SkyWars Duel', type:'DUEL', rating:1, when:'41 min fa', comment:'Avversario con ping altissimo, ritardi continui.'}
+    ];
+
+    return {
+      duelsAccent: CY, duelsAccent2: VI,
+      dTypes, dCtxs, dRange,
+      dChartPath: linePath(dPathPts),
+      dChartArea: areaPath(dPathPts, DY1),
+      dTotal: fmt(dTotal),
+      dXTicks,
+      dHeat,
+      topModes: mkList(topModes),
+      topMaps: mkList(topMaps),
+      duelsHeatColor: CY,
+      duelsSplit: (() => {
+        const duelOnline = 312, ffaOnline = 147, total = duelOnline+ffaOnline;
+        const duelPct = Math.round(duelOnline/total*100), ffaPct = 100-duelPct;
+        const r = 70, cx = 90, cy = 90;
+        const toRad = (p) => (p/100)*2*Math.PI;
+        const arc = (startPct, endPct, color) => {
+          const a0 = toRad(startPct) - Math.PI/2, a1 = toRad(endPct) - Math.PI/2;
+          const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
+          const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
+          const large = (endPct-startPct) > 50 ? 1 : 0;
+          return { d: `M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`, color };
+        };
+        return {
+          total: fmt(total),
+          rows: [
+            { name:'Duel', color:CY, online: fmt(duelOnline), pct: duelPct+'%' },
+            { name:'FFA', color:VI, online: fmt(ffaOnline), pct: ffaPct+'%' }
+          ],
+          slices: [ arc(0, duelPct, CY), arc(duelPct, 100, VI) ]
+        };
+      })(),
+      ratingModes: ratingModes.map(m => ({
+        label:m, go:()=>ctx.setState({ratingMode:m, ratingMenu:false}),
+        bg: m===ratingMode ? 'var(--ac-soft)' : 'transparent', fg: m===ratingMode ? 'var(--ac-text)' : 'var(--tx-secondary)'
+      })),
+      ratingModeLabel: ratingMode,
+      ratingScoped: ratingMode !== 'Tutte le modalità',
+      ratingTotal: fmt(rTotal),
+      ratingAvg: rAvg.toFixed(2).replace('.',','),
+      ratingWithComment: '38%',
+      distribution: dist.map((d,i)=>({
+        label:d.r+'★', pct: (d.c/rTotal*100), h: Math.round((d.c/rTotal*100)*2.1), color: distColors[i],
+        count: fmt(d.c), share: (d.c/rTotal*100).toFixed(1).replace('.',',')+'%'
+      })).reverse(),
+      ratingTrendPath: linePath(rPts),
+      recentRatings: recentRatings.map(r => ({
+        ...r, stars: '★'.repeat(r.rating) + '☆'.repeat(5-r.rating), hasComment: !!r.comment
+      })),
+      ratingModeSuffix: ratingMode === 'Tutte le modalità' ? '' : ' · ' + ratingMode,
+      toggleRatingMode: () => ctx.setState(s => ({ratingMenu: !s.ratingMenu})),
+      ratingMenuOpen: !!ctx.state.ratingMenu
+    };
+  }
+
   function admin(ctx) {
     const TW = '#F2CC7B';
     const lvl = ['Nessuno','Lettura','Scrittura','Gestione'];
@@ -402,7 +1134,8 @@
       permLevels: lvl,
       permGroups: [
         {area:'Analisi', rows:[mkRow('Panoramica network','Lettura'), mkRow('Dettaglio modalità','Scrittura')]},
-        {area:'Amministrazione', rows:[mkRow('Utenti & Ruoli','Nessuno'), mkRow('Registro attività','Lettura')]}
+        {area:'Amministrazione', rows:[mkRow('Utenti & Ruoli','Nessuno'), mkRow('Registro attività','Lettura')]},
+        {area:'Duels', rows:[mkRow('Trends','Lettura'), mkRow('Ratings','Lettura'), mkRow('Configuration','Nessuno')]}
       ],
       logs: logs.map(l => ({
         ...l,
@@ -529,7 +1262,7 @@
       isSistema: scr === 'sistema',
       isLogin: scr === 'login',
       isInvito: scr === 'invito',
-      inApp: ['shell','panoramica','towny','utenti','registro'].indexOf(scr) >= 0,
+      inApp: ['shell','panoramica','towny','utenti','registro','duels-trends','duels-ratings','duels-config'].indexOf(scr) >= 0,
       isShellDoc: scr === 'shell',
       isPanoramica: scr === 'panoramica',
       isTowny: scr === 'towny',
@@ -557,7 +1290,7 @@
         bg: p === ctx.state.period ? 'var(--s-overlay)' : 'transparent',
         fg: p === ctx.state.period ? 'var(--tx-primary)' : 'var(--tx-muted)'
       })),
-      showFilters: scr !== 'utenti' && scr !== 'registro',
+      showFilters: scr !== 'utenti' && scr !== 'registro' && scr !== 'duels-ratings' && scr !== 'duels-config' && scr !== 'duels-maps',
       modeTabs: MODES.map(m => ({
         name: m.name,
         go: () => ctx.setState({modeSel: m.name}),
@@ -579,6 +1312,13 @@
       ],
       ...overview(ctx),
       ...admin(ctx),
+      ...duels(ctx),
+      ...duelsModes(ctx),
+      ...duelsMaps(ctx),
+      isDuelsTrends: scr === 'duels-trends',
+      isDuelsRatings: scr === 'duels-ratings',
+      isDuelsConfig: scr === 'duels-config',
+      isDuelsMaps: scr === 'duels-maps',
       loginStates: LSTATES.map(s => ({
         ...s,
         go: () => ctx.setState({loginState:s.id}),
@@ -607,7 +1347,8 @@
       inviteModules: [
         {name:'Panoramica network', level:'Lettura', color:'var(--info)', soft:'var(--info-soft)'},
         {name:'Dettaglio modalità', level:'Lettura', color:'var(--info)', soft:'var(--info-soft)'},
-        {name:'Registro attività', level:'Lettura', color:'var(--info)', soft:'var(--info-soft)'}
+        {name:'Registro attività', level:'Lettura', color:'var(--info)', soft:'var(--info-soft)'},
+        {name:'Utenti & Ruoli', level:'Nessuno', color:'var(--tx-muted)', soft:'var(--s-elevated)'}
       ],
       modes: MODES,
       surfaces: [
@@ -669,5 +1410,5 @@
 
   window.MetaMC = { SCREENS, MODES, I, NAV, BREAD, RAMP, HOURLY, SHARES, NOW_MODE, OTHER,
     fmt, hx, lerpHex, rampColor, linePath, areaPath, arcPath,
-    hexField, netStatus, overview, admin, baseVals };
+    hexField, netStatus, overview, admin, duels, duelsModes, duelsMaps, baseVals };
 })();

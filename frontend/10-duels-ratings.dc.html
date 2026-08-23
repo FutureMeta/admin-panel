@@ -47,24 +47,8 @@ a:hover{color:var(--ac-hover)}
 </style>
 <script src="./metamc-shared.js"></script>
 </helmet>
-
 <div ref="{{ rootRef }}" data-theme="{{ theme }}" style="background:var(--s-base);color:var(--tx-primary);font-family:var(--font-ui);min-height:100vh">
-
-  
-
-  <div style="padding:36px 32px 90px">
-    <div style="max-width:1440px;margin:0 auto 20px;display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap">
-      <div>
-        <div style="margin-bottom:8px;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ac-text)">Console — 1440px</div>
-        <h1 style="font-family:var(--font-display);font-size:24px;line-height:32px;font-weight:700;letter-spacing:-.01em;margin:0">{{ breadcrumb }}</h1>
-      </div>
-      <div style="display:flex;gap:6px">
-        <button onClick="{{ toggleSidebar }}" style="border:1px solid var(--bd-subtle);background:var(--s-elevated);color:var(--tx-secondary);font-family:var(--font-ui);font-size:12px;font-weight:500;padding:6px 11px;border-radius:var(--r-sm);cursor:pointer">Sidebar: {{ sidebarW }}</button>
-        <button onClick="{{ togglePalette }}" style="border:1px solid var(--bd-subtle);background:var(--s-elevated);color:var(--tx-secondary);font-family:var(--font-ui);font-size:12px;font-weight:500;padding:6px 11px;border-radius:var(--r-sm);cursor:pointer">Command palette ⌘K</button>
-      </div>
-    </div>
-
-    <div style="position:relative;max-width:1440px;margin:0 auto;min-height:900px;display:flex;align-items:flex-start;border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-base);box-shadow:var(--e3);overflow:hidden">
+<div style="position:relative;display:flex;align-items:stretch;min-height:100vh;background:var(--s-base)">
 
       <aside style="width:{{ sidebarW }};flex:none;align-self:stretch;background:var(--s-surface);border-right:1px solid var(--bd-subtle);padding:16px 12px;display:flex;flex-direction:column;gap:22px;transition:width var(--dur) var(--ease)">
         <div style="display:flex;align-items:center;gap:10px;padding:0 4px">
@@ -182,133 +166,113 @@ a:hover{color:var(--ac-hover)}
 
         <main style="flex:1;padding:24px 20px 40px;display:flex;flex-direction:column;gap:24px">
 
-                      <div style="max-width:680px">
-              <h2 style="font-family:var(--font-display);font-size:20px;font-weight:700;margin:0 0 8px">Shell dell'applicazione</h2>
-              <p style="margin:0 0 20px;font-size:14px;line-height:22px;color:var(--tx-secondary)">La sidebar mostra solo i moduli su cui l'utente ha almeno il livello di lettura: nessuna voce disabilitata, nessun lucchetto. I gruppi per area reggono la crescita a 15–20 moduli; oltre i 6 elementi per gruppo la ricerca rapida diventa la via primaria. Usa i due bottoni in alto per vedere lo stato collassato e la command palette.</p>
-              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px">
-                <div style="padding:14px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface)">
-                  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Stato esteso — 248px</div>
-                  <div style="font-size:12.5px;line-height:19px;color:var(--tx-muted)">Etichette, intestazioni d'area e stato del network per esteso.</div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap">
+            <div>
+              <h2 style="font-family:var(--font-display);font-size:22px;line-height:30px;font-weight:700;letter-spacing:-.01em;margin:0 0 5px">Duels · Ratings</h2>
+              <div style="font-size:12.5px;color:var(--tx-muted)">Feedback dei giocatori a fine partita{{ ratingModeSuffix }}</div>
+            </div>
+            <div style="position:relative">
+              <button onClick="{{ toggleRatingMode }}" style="display:flex;align-items:center;gap:9px;height:34px;padding:0 12px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-ui);font-size:12.5px;font-weight:500;cursor:pointer">
+                {{ ratingModeLabel }}
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--tx-muted)" strokeWidth="1.5" strokeLinecap="round"><path d="m6 9 6 6 6-6"></path></svg>
+              </button>
+              <sc-if value="{{ ratingMenuOpen }}" hint-placeholder-val="{{ false }}">
+                <div style="position:absolute;top:40px;right:0;z-index:30;width:200px;padding:5px;border:1px solid var(--bd-strong);border-radius:var(--r-sm);background:var(--s-overlay);box-shadow:var(--e2)">
+                  <sc-for list="{{ ratingModes }}" as="m" hint-placeholder-count="5">
+                    <button onClick="{{ m.go }}" style="width:100%;text-align:left;padding:8px 9px;border:none;border-radius:var(--r-xs);background:{{ m.bg }};color:{{ m.fg }};font-family:var(--font-ui);font-size:12.5px;cursor:pointer">{{ m.label }}</button>
+                  </sc-for>
                 </div>
-                <div style="padding:14px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface)">
-                  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Stato collassato — 68px</div>
-                  <div style="font-size:12.5px;line-height:19px;color:var(--tx-muted)">Solo icone, tooltip al passaggio, pallino di stato in fondo.</div>
-                </div>
-                <div style="padding:14px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface)">
-                  <div style="font-size:13px;font-weight:600;margin-bottom:6px">Topbar</div>
-                  <div style="font-size:12.5px;line-height:19px;color:var(--tx-muted)">Periodo e modalità sono globali: ogni widget della pagina li eredita.</div>
-                </div>
+              </sc-if>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
+            <div style="padding:14px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx-muted)">Valutazioni totali</div>
+              <div style="font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ ratingTotal }}</div>
+            </div>
+            <div style="padding:14px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx-muted)">Media</div>
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span style="font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ ratingAvg }}</span>
+                <span style="font-size:13px;color:var(--warn)">★</span>
               </div>
             </div>
+            <div style="padding:14px;border:1px solid var(--bd-subtle);border-radius:var(--r-md);background:var(--s-surface);display:flex;flex-direction:column;gap:8px">
+              <div style="font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--tx-muted)">Con commento</div>
+              <div style="font-family:var(--font-display);font-size:26px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">{{ ratingWithComment }}</div>
+            </div>
+          </div>
 
-          
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+            <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:18px 20px">
+              <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Distribuzione voti</h3>
+              <div style="font-size:12px;color:var(--tx-muted);margin-bottom:16px">Come i giocatori votano la partita (1–5 stelle)</div>
+              <div style="display:flex;align-items:flex-end;gap:14px;height:190px;padding:0 6px">
+                <sc-for list="{{ distribution }}" as="d" hint-placeholder-count="5">
+                  <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:8px;height:100%;justify-content:flex-end">
+                    <span style="font-family:var(--font-mono);font-size:11px;color:var(--tx-muted)">{{ d.share }}</span>
+                    <div style="width:100%;border-radius:4px 4px 0 0;background:{{ d.color }};height:{{ d.h }}px"></div>
+                    <span style="font-size:12px;color:var(--tx-secondary)">{{ d.label }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </section>
+            <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);padding:18px 20px">
+              <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Andamento voto medio</h3>
+              <div style="font-size:12px;color:var(--tx-muted);margin-bottom:6px">Ultimi 30 giorni</div>
+              <svg viewBox="0 0 1120 246" preserveAspectRatio="none" style="width:100%;height:230px;display:block">
+                <g stroke="var(--grid)" strokeWidth="1">
+                  <line x1="56" y1="16" x2="1108" y2="16"></line>
+                  <line x1="56" y1="77" x2="1108" y2="77"></line>
+                  <line x1="56" y1="138" x2="1108" y2="138"></line>
+                  <line x1="56" y1="199" x2="1108" y2="199"></line>
+                  <line x1="56" y1="230" x2="1108" y2="230"></line>
+                </g>
+                <text x="46" y="20" textAnchor="end" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">5★</text>
+                <text x="46" y="203" textAnchor="end" fill="var(--tx-muted)" fontSize="11" fontFamily="JetBrains Mono">0★</text>
+                <path d="{{ ratingTrendPath }}" fill="none" stroke="var(--warn)" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"></path>
+              </svg>
+            </section>
+          </div>
 
-          
-
-          
-
-          
-
-        </main>
+          <section style="border:1px solid var(--bd-subtle);border-radius:var(--r-lg);background:var(--s-surface);overflow:hidden">
+            <div style="padding:18px 20px 14px">
+              <h3 style="font-family:var(--font-display);font-size:16px;font-weight:600;margin:0 0 4px">Valutazioni recenti</h3>
+              <div style="font-size:12px;color:var(--tx-muted)">Ultimo feedback post-partita</div>
+            </div>
+            <div style="display:flex;flex-direction:column">
+              <sc-for list="{{ recentRatings }}" as="r" hint-placeholder-count="6">
+                <div style="display:flex;flex-direction:column;gap:6px;padding:12px 20px;border-top:1px solid var(--bd-subtle)">
+                  <div style="display:flex;align-items:center;gap:10px">
+                    <span style="width:24px;height:24px;border-radius:var(--r-xs);background:var(--s-elevated);border:1px solid var(--bd-subtle);flex:none"></span>
+                    <span style="font-size:13px;font-weight:500;flex:none">{{ r.name }}</span>
+                    <span style="font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--tx-muted)">{{ r.mode }}</span>
+                    <span style="margin-left:auto;color:var(--warn);font-size:13px;letter-spacing:1px">{{ r.stars }}</span>
+                    <span style="font-family:var(--font-mono);font-size:11.5px;color:var(--tx-disabled);width:32px;text-align:right">{{ r.rating }}/5</span>
+                    <span style="font-size:11px;color:var(--tx-muted);width:64px;text-align:right">{{ r.when }}</span>
+                  </div>
+                  <sc-if value="{{ r.hasComment }}" hint-placeholder-val="{{ false }}">
+                    <p style="margin:0 0 0 34px;padding-left:12px;border-left:2px solid var(--bd-strong);font-size:12.5px;font-style:italic;color:var(--tx-secondary)">«{{ r.comment }}»</p>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+          </section>
+</main>
       </div>
     </div>
-
-    <div style="position:fixed;bottom:24px;right:24px;z-index:80;display:flex;flex-direction:column;align-items:flex-end;gap:10px">
-      <sc-if value="{{ svOpen }}" hint-placeholder-val="{{ false }}">
-        <div ref="{{ svBoxRef }}" style="{{ svWindowStyle }}">
-          <div onMouseDown="{{ startDrag }}" style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--bd-subtle);cursor:grab;user-select:none">
-            <div style="width:30px;height:30px;border-radius:var(--r-full);background:var(--ac-soft);border:1px solid var(--bd-subtle);display:flex;align-items:center;justify-content:center;flex:none">
-              <span style="font-family:var(--font-display);font-size:12px;font-weight:700;color:var(--ac-text)">S</span>
-            </div>
-            <div style="min-width:0;flex:1">
-              <div style="font-family:var(--font-display);font-size:13px;font-weight:700">Svetlana</div>
-              <div style="font-size:11px;color:var(--tx-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Sta guardando: {{ breadcrumb }}</div>
-            </div>
-            <button onClick="{{ toggleSv }}" style="width:26px;height:26px;flex:none;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-muted);display:flex;align-items:center;justify-content:center;cursor:pointer">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M18 6 6 18"></path><path d="M6 6l12 12"></path></svg>
-            </button>
-          </div>
-
-          <div style="padding:8px 14px;border-bottom:1px solid var(--bd-subtle);display:flex;align-items:center;gap:6px">
-            <span style="width:6px;height:6px;border-radius:var(--r-full);background:var(--ok)"></span>
-            <span style="font-size:11px;color:var(--tx-muted)">Contesto automatico attivo · solo lettura</span>
-          </div>
-
-          <div style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px">
-            <sc-for list="{{ svMsgs }}" as="m" hint-placeholder-count="3">
-              <div style="display:flex;{{ m.rowStyle }}">
-                <div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
-              </div>
-            </sc-for>
-          </div>
-
-          <div style="padding:10px;border-top:1px solid var(--bd-subtle);display:flex;gap:8px">
-            <input value="{{ svInput }}" onChange="{{ onSvInput }}" onKeyDown="{{ onSvKey }}" placeholder="Chiedi qualcosa a Svetlana…" style="flex:1;height:36px;padding:0 11px;border:1px solid var(--bd-subtle);border-radius:var(--r-sm);background:var(--s-inset);color:var(--tx-primary);font-family:var(--font-ui);font-size:13px;outline:none">
-            <button onClick="{{ sendSv }}" style="width:36px;height:36px;flex:none;border:none;border-radius:var(--r-sm);background:var(--ac);color:#160A02;display:flex;align-items:center;justify-content:center;cursor:pointer">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>
-            </button>
-          </div>
-        </div>
-      </sc-if>
-
-      <button onClick="{{ toggleSv }}" style="width:52px;height:52px;border:1px solid var(--bd-strong);border-radius:var(--r-full);background:var(--s-elevated);box-shadow:var(--e3);display:flex;align-items:center;justify-content:center;cursor:pointer;position:relative">
-        <span style="position:absolute;top:-2px;right:-2px;width:11px;height:11px;border-radius:var(--r-full);background:var(--ok);border:2px solid var(--s-base)"></span>
-        <span style="font-family:var(--font-display);font-size:16px;font-weight:700;color:var(--ac-text)">S</span>
-      </button>
-    </div>
-  </div>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;tema&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Scuro&quot;,&quot;Chiaro&quot;],&quot;default&quot;:&quot;Scuro&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;accento&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;options&quot;:[&quot;#DB6E19&quot;,&quot;#2478A1&quot;,&quot;#C0533B&quot;,&quot;#B08A2E&quot;],&quot;default&quot;:&quot;#DB6E19&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Aspetto&quot;},&quot;sidebarCollassata&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Layout&quot;}}">
 class Component extends DCLogic {
   rootRef = React.createRef();
-  svBoxRef = React.createRef();
-  state = { screen:'shell', theme:null, collapsedOverride:null, loginState:'default',
-    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1',
-    svOpen:false, svPos:null, svDrag:null, svInput:'',
-    svMsgs:[
-      { from:'bot', text:'Ciao, sono Svetlana. Vedo che sei su questa pagina — chiedimi pure numeri, stati o dove trovare qualcosa.' },
-      { from:'user', text:'Quanti giocatori online ora in Towny?' },
-      { from:'bot', text:'In questa demo non ho ancora accesso ai dati live: nella versione connessa risponderei leggendo il pannello in tempo reale.' }
-    ] };
+  state = { screen:'duels-ratings', theme:null, collapsedOverride:null, loginState:'default',
+    period:'24h', modeSel:'Globale', hidden:{}, palette:false, invite:false, logOpen:'l1' };
 
-  componentDidMount() {
-    this.applyAccent(); this.waitShared();
-    this._onMove = (e) => {
-      const d = this.state.svDrag;
-      if (!d) return;
-      this.setState({ svPos: { x: d.startX + (e.clientX - d.mx), y: d.startY + (e.clientY - d.my) } });
-    };
-    this._onUp = () => { if (this.state.svDrag) this.setState({ svDrag: null }); };
-    window.addEventListener('mousemove', this._onMove);
-    window.addEventListener('mouseup', this._onUp);
-  }
+  componentDidMount() { this.applyAccent(); this.waitShared(); }
   componentDidUpdate() { this.applyAccent(); }
-  componentWillUnmount() {
-    clearInterval(this._t);
-    window.removeEventListener('mousemove', this._onMove);
-    window.removeEventListener('mouseup', this._onUp);
-  }
-
-  toggleSv = () => this.setState(s => ({ svOpen: !s.svOpen }));
-
-  startDrag = (e) => {
-    const el = this.svBoxRef.current;
-    if (!el) return;
-    e.preventDefault();
-    const r = el.getBoundingClientRect();
-    this.setState({ svPos: { x: r.left, y: r.top }, svDrag: { mx: e.clientX, my: e.clientY, startX: r.left, startY: r.top } });
-  };
-
-  onSvInput = (e) => this.setState({ svInput: e.target.value });
-  onSvKey = (e) => { if (e.key === 'Enter') this.sendSv(); };
-
-  sendSv = () => {
-    const text = this.state.svInput.trim();
-    if (!text) return;
-    const reply = { from:'bot', text:'Risposta di esempio: nella versione collegata a Claude analizzerei il contesto di questa pagina e i dati del pannello per risponderti.' };
-    this.setState(s => ({ svMsgs: [...s.svMsgs, { from:'user', text }, reply], svInput:'' }));
-  };
+  componentWillUnmount() { clearInterval(this._t); }
 
   /* metamc-shared.js viene caricato da <helmet>: se non è ancora pronto, ricontrolla */
   waitShared() {
@@ -331,20 +295,7 @@ class Component extends DCLogic {
   renderVals() {
     const M = window.MetaMC;
     if (!M) return { rootRef: this.rootRef, theme: 'dark' };
-    const base = M.baseVals(this, 'shell');
-    const pos = this.state.svPos;
-    const posStyle = pos ? `left:${pos.x}px;top:${pos.y}px;right:auto;bottom:auto` : 'right:0;bottom:64px';
-    const svWindowStyle = `position:fixed;${posStyle};width:340px;height:440px;display:flex;flex-direction:column;border:1px solid var(--bd-strong);border-radius:var(--r-lg);background:var(--s-overlay);box-shadow:var(--e3);overflow:hidden`;
-    const svMsgs = this.state.svMsgs.map(m => ({
-      text: m.text,
-      rowStyle: m.from === 'user' ? 'justify-content:flex-end' : 'justify-content:flex-start',
-      bubbleStyle: m.from === 'user'
-        ? 'max-width:78%;padding:9px 12px;border-radius:var(--r-md) var(--r-md) 2px var(--r-md);background:var(--ac-soft);color:var(--tx-primary);font-size:13px;line-height:19px'
-        : 'max-width:78%;padding:9px 12px;border-radius:var(--r-md) var(--r-md) var(--r-md) 2px;background:var(--s-inset);border:1px solid var(--bd-subtle);color:var(--tx-secondary);font-size:13px;line-height:19px'
-    }));
-    return { ...base, svBoxRef: this.svBoxRef, svOpen: this.state.svOpen, svWindowStyle, svMsgs,
-      svInput: this.state.svInput, toggleSv: this.toggleSv, startDrag: this.startDrag,
-      onSvInput: this.onSvInput, onSvKey: this.onSvKey, sendSv: this.sendSv };
+    return M.baseVals(this, 'duels-ratings');
   }
 }
 </script>

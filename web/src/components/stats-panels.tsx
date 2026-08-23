@@ -291,8 +291,14 @@ export function OnlineChart({
               illeggibile, perché senza la data sembra invertito. Il tratteggio
               da solo dice l'unica cosa che conta — qui non è stato rilevato
               niente — e il quando si legge dall'asse, che ce l'ha già.
+
+              IL BUCKET IN CORSO NE RESTA FUORI, e non è un dettaglio: nei
+              primi minuti può non avere ancora nessun campione aggregato, e
+              tratteggiarlo direbbe «non rilevato» di un'ora che si sta
+              rilevando proprio adesso. Sono due cose diverse — «non c'è» e
+              «non ancora» — e il tratteggio sa dire solo la prima.
             */}
-            {gaps(values).map(([a, b]) => (
+            {gaps(data.liveTail ? values.slice(0, -1) : values).map(([a, b]) => (
               <rect
                 key={`gap-${a}`}
                 x={x(a)}

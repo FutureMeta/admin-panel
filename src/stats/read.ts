@@ -1027,6 +1027,78 @@ function collect(rows: SeriesRow[]): Bucket[] {
 }
 
 /**
+ * IL BUCKET IN CORSO, costruito dalla sorgente piu' fine che ce l'ha.
+ *
+ * PERCHE' SERVE, e perche' senza di lui la finestra allargata non basta.
+ * `runRollup` scrive un bucket solo quando e' COMPLETO piu' cinque minuti di
+ * grazia (`SETTLE_MS`), e lo fa apposta: un'ora scritta a meta' verrebbe letta
+ * bassa e poi cambierebbe da sola, che e' la cosa che questo schema rifiuta
+ * ovunque. Ma la conseguenza e' che il livello orario non conosce l'ora in
+ * corso, e quello giornaliero non conosce OGGI fino a domani.
+ *
+ * Aprire la finestra fino ad adesso, quindi, non basta: l'ultimo punto
+ * esisteva sull'asse e restava vuoto. E un punto vuoto il grafico lo disegna
+ * come «non rilevato» — che di quell'ora e' falso, perche' rilevata lo e'
+ * stata: i tick ci sono, e' l'aggregazione a non essere ancora passata. Sul
+ * range 1y era peggio: la colonna di oggi restava vuota SEMPRE, perche'
+ * `rollup_1d` la scrive l'indomani.
+ *
+ * Si legge quindi da `v_online_5m`, che il ciclo aggiorna ogni minuto ed e'
+ * fine abbastanza per qualunque bucket. E' la stessa strada che il payload fa
+ * gia' per gli unici del giorno in corso (`liveDayUniques`) e per la
+ * ripartizione corrente (`currentMix`): il dato vivo viene dal livello sotto.
+ *
+ * COPERTURA PARZIALE, DICHIARATA. `covered_s` copre solo i minuti gia'
+ * passati, quindi `coverage` di quel bucket sta sotto 1 e la media e' quella
+ * di cio' che si e' visto finora. E' il numero giusto accompagnato dalla sua
+ * incertezza — e il grafico lo tratteggia (`liveTail`), i KPI lo escludono.
+ */
+async function liveBucketRows(db: Database, at: number, now: Date): Promise<SeriesRow[]> {
+  const res = await sql<SeriesRow>`
+    WITH src AS (
+      SELECT mode_key, player_seconds, covered_s, samples, players_max, players_max_at
+        FROM stats.v_online_5m
+       WHERE bucket >= to_timestamp(${at}) AND bucket < ${now}
+    ),
+    -- IL DENOMINATORE VIENE DALLA RIGA DI RETE, come in tutte le altre query
+    -- di questo file: sommarlo per modalita' darebbe il tempo in cui quella
+    -- modalita' era aperta, non quello osservato.
+    cov AS (
+      SELECT coalesce(sum(covered_s), 0)::int AS covered_s,
+             coalesce(sum(samples), 0)::int AS samples
+        FROM src WHERE mode_key = '__network__'
+    )
+    SELECT ${at}::bigint::text AS t, s.mode_key,
+           sum(s.player_seconds)::bigint::text AS player_seconds,
+           max(s.players_max) AS players_max,
+           (array_agg(s.players_max_at ORDER BY s.players_max DESC NULLS LAST))[1] AS players_max_at,
+           c.covered_s, c.samples
+      FROM src s CROSS JOIN cov c
+     GROUP BY s.mode_key, c.covered_s, c.samples
+  `.execute(db);
+  return res.rows;
+}
+
+/** Le righe per server dello stesso bucket in corso: senza, la scomposizione del dettaglio si fermerebbe un punto prima del totale. */
+async function liveServerRows(
+  db: Database,
+  at: number,
+  now: Date,
+  only: ModeFilter,
+): Promise<ServerSeriesRow[]> {
+  const res = await sql<ServerSeriesRow>`
+    SELECT ${at}::bigint::text AS t, mode_key, server_key,
+           sum(player_seconds)::bigint::text AS player_seconds
+      FROM stats.v_online_5m
+     WHERE bucket >= to_timestamp(${at}) AND bucket < ${now}
+       AND server_id <> 0
+       AND (${sql.lit(only.all)} OR mode_key = ANY(${only.keys}::text[]))
+     GROUP BY 1, 2, 3
+  `.execute(db);
+  return res.rows;
+}
+
+/**
  * La griglia dei punti, senza buchi.
  *
  * `t` e' regolare per costruzione: dove non c'e' un bucket il VALORE e' null,
@@ -1270,6 +1342,9 @@ export async function buildAll(
 ): Promise<AllBuild> {
   const plan = PLAN[range];
   const w = windowOf(range, now);
+  // L'asse si calcola PRIMA delle query: e' puro, e serve a sapere quale sia
+  // il bucket in corso — cioe' quale finestra chiedere alla sorgente fine.
+  const live = liveEdge(axisOf(range, w), w, now);
 
   // QUALI PAYLOAD PER MODALITA' SERVONO DAVVERO. Non e' un'ottimizzazione
   // marginale: le tre query per modalita' sono le piu' care del lotto —
@@ -1323,6 +1398,8 @@ export async function buildAll(
     liveUniques,
     perServer,
     perServerSeries,
+    liveRows,
+    liveServers,
   ] = await Promise.all([
     timed('seriesRows', seriesRows(db, range, w)),
     timed('heatmap', heatmapRows(db, w.curFrom, now)),
@@ -1349,13 +1426,21 @@ export async function buildAll(
     // Idem: le righe per server dell'andamento sono un disegno del solo
     // dettaglio, e sono la query piu' voluminosa delle due.
     timed('serverSeries', anyMode ? serverSeriesRows(db, range, w, only) : []),
+    // Il bucket in corso, dal livello sotto. Si chiede solo quando c'e' una
+    // coda viva da riempire: sul 24h la finestra si ferma gia' all'ultimo
+    // bucket chiuso, e questa query non parte.
+    timed('liveBucket', live.liveTail ? liveBucketRows(db, live.closedThrough, now) : []),
+    timed('liveServers', live.liveTail && anyMode ? liveServerRows(db, live.closedThrough, now, only) : []),
   ]);
   const queryMs = Date.now() - t0;
   // Le tre piu' care, e basta: l'elenco intero sarebbe rumore in ogni riga di
   // log scritta quando tutto va bene.
   const slowest = Object.fromEntries(timings.sort(([, a], [, b]) => b - a).slice(0, 3));
 
-  const cur = collect(rows);
+  // Le righe del bucket in corso si uniscono alle altre PRIMA di raccogliere:
+  // da li' in poi e' un bucket come tutti, e nessun pezzo del payload deve
+  // sapere che e' arrivato per un'altra strada.
+  const cur = collect([...rows, ...liveRows]);
 
   const modes = [...new Set(rows.map((r) => r.mode_key))]
     .filter((m) => m !== '__network__')
@@ -1365,8 +1450,6 @@ export async function buildAll(
       return oa === ob ? a.localeCompare(b) : oa - ob;
     });
 
-  // L'asse arriva a stanotte; si disegna fino ad ADESSO. Vedi `liveEdge`.
-  const live = liveEdge(axisOf(range, w), w, now);
   const axis = live.axis;
   const byT = new Map(cur.map((b) => [b.t, b]));
 
@@ -1571,7 +1654,7 @@ export async function buildAll(
 
   // L'andamento per server, indicizzato modalita' -> server -> istante.
   const serverSecondsByMode = new Map<string, Map<string, Map<number, number>>>();
-  for (const r of perServerSeries) {
+  for (const r of [...perServerSeries, ...liveServers]) {
     let byServer = serverSecondsByMode.get(r.mode_key);
     if (!byServer) {
       byServer = new Map();

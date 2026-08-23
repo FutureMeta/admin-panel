@@ -17,24 +17,33 @@
 // aveva riportato la correzione sulle statistiche perche' non c'era niente che
 // mettesse le due cose sulla stessa pagina. Adesso c'e'.
 
+import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { PgDuelsProvider } from '#src/duels/pg.ts';
 import { RANGES, type Range } from '#src/stats/contract.ts';
 import { buildAll, romeMidnight } from '#src/stats/read.ts';
-import { createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
+import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 let testDb: TestDatabase;
 let db: Database;
+let sql: pg.Client;
+
+const ARENA = 'arena_1';
 
 /**
- * Un pomeriggio qualunque, lontano dai cambi ora e dalla mezzanotte.
+ * Le 14:20 di OGGI, ora di Roma. Calcolate all'avvio, non scritte a mano.
  *
- * Mezzogiorno UTC sono le 14:00 a Roma d'estate: abbastanza dentro la giornata
- * perche' «oggi» abbia gia' delle ore, e abbastanza lontano da stanotte perche'
- * un errore di un bucket non passi inosservato.
+ * VENTI MINUTI DOPO L'ORA, non in punto: un bucket che comincia esattamente
+ * adesso ha durata zero, quindi e` legittimamente vuoto, e il test
+ * verificherebbe il caso di bordo invece di quello normale.
+ *
+ * Abbastanza dentro la giornata perche' «oggi» abbia gia' delle ore, e
+ * abbastanza lontano da stanotte perche' un errore di un bucket non passi
+ * inosservato. Tutte le asserzioni sono relative a questo istante, quindi il
+ * file non ha una data di scadenza — vedi la nota in `tests/support/postgres.ts`.
  */
-const NOW = new Date('2026-08-23T12:00:00Z');
+const NOW = new Date(romeMidnight(new Date()).getTime() + (14 * 60 + 20) * 60_000);
 const NOW_SEC = Math.floor(NOW.getTime() / 1_000);
 const TODAY = Math.floor(romeMidnight(NOW).getTime() / 1_000);
 
@@ -49,12 +58,48 @@ beforeAll(async () => {
       searchPath: 'stats, public',
     }),
   );
+  sql = await connect(testDb.migrateUrl, 'metamc-test-today-sql');
 }, 180_000);
 
 afterAll(async () => {
+  await sql?.end().catch(() => undefined);
   await db?.destroy().catch(() => undefined);
   await testDb?.drop();
 });
+
+/**
+ * Venti minuti di campionamento nell'ora in corso, e NIENT'ALTRO.
+ *
+ * Niente rollup orario, niente rollup giornaliero: e' lo stato reale del
+ * database alle 14:20 di un giorno qualunque, perche' l'ora delle 14 la
+ * scrivera' il giro orario alle 15:05 e il giorno lo scrivera' quello
+ * giornaliero domani. Se il punto vivo si riempie, viene per forza dal livello
+ * dei cinque minuti — che e' esattamente cio' che si sta verificando.
+ */
+async function seedLiveFiveMinutes(): Promise<void> {
+  const hour = new Date(Math.floor(NOW.getTime() / 3_600_000) * 3_600_000);
+  await sql.query('INSERT INTO stats.server (server_key) VALUES ($1) ON CONFLICT DO NOTHING', [ARENA]);
+  await sql.query(
+    `INSERT INTO stats.mode (mode_key, display_name) VALUES ('arena', 'Arena') ON CONFLICT DO NOTHING`,
+  );
+  await sql.query(
+    `INSERT INTO stats.mode_alias (match_kind, match_value, mode_id)
+     SELECT 'server', $1, mode_id FROM stats.mode WHERE mode_key = 'arena'
+     ON CONFLICT DO NOTHING`,
+    [ARENA],
+  );
+  await sql.query(
+    `INSERT INTO stats.rollup_5m
+       (bucket, server_id, samples, covered_s, player_seconds, players_max, players_max_at)
+     SELECT g, v.server_id, 10, 300, 200 * 300, 200, g
+       FROM generate_series($1::timestamptz, $1::timestamptz + interval '15 minutes',
+                            interval '5 minutes') g
+       CROSS JOIN stats.server v
+      WHERE v.server_id = 0 OR v.server_key = $2
+     ON CONFLICT DO NOTHING`,
+    [hour, ARENA],
+  );
+}
 
 describe('le statistiche di rete: il giorno in corso e` sull`asse', () => {
   for (const range of RANGES) {
@@ -109,6 +154,40 @@ describe('le statistiche di rete: il giorno in corso e` sull`asse', () => {
       const { overview } = await buildAll(db, range, NOW, []);
       expect(overview.liveTail, range).toBe(true);
     }
+  });
+});
+
+describe('il bucket in corso porta un NUMERO, non un buco', () => {
+  // IL SECONDO TEMPO DELLA CORREZIONE, e senza di lui il primo non basta.
+  //
+  // `runRollup` scrive un bucket solo quando e' completo piu' cinque minuti di
+  // grazia, apposta: un'ora scritta a meta' verrebbe letta bassa e poi
+  // cambierebbe da sola. Ma allora il livello orario non conosce l'ora in
+  // corso, e quello giornaliero non conosce OGGI fino a domani.
+  //
+  // Allargata la finestra e basta, l'ultimo punto esisteva sull'asse e restava
+  // VUOTO — e un punto vuoto il grafico lo disegna come «non rilevato», che di
+  // quell'ora e' falso: i tick ci sono, e' l'aggregazione a non essere ancora
+  // passata. Sul range 1y era peggio: la colonna di oggi restava vuota sempre.
+  beforeAll(async () => {
+    await seedLiveFiveMinutes();
+  });
+
+  it('il 7g ha un valore sull`ultima ora, presa dai cinque minuti', async () => {
+    const { overview } = await buildAll(db, '7d', NOW, []);
+    const last = overview.online.total.at(-1);
+    expect(overview.liveTail).toBe(true);
+    // Non `null`: il bucket in corso e' stato costruito da `v_online_5m`.
+    expect(last).not.toBeNull();
+    // E la sua copertura dice che e' parziale, invece di fingere un'ora piena.
+    expect(overview.online.coverage.at(-1)).toBeGreaterThan(0);
+    expect(overview.online.coverage.at(-1)).toBeLessThan(1);
+  });
+
+  it('e l`1y ha la colonna di OGGI, che il rollup giornaliero scriverebbe domani', async () => {
+    const { overview } = await buildAll(db, '1y', NOW, []);
+    expect(overview.online.t.at(-1)).toBe(TODAY);
+    expect(overview.online.total.at(-1)).not.toBeNull();
   });
 });
 

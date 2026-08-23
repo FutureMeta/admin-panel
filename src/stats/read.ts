@@ -1437,10 +1437,30 @@ export async function buildAll(
   // log scritta quando tutto va bene.
   const slowest = Object.fromEntries(timings.sort(([, a], [, b]) => b - a).slice(0, 3));
 
-  // Le righe del bucket in corso si uniscono alle altre PRIMA di raccogliere:
-  // da li' in poi e' un bucket come tutti, e nessun pezzo del payload deve
-  // sapere che e' arrivato per un'altra strada.
-  const cur = collect([...rows, ...liveRows]);
+  /**
+   * Il bucket in corso SOSTITUISCE quello chiuso, non gli si somma.
+   *
+   * IL DIFETTO CHE QUESTA RIGA TOGLIE, ed e' arrivato in produzione. Quando il
+   * livello orario ha gia' scritto la PRIMA ora di un blocco ancora aperto —
+   * su 30g il blocco dura due ore, su 90g sei — la lettura chiusa produce una
+   * riga per quel blocco, e la lettura viva ne produce un'altra con lo stesso
+   * istante. `collect` le fondeva: la riga di rete veniva SOVRASCRITTA (l'ultima
+   * vince) e quelle per modalita' SOMMATE. Risultato, le parti valevano una
+   * volta e mezza il loro totale, `assertPayload` rifiutava il payload, e il
+   * giro di riscaldamento falliva su 30g, 90g e 1a — cioe' quei tre range
+   * rispondevano 500.
+   *
+   * Sostituire e' anche la scelta giusta nel merito: la lettura viva copre
+   * dall'inizio del blocco fino ad adesso, quindi contiene gia' tutto quello
+   * che il livello orario aveva scritto, e in piu' i minuti dopo.
+   *
+   * Si sostituisce SOLO se c'e' qualcosa con cui farlo. Un blocco appena
+   * cominciato non ha ancora nessun bucket da cinque minuti chiuso, e buttare
+   * via la riga chiusa per rimpiazzarla con niente perderebbe un'ora di dati.
+   */
+  const liveAt = live.liveTail && liveRows.length > 0 ? live.closedThrough : null;
+  const closedRows = liveAt === null ? rows : rows.filter((r) => Number(r.t) !== liveAt);
+  const cur = collect([...closedRows, ...liveRows]);
 
   const modes = [...new Set(rows.map((r) => r.mode_key))]
     .filter((m) => m !== '__network__')
@@ -1659,7 +1679,11 @@ export async function buildAll(
 
   // L'andamento per server, indicizzato modalita' -> server -> istante.
   const serverSecondsByMode = new Map<string, Map<string, Map<number, number>>>();
-  for (const r of [...perServerSeries, ...liveServers]) {
+  // Stessa sostituzione delle righe di rete, e per la stessa ragione: qui le
+  // parti si sommerebbero al loro totale un secondo livello piu' giu'.
+  const closedServers =
+    liveAt === null ? perServerSeries : perServerSeries.filter((r) => Number(r.t) !== liveAt);
+  for (const r of [...closedServers, ...liveServers]) {
     let byServer = serverSecondsByMode.get(r.mode_key);
     if (!byServer) {
       byServer = new Map();

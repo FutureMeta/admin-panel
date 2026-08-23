@@ -21,7 +21,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { PgDuelsProvider } from '#src/duels/pg.ts';
-import { RANGES, type Range } from '#src/stats/contract.ts';
+import { assertPayload, RANGES, type Range } from '#src/stats/contract.ts';
 import { buildAll, romeMidnight } from '#src/stats/read.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
@@ -32,7 +32,7 @@ let sql: pg.Client;
 const ARENA = 'arena_1';
 
 /**
- * Le 14:20 di OGGI, ora di Roma. Calcolate all'avvio, non scritte a mano.
+ * Le 15:20 di OGGI, ora di Roma. Calcolate all'avvio, non scritte a mano.
  *
  * VENTI MINUTI DOPO L'ORA, non in punto: un bucket che comincia esattamente
  * adesso ha durata zero, quindi e` legittimamente vuoto, e il test
@@ -43,7 +43,7 @@ const ARENA = 'arena_1';
  * inosservato. Tutte le asserzioni sono relative a questo istante, quindi il
  * file non ha una data di scadenza — vedi la nota in `tests/support/postgres.ts`.
  */
-const NOW = new Date(romeMidnight(new Date()).getTime() + (14 * 60 + 20) * 60_000);
+const NOW = new Date(romeMidnight(new Date()).getTime() + (15 * 60 + 20) * 60_000);
 const NOW_SEC = Math.floor(NOW.getTime() / 1_000);
 const TODAY = Math.floor(romeMidnight(NOW).getTime() / 1_000);
 
@@ -71,7 +71,7 @@ afterAll(async () => {
  * Venti minuti di campionamento nell'ora in corso, e NIENT'ALTRO.
  *
  * Niente rollup orario, niente rollup giornaliero: e' lo stato reale del
- * database alle 14:20 di un giorno qualunque, perche' l'ora delle 14 la
+ * database alle 15:20 di un giorno qualunque, perche' l'ora delle 14 la
  * scrivera' il giro orario alle 15:05 e il giorno lo scrivera' quello
  * giornaliero domani. Se il punto vivo si riempie, viene per forza dal livello
  * dei cinque minuti — che e' esattamente cio' che si sta verificando.
@@ -98,6 +98,53 @@ async function seedLiveFiveMinutes(): Promise<void> {
       WHERE v.server_id = 0 OR v.server_key = $2
      ON CONFLICT DO NOTHING`,
     [hour, ARENA],
+  );
+}
+
+/**
+ * Lo stato del database dalle :05 in poi di ogni ora: l'ora PRECEDENTE gia'
+ * chiusa dal rollup, dentro un blocco che e' ancora aperto.
+ *
+ * E' la combinazione che ha rotto la produzione, e nessun test la costruiva:
+ * seminando solo i cinque minuti, la riga chiusa e quella viva non si
+ * incontrano mai e la collisione non esiste.
+ */
+async function seedClosedHourInLiveBlock(): Promise<void> {
+  const midnight = romeMidnight(NOW);
+  const closedHour = new Date(midnight.getTime() + 14 * 3_600_000);
+
+  await sql.query(
+    `INSERT INTO stats.rollup_5m
+       (bucket, server_id, samples, covered_s, player_seconds, players_max, players_max_at)
+     SELECT g, v.server_id, 10, 300, 200 * 300, 200, g
+       FROM generate_series($1::timestamptz, $1::timestamptz + interval '55 minutes',
+                            interval '5 minutes') g
+       CROSS JOIN stats.server v
+      WHERE v.server_id = 0 OR v.server_key = $2
+     ON CONFLICT DO NOTHING`,
+    [closedHour, ARENA],
+  );
+  // L'ora chiusa, come la scriverebbe il giro orario alle 15:05.
+  await sql.query(
+    `INSERT INTO stats.rollup_1h
+       (bucket, server_id, samples, covered_s, player_seconds, players_max, players_max_at)
+     SELECT $1, v.server_id, 120, 3600, 200 * 3600, 200, $1
+       FROM stats.server v
+      WHERE v.server_id = 0 OR v.server_key = $2
+     ON CONFLICT DO NOTHING`,
+    [closedHour, ARENA],
+  );
+  // E il giorno in corso al livello giornaliero: sull'1y e' li' che la riga
+  // chiusa e quella viva si sovrappongono.
+  await sql.query(
+    `INSERT INTO stats.rollup_1d
+       (day, server_id, samples, covered_s, expected_s, player_seconds, players_max, players_max_at)
+     SELECT stats.civil_day($1), v.server_id, 120, 3600,
+            stats.day_seconds(stats.civil_day($1)), 200 * 3600, 200, $1
+       FROM stats.server v
+      WHERE v.server_id = 0 OR v.server_key = $2
+     ON CONFLICT DO NOTHING`,
+    [closedHour, ARENA],
   );
 }
 
@@ -188,6 +235,47 @@ describe('il bucket in corso porta un NUMERO, non un buco', () => {
     const { overview } = await buildAll(db, '1y', NOW, []);
     expect(overview.online.t.at(-1)).toBe(TODAY);
     expect(overview.online.total.at(-1)).not.toBeNull();
+  });
+});
+
+describe('il bucket vivo SOSTITUISCE quello chiuso, non gli si somma', () => {
+  // IL DIFETTO ARRIVATO IN PRODUZIONE il 2026-08-23, e la ragione per cui
+  // questo file non bastava.
+  //
+  // Su 30g un blocco dura due ore, su 90g sei. Quando il livello orario ha
+  // gia' scritto la PRIMA ora di un blocco ancora aperto, la lettura chiusa
+  // produce una riga per quel blocco e la lettura viva ne produce un'altra con
+  // lo STESSO istante. `collect` le fondeva: la riga di rete sovrascritta,
+  // quelle per modalita' sommate. Le parti valevano una volta e mezza il loro
+  // totale, `assertPayload` rifiutava il payload, e il riscaldamento falliva
+  // su 30g, 90g e 1a — cioe' tre range del pannello rispondevano 500.
+  //
+  // I test di prima non lo prendevano perche' seminavano SOLO i cinque minuti:
+  // senza una riga oraria nello stesso blocco la collisione non esiste. Il
+  // difetto viveva nella combinazione, che e' lo stato normale del database
+  // dalle 13:05 in poi di ogni ora.
+  beforeAll(async () => {
+    await seedClosedHourInLiveBlock();
+  });
+
+  for (const range of ['30d', '90d', '1y'] as Range[]) {
+    it(`${range}: la somma delle modalita` + '` fa il totale, e il payload passa', async () => {
+      const { overview } = await buildAll(db, range, NOW, []);
+      // E' LA STESSA VERIFICA CHE GIRA IN PRODUZIONE: la rotta la chiama prima
+      // di mettere i byte in cache, ed e' quella che ha rifiutato il payload.
+      expect(() => assertPayload(overview)).not.toThrow();
+    });
+  }
+
+  it('e il blocco vivo porta i minuti che l`ora chiusa non aveva', async () => {
+    // La sostituzione non e' solo «togli il doppione»: la lettura viva copre
+    // dall'inizio del blocco fino ad adesso, quindi e' un superinsieme di cio'
+    // che il livello orario aveva scritto. Tenere quella chiusa sarebbe
+    // buttare via i minuti dopo l'ultima ora piena.
+    const { overview } = await buildAll(db, '30d', NOW, []);
+    const covered = overview.online.coverage.at(-1) as number;
+    expect(covered).toBeGreaterThan(0.5);
+    expect(covered).toBeLessThan(1);
   });
 });
 

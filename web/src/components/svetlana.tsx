@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { csrfToken, type Me } from '../lib/api.ts';
 import { canOpen } from '../lib/modules.ts';
+import { richText, type Span } from '../lib/rich-text.ts';
 import { applyEvent, askedState, initialState, readChunk, type SvState, toolLabel } from '../lib/svetlana.ts';
 
 /** Il colore del testo sull'accento. Lo stesso dei pulsanti del pannello. */
@@ -509,14 +510,91 @@ function Bubble({ from, text }: { from: 'bot' | 'user'; text: string }) {
           color: mine ? 'var(--tx-primary)' : 'var(--tx-secondary)',
           fontSize: 13,
           lineHeight: '19px',
-          // Il testo arriva com'e' dal modello: gli a capo si rispettano, e
-          // una riga lunga si spezza invece di allargare la bolla.
-          whiteSpace: 'pre-wrap',
+          // Una riga lunga si spezza invece di allargare la bolla. Gli a capo
+          // NON vengono piu' da `pre-wrap`: adesso li disegna `richText`, riga
+          // per riga, perche' un elenco ha bisogno di un rientro e `pre-wrap`
+          // non sa rientrare niente.
           overflowWrap: 'anywhere',
         }}
       >
-        {text}
+        {/* La domanda dell'utente e' la sua, e si mostra COM'E' SCRITTA: se
+            qualcuno scrive due asterischi, ha scritto due asterischi. La
+            formattazione si legge solo dove serve, cioe' nelle risposte. */}
+        {mine ? text : <Formatted text={text} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * Il poco Markdown che il modello produce davvero, disegnato con React.
+ *
+ * Nessun `dangerouslySetInnerHTML` e nessuna marcatura costruita a mano: qui
+ * arrivano dati, ed escono elementi. E' cio' che rende impossibile — e non
+ * soltanto improbabile — che il testo citato da un giocatore diventi qualcosa
+ * di piu' di testo. Vedi `web/src/lib/rich-text.ts` per il perche' i link non
+ * si fanno.
+ */
+function Formatted({ text }: { text: string }) {
+  return (
+    <>
+      {richText(text).map((line, i) => {
+        // L'indice come chiave: le righe non hanno identita' propria e
+        // l'elenco si ridisegna intero a ogni pacchetto dello streaming.
+        const key = `${i}`;
+        if (line.kind === 'blank') return <div key={key} style={{ height: 8 }} />;
+
+        const spans = <Spans spans={line.spans} />;
+        if (line.kind === 'heading') {
+          return (
+            <div
+              key={key}
+              style={{ fontWeight: 600, color: 'var(--tx-primary)', marginTop: i === 0 ? 0 : 6 }}
+            >
+              {spans}
+            </div>
+          );
+        }
+        if (line.kind === 'text') return <div key={key}>{spans}</div>;
+
+        // Elenchi: il segno sta in una colonna sua, cosi' una riga che va a
+        // capo si allinea sotto il testo e non sotto il pallino.
+        const marker = line.kind === 'bullet' ? '•' : line.marker;
+        return (
+          <div key={key} style={{ display: 'flex', gap: 6 }}>
+            <span style={{ flex: 'none', opacity: 0.7 }}>{marker}</span>
+            <span>{spans}</span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function Spans({ spans }: { spans: readonly Span[] }) {
+  return (
+    <>
+      {spans.map((span, i) => (
+        <span
+          // biome-ignore lint/suspicious/noArrayIndexKey: un pezzo di riga non ha identita` propria e in streaming la riga si rimonta da capo a ogni pacchetto
+          key={`${i}:${span.text}`}
+          style={{
+            ...(span.bold ? { fontWeight: 600, color: 'var(--tx-primary)' } : {}),
+            ...(span.italic ? { fontStyle: 'italic' } : {}),
+            ...(span.code
+              ? {
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: 12,
+                  background: 'var(--s-elevated)',
+                  borderRadius: 4,
+                  padding: '1px 4px',
+                }
+              : {}),
+          }}
+        >
+          {span.text}
+        </span>
+      ))}
+    </>
   );
 }

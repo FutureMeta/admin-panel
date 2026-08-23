@@ -124,6 +124,22 @@ sanificare», ma «non compila se non lo fai». Il corpus di attacchi è in
 `82-injection-corpus.test.ts`; che i commenti dei duels arrivino marchiati in
 `83-assistant-untrusted-reader.test.ts`.
 
+**Il terzo strato: come la risposta viene disegnata.** La chat mostra un po' di
+formattazione — grassetto, corsivo, `codice`, elenchi, titoli — perché il
+modello la produce comunque e vederla scritta `**così**` non aiuta nessuno. Ma
+è una superficie **chiusa**, non un renderer Markdown: niente link, niente
+immagini, niente HTML, niente tabelle. Tutto il resto resta scritto com'è.
+
+Non è una mancanza, è la stessa preoccupazione di sopra portata fino in fondo:
+una risposta di Svetlana **cita testo scritto dai giocatori**, e se
+`[clicca](…)` diventasse un collegamento vero, chiunque possa scrivere in gioco
+potrebbe mettere un bersaglio cliccabile dentro la chat di un amministratore —
+nessuna sanificazione dell'URL rende quella una buona idea. Il parser
+(`web/src/lib/rich-text.ts`) restituisce **dati**, e il componente li disegna
+con React, che scrive testo e mai marcatura: non c'è niente da sanificare
+perché non c'è niente da interpretare. I test stanno in `84-rich-text.test.ts`,
+metà sul Markdown che si legge e metà su quello che deve restare inerte.
+
 ### 2.3 Non scrive, e la garanzia sta nel database
 
 Gli strumenti leggono da due ruoli PostgreSQL di sola lettura:

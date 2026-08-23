@@ -10,7 +10,14 @@
 // risposta incompleta che sembra completa.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ASSISTANT_MODEL, costUsd, MAX_ITERATIONS, PRICE_USD_PER_MTOK } from '#src/assistant/config.ts';
+import {
+  ASSISTANT_MODEL,
+  costUsd,
+  MAX_ITERATIONS,
+  MODEL_DEPENDENT,
+  MODEL_PARAMS,
+  PRICE_USD_PER_MTOK,
+} from '#src/assistant/config.ts';
 import { SYSTEM_PROMPT } from '#src/assistant/prompt.ts';
 import type { AssistantData } from '#src/assistant/reader.ts';
 import { type AssistantEvent, type RunResult, runAssistant } from '#src/assistant/runner.ts';
@@ -192,34 +199,57 @@ describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
     expect(trovate).toEqual([]);
   });
 
-  it('modello, pensiero, profondita` e ripiego sono quelli decisi', async () => {
+  it('modello, pensiero e profondita` sono quelli decisi', async () => {
     const { capture } = await run([{ text: 'ciao' }]);
     expect(capture.params?.model).toBe(ASSISTANT_MODEL);
     // Adattivo: sul modello corrente un budget fisso di token e' un 400.
     expect(capture.params?.thinking).toEqual({ type: 'adaptive' });
     // La profondita' si regola con l'effort, non con la temperatura — che su
-    // questo modello non esiste piu'.
+    // questo modello e' un 400 se la si tocca.
     expect(capture.params?.output_config).toEqual({ effort: 'medium' });
     expect(capture.params?.temperature).toBeUndefined();
-    expect(capture.params?.fallbacks).toBe('default');
-    expect(capture.params?.betas).toContain('server-side-fallback-2026-07-01');
     expect(capture.params?.max_iterations).toBe(MAX_ITERATIONS);
   });
 
-  // IL PARAMETRO E IL SUO HEADER NON SI SEPARANO. `speed: "fast"` senza
-  // `fast-mode-2026-02-01` e' un campo sconosciuto, cioe' un 400 su OGNI
-  // messaggio; l'header senza il parametro e' un giro a vuoto. Vengono dalla
-  // stessa tabella proprio per non poter divergere, e questo test guarda la
-  // richiesta vera invece della tabella — altrimenti proverebbe se stessa.
-  it('la velocita` viaggia insieme al suo header, o non viaggia', async () => {
+  // IL 400 DEL 2026-08-23, IN PRODUZIONE, SU OGNI MESSAGGIO:
+  //
+  //   'claude-sonnet-5' does not support the `fallbacks` parameter.
+  //
+  // `fallbacks` era una riga fissa dentro `runner.ts`, scritta quando il
+  // modello era Opus 5. Non era legata a niente, quindi e' sopravvissuta al
+  // cambio di modello — e il classificatore che quel parametro serviva a
+  // rimediare su Sonnet 5 nemmeno esiste. Un test sul valore («vale
+  // 'default'») non l'avrebbe preso: sarebbe stato verde fino al giorno del
+  // cambio, e quel giorno sarebbe diventato rosso senza spiegare perche'.
+  //
+  // Questo invece prova l'INVARIANTE: nella richiesta ci sono esattamente i
+  // parametri che la tabella dei modelli mette, e nessun altro. Scriverne uno
+  // a mano accanto — che e' esattamente cio' che era successo — lo fa fallire
+  // subito, con qualunque modello scelto.
+  it('nella richiesta non c`e` un solo parametro che il modello non accetti', async () => {
     const { capture } = await run([{ text: 'ciao' }]);
-    const chiesta = capture.params?.speed as string | undefined;
+    const inviati = capture.params ?? {};
+    for (const chiave of MODEL_DEPENDENT) {
+      expect({ [chiave]: chiave in inviati }).toEqual({ [chiave]: chiave in MODEL_PARAMS });
+    }
+    // E la configurazione in vigore e' Sonnet 5 senza nessuno dei due: se un
+    // giorno tornano, e' perche' qualcuno ha cambiato modello di proposito.
+    expect(MODEL_PARAMS).toEqual({});
+  });
+
+  // IL PARAMETRO E IL SUO HEADER NON SI SEPARANO. Un parametro in anteprima
+  // senza il suo header e' un campo sconosciuto, cioe' un altro 400; l'header
+  // senza il parametro e' un giro a vuoto. Vengono dalla stessa tabella
+  // proprio per non poter divergere, e qui si guarda la richiesta VERA invece
+  // della tabella — altrimenti il test proverebbe se stesso.
+  it('ogni header beta accompagna un parametro che stiamo davvero mandando', async () => {
+    const { capture } = await run([{ text: 'ciao' }]);
     const betas = (capture.params?.betas as string[] | undefined) ?? [];
-    const header = betas.includes('fast-mode-2026-02-01');
-    expect(chiesta === 'fast').toBe(header);
-    // E la configurazione in vigore e' quella normale: `fast` esiste solo su
-    // Opus e raddoppia il listino, quindi accenderla si vede da qui.
-    expect(chiesta).toBeUndefined();
+    expect(betas.includes('fast-mode-2026-02-01')).toBe(capture.params?.speed === 'fast');
+    expect(betas.includes('server-side-fallback-2026-07-01')).toBe('fallbacks' in (capture.params ?? {}));
+    // La compattazione non dipende dal modello: e' disponibile ovunque, e sta
+    // in `runner.ts` accanto al parametro che l'accende.
+    expect(betas).toContain('compact-2026-01-12');
   });
 
   // I prezzi seguono il modello DA SOLI. Erano una costante a parte, ed e' il

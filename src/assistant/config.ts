@@ -22,6 +22,14 @@
  * Ogni voce segue il listino ufficiale: scrittura in cache a 5 minuti = 1,25
  * volte l'input, lettura = un decimo. E' quella differenza a rendere la cache
  * la voce piu' importante di tutte su una conversazione lunga.
+ *
+ * `extras` E' L'ALTRA META', e la lezione e' costata un 400 in produzione il
+ * 2026-08-23: `'claude-sonnet-5' does not support the `fallbacks` parameter`.
+ * `speed` era legato al modello, `fallbacks` era una riga fissa dentro
+ * `runner.ts` — ed e' sopravvissuta al cambio di modello, perche' niente la
+ * teneva legata a quello vecchio. Adesso OGNI parametro che dipende dal
+ * modello sta qui, insieme all'header beta che lo accompagna: chi cambia
+ * modello si porta dietro l'elenco giusto senza doverselo ricordare.
  */
 const MODELS = {
   // `fast` esiste SOLO qui e su Opus 4.8: e' anteprima di ricerca (l'accesso
@@ -32,20 +40,38 @@ const MODELS = {
       standard: { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
       fast: { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 },
     },
+    // `fallbacks` rimedia al rifiuto di un CLASSIFICATORE, e il classificatore
+    // ce l'hanno solo i modelli di classe Opus e Fable: e' per questo che il
+    // parametro non e' universale. La forma scalare `'default'` sceglie il
+    // ripiego per categoria e non richiede un elenco di modelli da tenere
+    // aggiornato — e va con QUESTO header, non con quello della forma ad
+    // array: accoppiarli al contrario e' un altro 400.
+    extras: { params: { fallbacks: 'default' }, betas: ['server-side-fallback-2026-07-01'] },
   },
+  // Niente `extras`: che Opus 4.8 accetti `fallbacks` non l'ha detto nessuno.
+  // Questa tabella elenca cio' che e' PROVATO, non cio' che e' plausibile —
+  // l'ultima volta che si e' dato per scontato, il conto l'ha pagato la chat.
   'claude-opus-4-8': {
     prices: {
       standard: { input: 5, output: 25, cacheWrite: 6.25, cacheRead: 0.5 },
       fast: { input: 10, output: 50, cacheWrite: 12.5, cacheRead: 1 },
     },
+    extras: { params: {}, betas: [] },
   },
   // Qui `fast` non c'e', e non e' una dimenticanza: l'API la rifiuta su questo
   // modello al momento della richiesta. La voce ASSENTE e' cio' che rende la
   // coppia sbagliata un errore di compilazione invece che un 400.
+  //
+  // Nemmeno `fallbacks`. Sonnet 5 puo' comunque rifiutare — e' il primo Sonnet
+  // con le salvaguardie cyber in tempo reale, e un rifiuto arriva come 200 con
+  // `stop_reason: "refusal"` — solo che qui non c'e' nessun ripiego automatico
+  // a rimediare. Il ramo che avvisa l'operatore, in `runner.ts`, serve ancora:
+  // adesso e' l'unica cosa che sta fra un rifiuto e una chat muta.
   'claude-sonnet-5': {
     prices: {
       standard: { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
     },
+    extras: { params: {}, betas: [] },
   },
 } as const;
 
@@ -102,23 +128,43 @@ const SPEED_REQUEST = {
   fast: { betas: ['fast-mode-2026-02-01'], params: { speed: 'fast' } },
 } as const;
 
-/** Il parametro `speed`, se serve. Si spande nella richiesta, in `runner.ts`. */
-export const SPEED_PARAM = SPEED_REQUEST[ASSISTANT_SPEED].params;
+/**
+ * TUTTI i parametri che dipendono dal modello o dalla velocita', in un oggetto
+ * solo, pronto da spandere dentro la richiesta.
+ *
+ * UNO E UNO SOLO, e non uno per famiglia. Con due export separati la
+ * tentazione — quella che e' costata il 400 — e' scrivere il terzo parametro a
+ * mano dentro `runner.ts`, dove nessuno lo lega piu' al modello. Qui il runner
+ * non sceglie: spande, e non ha modo di dimenticarsi un pezzo.
+ *
+ * L'ELENCO DEI NOMI E' `MODEL_DEPENDENT`, qui sotto: e' cio' che permette a un
+ * test di guardare la richiesta vera e accorgersi se qualcuno ha ricominciato
+ * a scriverli a mano.
+ */
+export const MODEL_PARAMS: Readonly<Record<string, unknown>> = {
+  ...MODELS[ASSISTANT_MODEL].extras.params,
+  ...SPEED_REQUEST[ASSISTANT_SPEED].params,
+};
 
 /**
- * `fallbacks: 'default'` per il rifiuto lato server.
+ * I nomi dei parametri che vivono o muoiono col modello.
  *
- * Senza, una richiesta declinata da un classificatore si ferma e basta: la
- * chat non riceve niente e non c'e' niente da dire all'operatore. Con questo,
- * l'API rigira la stessa richiesta su un modello di ripiego dentro la stessa
- * chiamata. La forma scalare `'default'` sceglie il ripiego per categoria e non
- * richiede un elenco di modelli da tenere aggiornato — e va con QUESTO header,
- * non con quello della forma ad array: accoppiarli al contrario e' un 400.
+ * Serve a un test, e serve a una cosa sola: pretendere che nella richiesta ce
+ * ne sia esattamente quanti ne mette `MODEL_PARAMS`, e nessuno di piu'.
+ * Aggiungerne uno nuovo vuol dire aggiungerlo QUI, ed e' il promemoria che il
+ * 2026-08-23 non c'era.
+ */
+export const MODEL_DEPENDENT = ['fallbacks', 'speed'] as const;
+
+/**
+ * Gli header beta, sempre quelli dei parametri che stiamo davvero mandando.
+ *
+ * Un header senza il suo parametro e' un giro a vuoto; un parametro senza il
+ * suo header e' un campo sconosciuto, cioe' un 400 su OGNI messaggio. Vengono
+ * dalla stessa tabella per non potersi separare.
  */
 export const ASSISTANT_BETAS: readonly string[] = [
-  'server-side-fallback-2026-07-01',
-  // L'header di `fast` viaggia con il parametro o non viaggia affatto: senza,
-  // `speed` e' un campo sconosciuto e la richiesta e' un 400.
+  ...MODELS[ASSISTANT_MODEL].extras.betas,
   ...SPEED_REQUEST[ASSISTANT_SPEED].betas,
 ];
 

@@ -275,6 +275,18 @@ dei modelli e la coppia modello + velocità li sceglie da sola: `'fast'` con
 Sonnet 5 è un errore di tipo, non un 400 scoperto dai log, e cambiare modello
 non può lasciare indietro il listino su cui conta il tetto di spesa.
 
+Nella stessa tabella stanno anche i **parametri** che il modello accetta —
+`fallbacks` esiste solo dove esiste un classificatore di sicurezza, cioè sui
+modelli Opus e Fable — ciascuno insieme all'header beta che lo accompagna.
+`runner.ts` li spande senza sceglierli: un parametro scritto a mano lì accanto
+sopravviverebbe al cambio di modello, ed è esattamente com'è andata (vedi
+§7).
+
+**Su Sonnet 5 il rifiuto non ha rete.** È il primo Sonnet con le salvaguardie
+cyber in tempo reale: un rifiuto arriva come 200 con `stop_reason: "refusal"`,
+e senza `fallbacks` non c'è nessun ripiego automatico. Il ramo di `runner.ts`
+che avvisa l'operatore è quindi l'unica cosa fra un rifiuto e una chat muta.
+
 ### I limiti
 
 Una chat con gli strumenti può chiamare l'API più volte per una sola domanda,
@@ -334,8 +346,19 @@ client è finto, e ciò che si verifica è la *richiesta che costruiamo*, contro
 il contratto documentato. Tre cose si scoprono solo alla prima domanda vera in
 un ambiente con una chiave:
 
-* i due flag beta (`compact-2026-01-12`, `server-side-fallback-2026-07-01`) —
-  si tolgono da `ASSISTANT_BETAS` e da `runner.ts` con una riga ciascuno;
+* **quali parametri accetta il modello scelto. Successo il 2026-08-23**,
+  subito dopo il passaggio a Sonnet 5: `'claude-sonnet-5' does not support the
+  `fallbacks` parameter`, 400 su ogni messaggio. `fallbacks` rimedia al rifiuto
+  di un classificatore, e il classificatore ce l'hanno solo i modelli Opus e
+  Fable — ma nel codice era una riga fissa dentro `runner.ts`, legata a niente,
+  ed è sopravvissuta al cambio di modello. Adesso ogni parametro che dipende
+  dal modello sta nella tabella `MODELS` insieme al suo header beta, il runner
+  li spande senza sceglierli, e un test pretende che nella richiesta non ce ne
+  sia neanche uno in più (`MODEL_DEPENDENT`). Resta possibile che un modello
+  nuovo rifiuti *un altro* parametro: quello lo dice solo l'API, e il posto
+  dove aggiungerlo è quello;
+* il flag beta della compattazione (`compact-2026-01-12`), che non dipende dal
+  modello — si toglie da `runner.ts` con una riga;
 * lo schema dei tool sotto `strict: true`. **Successo il 2026-08-23**: l'API
   ha rifiutato l'intera richiesta con `For 'integer' type, properties maximum,
   minimum are not supported` — `z.int()` emette da solo i limiti dell'intero

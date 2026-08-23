@@ -29,8 +29,8 @@ import {
   type Effort,
   MAX_ITERATIONS,
   MAX_TOKENS,
+  MODEL_PARAMS,
   NO_TOKENS,
-  SPEED_PARAM,
   type TokenUsage,
   usageOf,
 } from './config.ts';
@@ -193,19 +193,18 @@ export async function* runAssistant(
     {
       model: ASSISTANT_MODEL,
       max_tokens: MAX_TOKENS,
-      // Vuoto a velocita' normale. Quando c'e', arriva con il suo header beta
-      // dalla stessa tabella: il parametro e l'header non si separano.
-      ...SPEED_PARAM,
+      // TUTTO cio' che dipende dal modello arriva da qui, e NIENTE si scrive a
+      // mano accanto. `fallbacks` stava scritto qui sotto, non era legato a
+      // niente, ed e' rimasto quando il modello e' cambiato: 400 su ogni
+      // messaggio finche' non l'ha detto il log. Una riga che si spande non
+      // puo' sopravvivere alla cosa da cui dipende.
+      ...MODEL_PARAMS,
       betas: [...ASSISTANT_BETAS, 'compact-2026-01-12'],
       // Sul modello corrente il pensiero e' adattivo: decide da se' quanto
       // pensare. La PROFONDITA' si regola con l'effort, non con parametri di
       // campionamento — che su questo modello non esistono piu'.
       thinking: { type: 'adaptive' },
       output_config: { effort: deps.effort },
-      // Un rifiuto del classificatore non lascia la chat muta: la stessa
-      // richiesta viene rigirata su un modello di ripiego dentro la stessa
-      // chiamata.
-      fallbacks: 'default',
       // Le conversazioni lunghe si COMPATTANO lato server invece di essere
       // tagliate a mano: tagliare butta via l'inizio senza dirlo, riassumere
       // lo conserva. I blocchi di compattazione restano dentro `messages` e

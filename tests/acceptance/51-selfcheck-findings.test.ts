@@ -21,8 +21,42 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { type CycleRow, writeCycle } from '#src/stats/ingest.ts';
+import { romeMidnight, shiftDays } from '#src/stats/read.ts';
 import { runRollup } from '#src/stats/rollup.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
+
+/**
+ * Il giorno su cui lavora questo file: IERI, calcolato all'avvio.
+ *
+ * ERANO DATE SCRITTE A MANO — il 21 agosto 2026 — e hanno funzionato per due
+ * giorni. `stats.ensure_partitions` crea le partizioni giornaliere a partire
+ * da `current_date - 1` (011_stats.sql:899): dal 23 in poi `sample_server` non
+ * aveva piu' una partizione per il 21, e l'INSERT falliva con «nessuna
+ * partizione trovata per la riga».
+ *
+ * Il file non stava provando niente che dipendesse da QUEL giorno. Le
+ * asserzioni sono tutte relative — due cicli sullo stesso slot, un'ora che
+ * aspetta la grazia — e la data serviva solo a esistere.
+ *
+ * Un test ancorato al calendario e' un test con una scadenza che non e'
+ * scritta da nessuna parte: passa, passa, e poi un mattino diventa rosso per
+ * una ragione che non c'entra con cio' che verifica. E un file rosso per
+ * sempre e' peggio di un file che non esiste, perche' toglie il senso al
+ * comando che lo esegue.
+ */
+const YESTERDAY = shiftDays(romeMidnight(new Date()), -1);
+
+/** Un istante di ieri, contato in ore e minuti dalla mezzanotte di Roma. */
+function at(hours: number, minutes = 0, seconds = 0): Date {
+  return new Date(YESTERDAY.getTime() + ((hours * 60 + minutes) * 60 + seconds) * 1_000);
+}
+
+const ROME_DAY = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Europe/Rome',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
 
 let testDb: TestDatabase;
 let pool: pg.Pool;
@@ -96,7 +130,7 @@ describe('due cicli sullo stesso slot non si mescolano', () => {
     // E` LA SCENA DEL RIAVVIO. Il processo vecchio ha scritto lo slot con
     // delta 30 e due server; il nuovo parte, si allinea allo stesso slot,
     // calcola delta 1 e vede un server in piu`.
-    const tickAt = new Date('2026-08-21T14:00:00.000Z');
+    const tickAt = at(16);
     await writeCycle(db, cycle(tickAt, 30, 150), [
       { serverId: ids['duels_1'] as number, players: 100 },
       { serverId: ids['duels_2'] as number, players: 50 },
@@ -121,7 +155,7 @@ describe('due cicli sullo stesso slot non si mescolano', () => {
   it('e la somma per server torna con il totale di rete', async () => {
     // L'invariante nella sua forma diretta: e` cio` che in produzione
     // sballava di uno o due giocatori a ogni riavvio.
-    const tickAt = new Date('2026-08-21T14:00:30.000Z');
+    const tickAt = at(16, 0, 30);
     await writeCycle(db, cycle(tickAt, 30, 150), [
       { serverId: ids['duels_1'] as number, players: 100 },
       { serverId: ids['duels_2'] as number, players: 50 },
@@ -140,7 +174,7 @@ describe('due cicli sullo stesso slot non si mescolano', () => {
   it('un ciclo su uno slot LIBERO scrive normalmente', async () => {
     // La correzione non deve trasformarsi in «non si scrive mai piu` niente»:
     // il caso normale e` uno slot vuoto, e li` tutto passa.
-    const tickAt = new Date('2026-08-21T14:01:00.000Z');
+    const tickAt = at(16, 1);
     await writeCycle(db, cycle(tickAt, 30, 150), [
       { serverId: ids['duels_1'] as number, players: 100 },
       { serverId: ids['duels_2'] as number, players: 50 },
@@ -169,7 +203,7 @@ describe('un`ora non si aggrega finche` i suoi cinque minuti non sono completi',
   }
 
   it('il giro orario aspetta la grazia, e quando arriva l`ora e` intera', async () => {
-    const hour = new Date('2026-08-21T10:00:00.000Z');
+    const hour = at(12);
     const nextHour = hour.getTime() + 3_600_000;
     await seedHour(hour);
     await sql.query(`UPDATE stats.rollup_state SET watermark = $1, max_buckets = 400`, [hour]);
@@ -209,7 +243,7 @@ describe('un`ora non si aggrega finche` i suoi cinque minuti non sono completi',
   it('e coincide con il conto rifatto dal grezzo', async () => {
     // La forma esatta dell'invariante `rollup_vs_raw`, che in produzione
     // trovava undici bucket su dodici.
-    const hour = new Date('2026-08-21T11:00:00.000Z');
+    const hour = at(13);
     const nextHour = hour.getTime() + 3_600_000;
     await seedHour(hour);
     await sql.query(`UPDATE stats.rollup_state SET watermark = $1, max_buckets = 400`, [hour]);
@@ -238,8 +272,16 @@ describe('chi attraversa la mezzanotte resta nella sua modalita`', () => {
     const { SessionTracker } = await import('#src/stats/sessions.ts');
     const sessions = new SessionTracker();
 
-    const beforeMidnight = new Date('2026-08-20T21:30:00.000Z'); // 23:30 a Roma
-    const afterMidnight = new Date('2026-08-20T22:10:00.000Z'); // 00:10 a Roma, giorno dopo
+    // I DUE ISTANTI SI COSTRUISCONO DALLA MEZZANOTTE, non da un'ora UTC.
+    //
+    // Prima erano `21:30Z` e `22:10Z` con accanto scritto «23:30 a Roma» e
+    // «00:10 a Roma»: vero d'estate, falso d'inverno, quando quello scarto e'
+    // di un'ora sola e i due istanti cadono nello stesso giorno civile. Il
+    // test avrebbe smesso di provare quello che dice di provare all'ultima
+    // domenica di ottobre, continuando a passare.
+    const midnight = shiftDays(YESTERDAY, 1);
+    const beforeMidnight = new Date(midnight.getTime() - 30 * 60_000);
+    const afterMidnight = new Date(midnight.getTime() + 10 * 60_000);
 
     await sql.query(
       `INSERT INTO stats.session_open
@@ -259,6 +301,12 @@ describe('chi attraversa la mezzanotte resta nella sua modalita`', () => {
     const rows = await sql.query<{ day: string }>(
       `SELECT day::text FROM stats.player_day_server WHERE player_id = 7001 ORDER BY day`,
     );
-    expect(rows.rows.map((r) => r.day)).toEqual(['2026-08-20', '2026-08-21']);
+    // I due giorni civili di Roma che i due istanti attraversano, calcolati
+    // dagli istanti stessi: cosi' l'asserzione dice «il giorno prima e il
+    // giorno dopo», che e' l'invariante, invece di due date.
+    expect(rows.rows.map((r) => r.day)).toEqual([
+      ROME_DAY.format(beforeMidnight),
+      ROME_DAY.format(afterMidnight),
+    ]);
   });
 });

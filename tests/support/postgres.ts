@@ -122,6 +122,31 @@ function ensureRoles(): Promise<void> {
   return rolesReady;
 }
 
+/**
+ * UNA COSA DA SAPERE PRIMA DI SCRIVERE UN TEST SUL CAMPIONAMENTO.
+ *
+ * `stats.sample_server` e' l'unica tabella partizionata per GIORNO
+ * (011_stats.sql:866); tutte le altre sono mensili. Le migration chiudono con
+ * `SELECT stats.ensure_partitions()`, che crea le partizioni giornaliere da
+ * `current_date - 1` a `current_date + 4`.
+ *
+ * Quindi una data SCRITTA A MANO in un test che scrive campioni ha una
+ * scadenza: due giorni. Passa, passa, e poi un mattino il file diventa rosso
+ * con «nessuna partizione trovata per la riga» — un errore che non nomina il
+ * calendario e manda a cercare un guasto dello schema.
+ *
+ * E' successo due volte in tre giorni, su `24-stats-schema` e su
+ * `51-selfcheck-findings`. La seconda volta due asserzioni si aspettavano un
+ * RIFIUTO dal database e lo ottenevano per la ragione sbagliata: passavano
+ * dichiarando di aver verificato un vincolo che non era stato nemmeno
+ * raggiunto.
+ *
+ * Gli istanti si ancorano quindi ad ADESSO — `current_date` in SQL,
+ * `romeMidnight(new Date())` in TypeScript — e non a un giorno del calendario.
+ * Allargare la finestra delle partizioni qui dentro sarebbe la scorciatoia
+ * sbagliata: farebbe girare i test su uno schema che in produzione non esiste,
+ * e sposterebbe la scadenza invece di toglierla.
+ */
 let counter = 0;
 
 /** Crea un database effimero, ci applica TUTTE le migration, restituisce gli URL. */

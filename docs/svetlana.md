@@ -326,6 +326,16 @@ la cronologia, come messaggio di sistema in coda. Gli strumenti sono in ordine
 alfabetico: riordinarli invalida la cache di ogni conversazione in corso, e un
 test lo pinna.
 
+**Due, e restano due.** L'API ne accetta al massimo quattro per richiesta, e il
+turno dell'utente finisce nella cronologia *con il marcatore addosso*: al
+messaggio dopo ce n'è uno in più, e al quarto sono cinque. **Successo il
+2026-08-23**: `A maximum of 4 blocks with cache_control may be provided. Found
+5.` — una conversazione che va bene tre volte e poi muore sempre allo stesso
+punto. `runner.ts` toglie i marcatori dalla cronologia in **lettura**
+(`stripCacheControl`), così guariscono anche le conversazioni già in Valkey. Il
+test manda sei messaggi di fila e conta: senza la correzione fa `2, 3, 4, 5, 6,
+7`.
+
 ---
 
 ## 7. Quando non funziona

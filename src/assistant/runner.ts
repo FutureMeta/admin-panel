@@ -141,6 +141,43 @@ function stripSystem(turns: readonly Turn[]): Turn[] {
 }
 
 /**
+ * I punti di cache dei turni VECCHI si tolgono. Tutti.
+ *
+ * IL 400 DEL QUARTO MESSAGGIO, in produzione:
+ *
+ *   A maximum of 4 blocks with cache_control may be provided. Found 5.
+ *
+ * Il punto di cache si mette sull'ultimo turno dell'utente — e quel turno
+ * finisce nella cronologia, con il suo marcatore addosso. Al messaggio dopo la
+ * cronologia ne porta uno, piu' quello nuovo, piu' quello del prompt di
+ * sistema: tre. Poi quattro. Al quarto messaggio sono cinque e la conversazione
+ * muore, sempre allo stesso punto, dopo essere andata bene tre volte. Il
+ * difetto non stava in cio' che scrivevamo: stava in cio' che RILEGGEVAMO.
+ *
+ * Si toglie in LETTURA e non prima di salvare, perche' cosi' guarisce anche le
+ * conversazioni gia' dentro Valkey — che scadono in otto ore e nel frattempo
+ * fallirebbero comunque.
+ *
+ * E toglierli e' anche la cosa giusta a prescindere dal tetto: un punto di
+ * cache dice «scrivi fin qui», e riscrivere in mezzo a un prefisso gia' scritto
+ * non serve a niente. Ne bastano due, e devono essere gli ultimi due.
+ */
+function stripCacheControl(turns: readonly Turn[]): Turn[] {
+  return turns.map((turn) => {
+    const { content } = turn;
+    if (!Array.isArray(content)) return turn;
+    return {
+      ...turn,
+      content: content.map((block) => {
+        if (block === null || typeof block !== 'object' || !('cache_control' in block)) return block;
+        const { cache_control: _senzaMarcatore, ...resto } = block;
+        return resto;
+      }),
+    } as Turn;
+  });
+}
+
+/**
  * Il testo dell'utente diventa un blocco, non una stringa.
  *
  * Serve a poterci appendere `cache_control`: il punto di cache va sull'ultimo
@@ -172,7 +209,9 @@ export async function* runAssistant(
   const calls: ToolCall[] = [];
   const tools = buildTools({ actor: input.actor, data: deps.data, calls, now: input.now });
 
-  const history = stripSystem(input.history);
+  // Due passate, e ognuna toglie una cosa che la cronologia non deve portarsi
+  // dietro: il contesto della pagina di ieri, e i punti di cache di ieri.
+  const history = stripCacheControl(stripSystem(input.history));
   const messages: Turn[] = [
     ...history,
     // IL PUNTO DI CACHE NUMERO DUE. Copre i tool, il prompt di sistema, la

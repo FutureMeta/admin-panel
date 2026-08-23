@@ -97,6 +97,20 @@ async function run(
   }
 }
 
+/**
+ * Quanti punti di cache porta la richiesta, in tutto.
+ *
+ * Il tetto dell'API vale sull'INTERA richiesta — prompt di sistema e messaggi
+ * insieme — quindi contarli in un posto solo sarebbe contarne meta'.
+ */
+function puntiDiCache(capture: ReturnType<typeof emptyCapture>): number {
+  const daiMessaggi = ((capture.params?.messages ?? []) as Array<{ content: unknown }>).flatMap(
+    ({ content }) => (Array.isArray(content) ? (content as Array<Record<string, unknown>>) : []),
+  );
+  const daSistema = (capture.params?.system ?? []) as Array<Record<string, unknown>>;
+  return [...daSistema, ...daiMessaggi].filter((b) => b?.cache_control !== undefined).length;
+}
+
 describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
   it('il prompt di sistema porta il punto di cache, e non cambia mai', async () => {
     const { capture } = await run([{ text: 'ciao' }]);
@@ -105,6 +119,57 @@ describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
     // Punto numero uno: copre i tool e il prompt, che sono la parte piu'
     // grossa e piu' stabile della richiesta.
     expect(system[0]?.cache_control).toEqual({ type: 'ephemeral' });
+  });
+
+  // IL 400 DEL QUARTO MESSAGGIO, in produzione:
+  //
+  //   A maximum of 4 blocks with cache_control may be provided. Found 5.
+  //
+  // Il punto di cache si mette sull'ultimo turno dell'utente, e quel turno
+  // finisce nella cronologia CON IL MARCATORE ADDOSSO. Al messaggio dopo la
+  // cronologia ne porta uno, piu' quello nuovo, piu' il prompt di sistema:
+  // tre. Poi quattro. Al quarto messaggio cinque, e la conversazione muore —
+  // sempre allo stesso punto, dopo essere andata bene tre volte.
+  //
+  // Nessun test guardava una conversazione LUNGA: tutti mandavano un messaggio
+  // solo, e con un messaggio solo il conto e' due e non cresce mai. Questo
+  // rimanda indietro la cronologia come fa la rotta, sei volte di fila.
+  it('i punti di cache non si accumulano di messaggio in messaggio', async () => {
+    let history: RunResult['turns'] = [];
+    const conteggi: number[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const { capture, result } = await run([{ text: `risposta ${i}` }], {
+        history,
+        text: `domanda ${i}`,
+      });
+      conteggi.push(puntiDiCache(capture));
+      history = result.turns;
+    }
+    // Sempre due, per sempre: il prompt di sistema e l'ultimo turno scritto.
+    // Prima erano 2, 3, 4, 5 — e il quinto e' il 400.
+    expect(conteggi).toEqual([2, 2, 2, 2, 2, 2]);
+    // Il tetto dell'API, detto esplicitamente: e' il numero che il codice non
+    // puo' superare, indipendentemente da quanti ne vogliamo noi.
+    expect(Math.max(...conteggi)).toBeLessThanOrEqual(4);
+  });
+
+  it('e il punto di cache sta sull`ULTIMO turno, non su uno vecchio', async () => {
+    // Un marcatore rimasto indietro non e' solo un posto occupato nel tetto:
+    // dice «scrivi fin qui» in mezzo a un prefisso gia' scritto, cioe' paga
+    // una scrittura per non allungare niente.
+    const primo = await run([{ text: 'ok' }], { text: 'prima domanda' });
+    const { capture } = await run([{ text: 'ok' }], {
+      history: primo.result.turns,
+      text: 'seconda domanda',
+    });
+    const messages = (capture.params?.messages ?? []) as Array<{ content: unknown }>;
+    const conMarcatore = messages.filter(({ content }) =>
+      (Array.isArray(content) ? content : []).some(
+        (b: Record<string, unknown>) => b?.cache_control !== undefined,
+      ),
+    );
+    expect(conMarcatore).toHaveLength(1);
+    expect(JSON.stringify(conMarcatore[0])).toContain('seconda domanda');
   });
 
   it('il turno dell`utente porta il secondo punto di cache', async () => {

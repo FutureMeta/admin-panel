@@ -19,7 +19,7 @@ import { PageHeader, Panel, PanelBar } from '../components/page.tsx';
 import { numberFmt, StatsPanelsSkeleton } from '../components/stats-panels.tsx';
 import { EmptyState, Notice } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
-import { niceScale, segments } from '../lib/chart.ts';
+import { liveSplit, niceScale, segments } from '../lib/chart.ts';
 import {
   ALL,
   combineCombos,
@@ -210,7 +210,11 @@ function MatchesPanel({
         }}
       >
         {({ x, y, bottom }, hovered) => {
-          const lines = segments(values, x, y);
+          // L`ultimo bucket e` ancora aperto: tratteggiato, o le partite
+          // raccolte finora si leggono come un calo. Vedi `liveSplit`.
+          const split = liveSplit(values, data.liveTail);
+          const lines = segments(split.solid, x, y);
+          const liveLines = segments(split.live, x, y);
           const marked = hovered === null ? null : (values[hovered] ?? null);
           const area =
             lines.length > 0
@@ -234,6 +238,18 @@ function MatchesPanel({
                   strokeWidth={2.2}
                   strokeLinecap="round"
                   strokeLinejoin="round"
+                />
+              ))}
+              {liveLines.map((d) => (
+                <path
+                  key={`live-${d}`}
+                  d={d}
+                  fill="none"
+                  stroke="var(--blu-viz)"
+                  strokeWidth={2.2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeDasharray="5 4"
                 />
               ))}
               {/* Il punto sotto il cursore. Solo se un valore c'è: su un

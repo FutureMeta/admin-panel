@@ -36,6 +36,36 @@ export function niceScale(max: number, ticks = 4): { top: number; values: number
   return { top, values };
 }
 
+/**
+ * La serie divisa in DEFINITIVA e IN FORMAZIONE.
+ *
+ * L'ultimo punto di un grafico che arriva fino ad adesso e' un bucket ancora
+ * aperto: su 90g dura sei ore, sull'1y un giorno intero. La sua media e' la
+ * media di quello che si e' visto FINORA, quindi alle otto del mattino la
+ * colonna di oggi porta la media della notte — piu' bassa di qualunque giorno
+ * pieno accanto a lei.
+ *
+ * DISEGNATA COME LE ALTRE E' UNA BUGIA PLAUSIBILE: si legge come un crollo, e
+ * non c'e' niente nella figura che dica il contrario. Il contratto lo prevede
+ * da sempre (`liveTail`), ma nessun grafico lo disegnava: il campo esisteva,
+ * valeva `false` di default, e la frase «la UI lo tratteggia» era scritta nel
+ * codice del server e in nessun componente.
+ *
+ * Le due serie CONDIVIDONO il penultimo punto, quindi il tratto continua senza
+ * un buco nel mezzo: cambia solo da dove in poi e' tratteggiato.
+ */
+export function liveSplit(
+  values: readonly (number | null)[],
+  liveTail: boolean,
+): { solid: (number | null)[]; live: (number | null)[] } {
+  const n = values.length;
+  if (!liveTail || n < 2) return { solid: [...values], live: new Array<number | null>(n).fill(null) };
+  return {
+    solid: values.map((v, i) => (i <= n - 2 ? v : null)),
+    live: values.map((v, i) => (i >= n - 2 ? v : null)),
+  };
+}
+
 /** I segmenti di una serie, spezzati sui buchi: mai una linea sopra un `null`. */
 export function segments(
   values: (number | null)[],

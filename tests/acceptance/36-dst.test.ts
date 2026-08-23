@@ -173,9 +173,24 @@ describe('la serie non salta ne` ripete un bucket, nei due giorni in cui sarebbe
       }
       expect(new Set(t).size).toBe(t.length);
 
-      // E i punti restano quelli attesi per un periodo di sette giorni: se
-      // l'asse perdesse o inventasse ore, il conto non tornerebbe.
-      expect(t.length).toBeGreaterThanOrEqual(7 * 24 - 1);
+      // L'ULTIMO PUNTO E' L'ORA CHE CONTIENE ADESSO, non le 23 di ieri.
+      //
+      // E' la ragione per cui il conto non e' piu' `7 * 24`: la finestra
+      // arriva a stanotte e l'asse si taglia ad adesso, quindi le ore che
+      // mancano alla fine di oggi non ci sono. Prima il giorno in corso era
+      // fuori per intero e il grafico si fermava a ieri sera.
+      const nowSec = Math.floor(new Date(at).getTime() / 1_000);
+      const last = t.at(-1) as number;
+      expect(last).toBeLessThanOrEqual(nowSec);
+      // Dentro il bucket che contiene adesso. Due ore e non una: il 26
+      // ottobre le 02:00 esistono due volte e quel bucket ne dura due.
+      expect(nowSec - last).toBeLessThan(2 * 3_600);
+      expect(overview.liveTail).toBe(true);
+      expect(overview.closedThrough).toBe(last);
+
+      // E all'indietro l'asse copre comunque i sei giorni pieni piu' la parte
+      // di oggi: se perdesse o inventasse ore, il conto non tornerebbe.
+      expect(t.length).toBeGreaterThanOrEqual(6 * 24);
       expect(t.length).toBeLessThanOrEqual(7 * 24);
 
       // Nessuna copertura sopra il 100%: e` il sintomo di uno slot ripetuto o

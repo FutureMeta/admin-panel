@@ -92,9 +92,27 @@ export type OverviewPayload = {
   bucketSec: number;
   /** Quando il server ha prodotto QUESTI byte. */
   generatedAt: number;
-  /** Ultimo istante definitivo: fine dell'ultimo bucket chiuso. */
+  /**
+   * Ultimo istante definitivo: fine dell'ultimo bucket chiuso.
+   *
+   * Con `liveTail` e' anche l'INIZIO dell'ultimo punto disegnato, che e' lo
+   * stesso istante detto dai due lati. `assertPayload` lo verifica: i due
+   * campi descrivono lo stesso fatto e non possono divergere.
+   */
   closedThrough: number;
-  /** L'ultimo punto e' un bucket in corso: la UI lo tratteggia. */
+  /**
+   * L'ultimo punto e' un bucket in corso: il grafico lo tratteggia.
+   *
+   * NON E' UN'ANNOTAZIONE FACOLTATIVA. Un bucket aperto porta la media di
+   * quello che si e' visto finora: sull'1y, alle otto del mattino, la colonna
+   * di oggi e' la media della notte, piu' bassa di qualunque giorno pieno
+   * accanto a lei. Disegnata come le altre si legge come un crollo, e nella
+   * figura non c'e' niente che dica il contrario.
+   *
+   * Vale `false` solo dove l'ultimo bucket della finestra e' completo: oggi
+   * il 24h, la cui finestra si ferma all'ultimo intervallo da cinque minuti
+   * gia' chiuso.
+   */
   liveTail: boolean;
   /** Cadenze di campionamento distinte presenti nel range. */
   deltas: number[];
@@ -304,6 +322,26 @@ export function assertPayload(p: OverviewPayload | ModePayload): void {
     bad.push('la heatmap non e` 7x24');
   }
   if (p.uniques.v.length !== p.uniques.t.length) bad.push('uniques disallineata');
+
+  // LA CODA VIVA E IL CONFINE DEL DEFINITIVO DEVONO ACCORDARSI.
+  //
+  // Sono due campi che descrivono lo stesso fatto da due lati: `liveTail` dice
+  // che l'ultimo punto e' un bucket ancora aperto, `closedThrough` dice fin
+  // dove il dato non cambia piu'. Se divergono, il grafico tratteggia un punto
+  // che il resto del pannello considera definitivo — oppure, peggio, disegna
+  // pieno un bucket che sta ancora riempiendosi.
+  //
+  // Nessuno dei due, sbagliato, produce un errore: producono una figura che si
+  // legge benissimo.
+  const lastT = p.online.t.at(-1);
+  if (lastT !== undefined) {
+    if (p.liveTail && p.closedThrough !== lastT) {
+      bad.push(`liveTail dice che l'ultimo bucket e' aperto, ma closedThrough non e' il suo inizio`);
+    }
+    if (!p.liveTail && p.closedThrough <= lastT) {
+      bad.push(`senza liveTail l'ultimo bucket e' chiuso, quindi closedThrough deve stare oltre di lui`);
+    }
+  }
   if (p.geo && p.geo.cc.length !== p.geo.v.length) bad.push('geo disallineata');
   for (const m of p.modes) {
     if (!(m in p.online.series)) bad.push(`la modalita\` ${m} e\` nell'ordine ma non nei dati`);
@@ -351,8 +389,9 @@ export function assertPayload(p: OverviewPayload | ModePayload): void {
   // La mappa guarda UN SOLO GIORNO CIVILE, quello in corso, come chiede il
   // design («Giocatori unici oggi»). Su un giorno solo giocatori e
   // giocatori-giorno coincidono per definizione, e l'errore di unita' non e'
-  // costruibile. Confrontarla con `kpi.uniques`, che copre il PERIODO e
-  // esclude apposta il giorno in corso, sarebbe confrontare due popolazioni
+  // costruibile. Confrontarla con `kpi.uniques`, che copre il PERIODO
+  // INTERO — giorno in corso compreso, da quando la finestra arriva fino ad
+  // adesso — sarebbe confrontare due popolazioni
   // diverse e far fallire il payload per un disaccordo che non e' un difetto.
   //
   // Resta da difendere che i conteggi siano conteggi.

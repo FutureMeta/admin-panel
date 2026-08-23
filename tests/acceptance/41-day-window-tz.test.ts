@@ -98,11 +98,21 @@ describe('il fuso del processo non sposta la finestra dei giorni', () => {
     expect(payload.modes).toEqual(['duels']);
   });
 
-  it('e il punto sta sull`ultima casella dell`asse, non altrove', async () => {
+  it('e il punto sta sul suo giorno, con OGGI subito dopo', async () => {
     const { payload } = await buildOverview(db, '1y', NOW);
     const i = payload.online.total.findIndex((v) => v !== null);
-    // L'ultimo punto dell'asse e` la mezzanotte del 20: oggi si esclude
-    // perche` e` un giorno parziale.
-    expect(i).toBe(payload.online.t.length - 1);
+
+    // L'ULTIMA CASELLA E' OGGI, il 21, e il dato del 20 e` quella prima.
+    //
+    // Prima l'asse si fermava alla mezzanotte del 20 e il giorno in corso era
+    // fuori per intero: su un anno si notava poco, su sette giorni voleva
+    // dire un grafico fermo alle 23 di ieri. Adesso oggi c'e`, dichiarato
+    // come coda viva.
+    expect(i).toBe(payload.online.t.length - 2);
+    expect(payload.online.t.at(-1)).toBe(Math.floor(Date.UTC(2026, 7, 20, 22) / 1_000));
+    expect(payload.liveTail).toBe(true);
+    // Definitivo fino alla mezzanotte di stanotte, cioe` fino all'inizio del
+    // giorno in corso: oltre, il numero puo` ancora cambiare.
+    expect(payload.closedThrough).toBe(payload.online.t.at(-1));
   });
 });

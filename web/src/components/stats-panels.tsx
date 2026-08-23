@@ -13,7 +13,7 @@
 // stessa cosa detta a due livelli diversi.
 
 import type React from 'react';
-import { gaps, niceScale, readingsAt, segments } from '../lib/chart.ts';
+import { gaps, liveSplit, niceScale, readingsAt, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
 import { numberFmt, shareLabel } from '../lib/format.ts';
@@ -254,7 +254,11 @@ export function OnlineChart({
       }
     >
       {({ x, y, bottom }, hovered) => {
-        const totalSegments = segments(values, x, y);
+        // L'ultimo bucket e' ancora aperto: si disegna tratteggiato, o la sua
+        // media parziale si legge come un crollo. Vedi `liveSplit`.
+        const split = liveSplit(values, data.liveTail);
+        const totalSegments = segments(split.solid, x, y);
+        const liveSegments = segments(split.live, x, y);
         const area =
           totalSegments.length > 0
             ? `${totalSegments[0]} L${x(points - 1).toFixed(1)},${bottom} L${x(0).toFixed(1)},${bottom} Z`
@@ -309,6 +313,19 @@ export function OnlineChart({
                 strokeWidth="2.2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
+              />
+            ))}
+
+            {liveSegments.map((d) => (
+              <path
+                key={`live-${d.slice(0, 24)}`}
+                d={d}
+                fill="none"
+                stroke="var(--ac)"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray="5 4"
               />
             ))}
 

@@ -10,7 +10,7 @@
 // sbagliarne una produce un riquadro che si legge benissimo e dice il falso.
 
 import { describe, expect, it } from 'vitest';
-import { MAX_PARTS, readingsAt, type TipRow } from '#web/lib/chart.ts';
+import { liveSplit, MAX_PARTS, readingsAt, type TipRow } from '#web/lib/chart.ts';
 import { numberFmt } from '#web/lib/format.ts';
 
 function readings(
@@ -122,5 +122,48 @@ describe('l`ordine e il tetto', () => {
     const rows = readings(0, [80], exact);
     expect(rows).toHaveLength(1 + MAX_PARTS);
     expect(JSON.stringify(rows)).not.toContain('altre');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// La coda viva
+// ---------------------------------------------------------------------------
+
+describe('l`ultimo bucket e` ancora aperto, e il disegno lo dice', () => {
+  it('la parte definitiva e quella in formazione condividono un punto', () => {
+    // Se non lo condividessero, fra il tratto pieno e quello tratteggiato ci
+    // sarebbe un buco: si leggerebbe come un dato mancante, che e' proprio
+    // l'unica cosa che quel punto non e'.
+    const { solid, live } = liveSplit([10, 20, 30, 40], true);
+    expect(solid).toEqual([10, 20, 30, null]);
+    expect(live).toEqual([null, null, 30, 40]);
+  });
+
+  it('senza coda viva non si tratteggia niente', () => {
+    const { solid, live } = liveSplit([10, 20, 30], false);
+    expect(solid).toEqual([10, 20, 30]);
+    expect(live).toEqual([null, null, null]);
+  });
+
+  it('un punto solo non si puo` spezzare', () => {
+    // Due punti sono il minimo per disegnare un segmento: sotto, il
+    // tratteggio non avrebbe dove andare e il punto sparirebbe dal grafico.
+    const { solid, live } = liveSplit([42], true);
+    expect(solid).toEqual([42]);
+    expect(live).toEqual([null]);
+  });
+
+  it('un buco appena prima della coda resta un buco', () => {
+    // Il null non diventa un punto d'attacco per il tratteggio: la linea
+    // tratteggiata comincia dove c'e` un valore, o non comincia.
+    const { solid, live } = liveSplit([10, null, 30], true);
+    expect(solid).toEqual([10, null, null]);
+    expect(live).toEqual([null, null, 30]);
+  });
+
+  it('non tocca l`array che riceve', () => {
+    const values: (number | null)[] = [1, 2, 3];
+    liveSplit(values, true);
+    expect(values).toEqual([1, 2, 3]);
   });
 });

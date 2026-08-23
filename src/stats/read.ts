@@ -150,8 +150,72 @@ export function windowOf(range: Range, now: Date): Window {
     return { curTo, curFrom: new Date(curTo.getTime() - span) };
   }
   const days = plan.days as number;
-  const curTo = romeMidnight(now); // oggi si esclude: e' un giorno parziale
+  // OGGI E' DENTRO, e prima non lo era.
+  //
+  // La finestra finisce alla mezzanotte che VERRA', non a quella passata. Con
+  // `romeMidnight(now)` il giorno in corso restava fuori per intero: su 7g,
+  // 30g e 90g — che hanno bucket sotto la giornata — il grafico si fermava
+  // alle 23:00 di IERI, e nessuna spiegazione sul giorno parziale regge
+  // davanti a quel vuoto. Era la prima cosa che si notava aprendo la pagina.
+  //
+  // Il motivo per cui oggi era escluso resta vero: l'ultimo bucket e'
+  // parziale, e su un range a bucket giornaliero — l'1y — la media di mezza
+  // giornata si legge come un crollo. Ma la risposta giusta e' DICHIARARLO,
+  // non toglierlo: `liveEdge` taglia l'asse ad ADESSO invece che a stanotte,
+  // `closedThrough` dice fin dove il dato e' definitivo, `liveTail` dice che
+  // l'ultimo punto e' in formazione, e il grafico lo tratteggia.
+  //
+  // E' la stessa decisione gia' presa per i duels (`duelsWindowOf`), con le
+  // stesse parole: adesso e' una regola sola per tutto il pannello.
+  const curTo = shiftDays(romeMidnight(now), 1);
   return { curTo, curFrom: shiftDays(curTo, -days) };
+}
+
+/**
+ * Dove finisce cio' che si puo' disegnare, e dove finisce cio' che e' definitivo.
+ *
+ * L'asse arriva fino alla fine della finestra — cioe' a stanotte — ma i bucket
+ * dopo `now` non sono buchi: non sono ancora successi. Disegnarli come `null`
+ * riempirebbe il bordo destro di tratteggio «non rilevato», che e' una frase
+ * falsa su un pezzo di futuro; disegnarli come zero sarebbe peggio.
+ *
+ * Si taglia quindi al bucket che CONTIENE adesso, e si dice due cose distinte:
+ *
+ *   * `closedThrough` — la fine dell'ultimo bucket CHIUSO. Oltre, il numero
+ *     puo' ancora cambiare;
+ *   * `liveTail` — l'ultimo punto disegnato e' quel bucket in formazione.
+ *
+ * IL CONFINE SI CHIEDE ALL'ASSE, non si ricalcola. L'asse sa gia' dove
+ * cominciano i bucket, comprese le giornate storte del cambio ora: un secondo
+ * conto qui dentro sarebbe una seconda verita' che diverge il 26 ottobre.
+ *
+ * Sul 24h non cambia niente: la sua finestra si ferma gia' all'ultimo bucket
+ * chiuso, quindi non c'e' nessuna coda viva da dichiarare.
+ */
+export function liveEdge(
+  axis: readonly number[],
+  w: Window,
+  now: Date,
+): { axis: number[]; closedThrough: number; liveTail: boolean } {
+  const nowSec = Math.floor(now.getTime() / 1_000);
+  const endSec = Math.floor(w.curTo.getTime() / 1_000);
+
+  let lastIndex = -1;
+  for (let i = 0; i < axis.length; i += 1) {
+    if ((axis[i] as number) <= nowSec) lastIndex = i;
+    else break;
+  }
+  if (lastIndex < 0) return { axis: [], closedThrough: endSec, liveTail: false };
+
+  const kept = axis.slice(0, lastIndex + 1);
+  const last = axis[lastIndex] as number;
+  // La fine di quel bucket e' l'inizio del successivo. L'ultimo dell'asse
+  // finisce con la finestra.
+  const ends = lastIndex + 1 < axis.length ? (axis[lastIndex + 1] as number) : endSec;
+
+  return ends <= nowSec
+    ? { axis: kept, closedThrough: ends, liveTail: false }
+    : { axis: kept, closedThrough: last, liveTail: true };
 }
 
 type SeriesRow = {
@@ -1301,7 +1365,9 @@ export async function buildAll(
       return oa === ob ? a.localeCompare(b) : oa - ob;
     });
 
-  const axis = axisOf(range, w);
+  // L'asse arriva a stanotte; si disegna fino ad ADESSO. Vedi `liveEdge`.
+  const live = liveEdge(axisOf(range, w), w, now);
+  const axis = live.axis;
   const byT = new Map(cur.map((b) => [b.t, b]));
 
   const series: Record<string, (number | null)[]> = {};
@@ -1398,7 +1464,21 @@ export async function buildAll(
     }
   }
 
-  const kpi = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec);
+  // I KPI GUARDANO SOLO I BUCKET CHIUSI, e il contratto lo dice da sempre
+  // («Massimo osservato nei soli bucket CHIUSI del periodo»). Finche' oggi era
+  // fuori dalla finestra la distinzione non serviva; adesso serve, e senza,
+  // due numeri sbaglierebbero in silenzio: il picco potrebbe venire da un
+  // bucket misurato per dieci minuti, e la copertura dividerebbe i secondi
+  // osservati per una giornata intera che deve ancora succedere.
+  const closedMs = live.closedThrough * 1_000;
+  const closed = cur.filter((b) => b.t * 1_000 < closedMs);
+  const closedTo = new Date(closedMs);
+
+  const kpi = kpiOf(closed, w.curFrom, closedTo, plan.bucketSec);
+  // I GIOCATORI DISTINTI invece contano anche oggi, ed e' voluto: e' una
+  // domanda sulle PERSONE passate nel periodo, e il periodo adesso comprende
+  // il giorno in corso. Escluderlo era la stessa omissione che questo
+  // intervento toglie, un piano piu' in giu'.
   kpi.uniques = distinctNow;
 
   // Il grafico degli unici mostra gli ultimi trenta giorni e li confronta con
@@ -1443,8 +1523,8 @@ export async function buildAll(
     tz: ROME,
     bucketSec: plan.bucketSec,
     generatedAt: Math.floor(now.getTime() / 1_000),
-    closedThrough: Math.floor(w.curTo.getTime() / 1_000),
-    liveTail: false,
+    closedThrough: live.closedThrough,
+    liveTail: live.liveTail,
     deltas,
     modes,
     labels: dictionaryLabels(labels),
@@ -1540,7 +1620,7 @@ export async function buildAll(
   for (const m of modes) {
     if (want && !want.has(m)) continue;
     const line = series[m] ?? [];
-    const kpiMode = kpiOf(cur, w.curFrom, w.curTo, plan.bucketSec, (b) => b.byMode.get(m) ?? 0, false);
+    const kpiMode = kpiOf(closed, w.curFrom, closedTo, plan.bucketSec, (b) => b.byMode.get(m) ?? 0, false);
     kpiMode.uniques = distinctModeNow.get(m) ?? null;
 
     const byDay = dailyModeIndex.get(m);

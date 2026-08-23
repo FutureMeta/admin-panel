@@ -26,7 +26,12 @@ import type { Database } from '#src/db/pool.ts';
 import { DK, type DuelsTrends, duelsQuality, TOP_LIMIT } from '#src/duels/contract.ts';
 import type { DuelsProvider } from '#src/duels/provider.ts';
 import { inflate, type StatsCache } from '#src/stats/cache.ts';
-import type { OverviewPayload, Range } from '#src/stats/contract.ts';
+import {
+  NOT_COLLECTED_COUNTRY,
+  type OverviewPayload,
+  type Range,
+  UNRESOLVED_COUNTRY,
+} from '#src/stats/contract.ts';
 import { buildAll } from '#src/stats/read.ts';
 import { K, ttlOf } from '#src/stats/warm.ts';
 
@@ -156,33 +161,41 @@ export type NetworkTrend = {
   topModes: Array<{ mode: string; average: number }>;
 };
 
+/**
+ * Il payload di un periodo, per tutta la rete o per una modalita' sola.
+ *
+ * Sta in una funzione perche' lo chiedono in due — l'andamento e la
+ * provenienza geografica — e sono lo STESSO payload: chiederlo due volte con
+ * due strade diverse vorrebbe dire due chiavi di cache per la stessa cosa, e
+ * due risposte che possono divergere di un giro di riscaldamento.
+ */
+async function payloadFor(data: AssistantData, range: Range, mode: string | null): Promise<OverviewPayload> {
+  const db = data.statsDb;
+  if (!db) throw new NotConfigured('statistiche');
+  if (mode === null) return overview(data, range);
+
+  // Una modalita' sola: si costruisce quella e basta. Costruirle tutte per
+  // servirne una paga le tre query per modalita', che sono le piu' care.
+  const env = await data.cache.envelope(
+    K.md(mode, range),
+    async () => {
+      const built = await buildAll(db, range, undefined, [mode]);
+      const one = built.perMode.get(mode);
+      if (!one) throw new UnknownMode(mode);
+      return Buffer.from(JSON.stringify(one), 'utf8');
+    },
+    ttlOf(),
+    5,
+  );
+  return JSON.parse(await inflate(env)) as OverviewPayload;
+}
+
 export async function readNetworkTrend(
   data: AssistantData,
   range: Range,
   mode: string | null,
 ): Promise<NetworkTrend> {
-  const db = data.statsDb;
-  if (!db) throw new NotConfigured('statistiche');
-
-  if (mode !== null) {
-    // Una modalita' sola: si costruisce quella e basta. Costruirle tutte per
-    // servirne una paga le tre query per modalita', che sono le piu' care.
-    const env = await data.cache.envelope(
-      K.md(mode, range),
-      async () => {
-        const built = await buildAll(db, range, undefined, [mode]);
-        const one = built.perMode.get(mode);
-        if (!one) throw new UnknownMode(mode);
-        return Buffer.from(JSON.stringify(one), 'utf8');
-      },
-      ttlOf(),
-      5,
-    );
-    const payload = JSON.parse(await inflate(env)) as OverviewPayload;
-    return project(payload, range, mode);
-  }
-
-  return project(await overview(data, range), range, null);
+  return project(await payloadFor(data, range, mode), range, mode);
 }
 
 export class UnknownMode extends Error {
@@ -229,6 +242,76 @@ function project(payload: OverviewPayload, range: Range, mode: string | null): N
     coverage: Math.round(payload.kpi.coverage * 1000) / 1000,
     closedThrough: payload.closedThrough,
     topModes,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Provenienza geografica
+// ---------------------------------------------------------------------------
+
+export type NetworkCountries = {
+  range: Range;
+  mode: string | null;
+  /**
+   * `false` quando la geolocalizzazione non e' attiva su questa installazione.
+   *
+   * NON E' LA STESSA COSA DI UN ELENCO VUOTO, ed e' la distinzione per cui
+   * questo campo esiste: «la funzione e' spenta» manda a guardare la
+   * configurazione, «nessuno ha un paese in questo periodo» manda a guardare
+   * la raccolta. Confonderle fa perdere un pomeriggio.
+   */
+  enabled: boolean;
+  /** Persone con un paese noto, nel periodo. E' il denominatore delle righe. */
+  total: number;
+  countries: Array<{ cc: string; players: number }>;
+  /** Cio' che resta fuori dal taglio, aggregato: il totale sopra resta vero. */
+  others: { countries: number; players: number } | null;
+  /** Le due chiavi che NON sono paesi. Viaggiano col dato, non nel prompt. */
+  legend: { unresolved: string; notCollected: string };
+};
+
+/**
+ * Quante PERSONE, e da dove, nel periodo selezionato.
+ *
+ * L'UNITA' E' LA PERSONA, non la presenza giornaliera: la query conta
+ * `DISTINCT ON (player_id)` e assegna a ciascuno un paese solo, quello noto
+ * piu' recente. Chiamarli «accessi» o sommarli fra periodi darebbe un numero
+ * piu' grande e senza significato — ed e' l'errore di unita' che
+ * `assertPayload` sorveglia da mesi sul lato schermata.
+ *
+ * SEGUE IL SELETTORE, come la mappa della panoramica: «da dove viene la gente»
+ * su ventiquattro ore e su un anno sono due domande diverse.
+ */
+export async function readNetworkCountries(
+  data: AssistantData,
+  range: Range,
+  mode: string | null,
+  limit: number,
+): Promise<NetworkCountries> {
+  const payload = await payloadFor(data, range, mode);
+  const geo = payload.geo;
+
+  const rows = geo ? geo.cc.map((cc, i) => ({ cc, players: geo.v[i] ?? 0 })) : [];
+  // Gia' ordinate per numero decrescente dal costruttore del payload; si
+  // riordina lo stesso perche' dipendere dall'ordine di qualcun altro e' il
+  // genere di legame che si rompe senza dirlo.
+  rows.sort((a, b) => b.players - a.players || a.cc.localeCompare(b.cc));
+
+  const kept = rows.slice(0, limit);
+  const rest = rows.slice(limit);
+
+  return {
+    range,
+    mode: mode === null ? null : (payload.labels[mode] ?? mode),
+    enabled: payload.geoEnabled,
+    // IL TOTALE E' QUELLO VERO, non la somma delle righe spedite: un taglio
+    // che cambia anche il denominatore trasforma ogni percentuale in una
+    // percentuale di qualcos'altro.
+    total: rows.reduce((a, r) => a + r.players, 0),
+    countries: kept,
+    others:
+      rest.length === 0 ? null : { countries: rest.length, players: rest.reduce((a, r) => a + r.players, 0) },
+    legend: { unresolved: UNRESOLVED_COUNTRY, notCollected: NOT_COLLECTED_COUNTRY },
   };
 }
 

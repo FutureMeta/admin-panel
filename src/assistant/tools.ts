@@ -1,7 +1,7 @@
-// I cinque tool di Svetlana. Sono l'UNICA porta sui dati.
+// I tool di Svetlana. Sono l'UNICA porta sui dati.
 //
 // Il modello non riceve mai una connessione al database ne' una query da
-// eseguire: riceve queste cinque funzioni, con parametri validati e uno schema
+// eseguire: riceve queste funzioni, con parametri validati e uno schema
 // `strict`. Cio' che non e' qui dentro non e' raggiungibile, e questo file si
 // legge tutto d'un fiato apposta.
 //
@@ -24,7 +24,7 @@
 // quel controllo.
 //
 // ----------------------------------------------------------------------------
-// I TOOL CI SONO SEMPRE TUTTI E CINQUE, anche per chi non ha i permessi.
+// I TOOL CI SONO SEMPRE TUTTI, anche per chi non ha i permessi.
 //
 // Sembra il contrario di quello che si vorrebbe, e invece e' la scelta giusta
 // per due ragioni indipendenti. La prima e' di sicurezza: l'elenco dei tool
@@ -61,6 +61,7 @@ import {
   type AssistantData,
   NotConfigured,
   readDuelsSummary,
+  readNetworkCountries,
   readNetworkTrend,
   readOnlineNow,
   readRecentAudit,
@@ -289,7 +290,7 @@ class BadArgument extends Error {
 }
 
 // ---------------------------------------------------------------------------
-// I cinque tool, in ORDINE ALFABETICO.
+// I tool, in ORDINE ALFABETICO.
 //
 // L'ordine non e' estetica: i tool stanno in posizione zero del prefisso della
 // richiesta, quindi riordinarli invalida la cache di ogni conversazione in
@@ -347,6 +348,35 @@ export function buildTools(context: ToolContext): AssistantTool[] {
         run: guarded({ name: 'duels_summary', module: 'duels', level: 1 }, context, (input) =>
           readDuelsSummary(context.data, input.range, context.now),
         ),
+      }),
+    },
+    {
+      name: 'network_countries',
+      kind: 'read',
+      requires: { module: 'statistiche', level: 1 },
+      tool: betaZodTool({
+        name: 'network_countries',
+        description:
+          'Da quali PAESI vengono i giocatori nel periodo. Conta PERSONE, non accessi: ogni giocatore ' +
+          'compare una volta sola, con il paese noto piu` recente. I codici sono ISO 3166-1 alpha-2 ' +
+          '("IQ" e` l`Iraq). DUE VALORI NON SONO PAESI e non vanno mai riportati come tali: "XX" e` chi ' +
+          'ha un indirizzo che non si e` riusciti a risolvere, "--" chi e` stato visto quando la ' +
+          'geolocalizzazione era spenta. Se `enabled` e` falso la funzione non e` attiva su questa ' +
+          'installazione, che e` diverso da «nessuno in questo periodo». Segue il periodo scelto: su ' +
+          '24 ore e su un anno sono due domande diverse.',
+        inputSchema: z.strictObject({
+          range: rangeSchema.describe('il periodo: 24h, 7d, 30d, 90d o 1y'),
+          mode: z.string().nullable(),
+          limit: z.int().describe('quanti paesi al massimo, dal piu` popolato. Da 1 a 60'),
+        }),
+        run: guarded({ name: 'network_countries', module: 'statistiche', level: 1 }, context, (input) => {
+          if (input.mode !== null && !MODE_KEY.test(input.mode)) {
+            throw new BadArgument(
+              'la chiave di una modalita` e` fatta di lettere minuscole, cifre e trattini bassi',
+            );
+          }
+          return readNetworkCountries(context.data, input.range, input.mode, clamp(input.limit, 1, 60));
+        }),
       }),
     },
     {

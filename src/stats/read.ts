@@ -1495,11 +1495,16 @@ export async function buildAll(
   // LA MAPPA E IL KPI DEGLI UNICI ORA MISURANO PERIODI DIVERSI, e va detto
   // perche' e' una scelta e non una svista.
   //
-  // La mappa guarda il giorno in corso (il design: «Giocatori unici oggi»);
-  // `kpi.uniques` guarda il periodo del range ed esclude apposta il giorno
-  // parziale, o il confronto con il periodo precedente sarebbe truccato. Sono
-  // due domande diverse — «da dove viene la gente adesso» e «quante persone in
-  // questo mese» — e le loro etichette lo dicono.
+  // La mappa conta le PERSONE del periodo selezionato — `DISTINCT ON
+  // (player_id)`, un paese a testa, quello noto piu' recente — e segue il
+  // selettore come il resto della pagina. `kpi.uniques` conta le persone dello
+  // stesso periodo ma sui soli bucket chiusi.
+  //
+  // (Qui c'era scritto «la mappa guarda il giorno in corso». Era vero quando
+  // la mappa era ferma a oggi, e non lo e' piu' da quando segue il selettore:
+  // il commento nel riquadro della schermata lo dice, questo era rimasto
+  // indietro. Un commento che descrive il codice di ieri e' peggio di nessun
+  // commento — l'ho letto e stavo per descrivere male il dato.)
   //
   // Il difetto che questa separazione TOGLIE: finche' i due numeri dovevano
   // coincidere, bastava una riga di `player_day` committata fra le due query —

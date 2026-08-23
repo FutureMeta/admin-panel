@@ -11,6 +11,7 @@ import { describe, expect, it } from 'vitest';
 import { costUsd, EFFORTS, isEffort, MAX_ITERATIONS, usageOf } from '#src/assistant/config.ts';
 import { AssistantMeter, metricLines } from '#src/assistant/metrics.ts';
 import { SCREENS, screenOf } from '#src/assistant/pages.ts';
+import { SYSTEM_PROMPT } from '#src/assistant/prompt.ts';
 import { monthKey } from '#src/assistant/store.ts';
 import { type AssistantTool, sealWrites } from '#src/assistant/tools.ts';
 import { NAV } from '#web/lib/nav.ts';
@@ -162,5 +163,51 @@ describe('le metriche dicono la cosa che serve sapere', () => {
     expect(lines).toContain('metamc_assistant_iterations_total 2');
     expect(lines).toContain('metamc_assistant_tool_calls_total{tool="audit_recent",outcome="denied"} 1');
     expect(lines).toContain('metamc_assistant_spend_usd 1.5000');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// L'ambito
+// ---------------------------------------------------------------------------
+
+describe('il prompt dice anche di cosa NON si occupa', () => {
+  // DUE COMPORTAMENTI OSSERVATI IN PRODUZIONE, il 2026-08-23.
+  //
+  // Alla domanda «l'articolo 75 sugli stupefacenti vale anche su metamc?»
+  // Svetlana non ha risposto nel merito — giusto — ma ci ha ragionato sopra e
+  // ha tirato fuori il DPR 309/90 dalla propria memoria: token e tempo spesi
+  // per una domanda che si chiude in una riga.
+  //
+  // Alla ricetta della carbonara ha detto di no e poi ha elencato pecorino,
+  // guanciale e pepe. Un rifiuto seguito dalla risposta E' la risposta, con in
+  // piu' l'aria di aver rispettato una regola: e' il caso peggiore dei tre,
+  // perche' sembra a posto.
+  //
+  // Il prompt diceva cosa Svetlana E' e non diceva niente di cosa fare con una
+  // domanda che col pannello non c'entra. Questi sono canarini: se qualcuno
+  // riscrive il prompt e toglie la sezione, il file si accende.
+  it('dichiara che una domanda fuori ambito si chiude in UNA RIGA', () => {
+    expect(SYSTEM_PROMPT).toContain('UNA RIGA');
+    expect(SYSTEM_PROMPT).toMatch(/non ci ragioni sopra/i);
+  });
+
+  it('e che rifiutare e poi rispondere lo stesso E` rispondere', () => {
+    expect(SYSTEM_PROMPT).toContain('Un rifiuto seguito dalla risposta');
+    // I due esempi veri restano scritti: un divieto astratto si aggira senza
+    // accorgersene, uno con dentro il caso che e' successo no.
+    expect(SYSTEM_PROMPT).toMatch(/pecorino/i);
+  });
+
+  it('e che non ha fonti oltre agli strumenti', () => {
+    expect(SYSTEM_PROMPT).toContain('NON HAI FONTI OLTRE AGLI STRUMENTI');
+    // Il caso concreto: niente numeri di articolo tirati fuori dalla memoria.
+    expect(SYSTEM_PROMPT).toMatch(/numeri di articolo/i);
+  });
+
+  it('e che il regolamento del network non sta nel pannello', () => {
+    // La domanda sull'articolo 75 era, in fondo, «che regole avete»: una
+    // domanda legittima a cui il pannello non sa rispondere, perche' il
+    // regolamento non c'e' dentro. Dirlo e' meglio che dedurlo dai dati.
+    expect(SYSTEM_PROMPT).toMatch(/REGOLAMENTO del network non sta nel pannello/i);
   });
 });

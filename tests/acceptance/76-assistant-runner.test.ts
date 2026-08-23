@@ -132,6 +132,7 @@ describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
     expect(names).toEqual([
       'audit_recent',
       'duels_summary',
+      'network_countries',
       'network_online',
       'network_trend',
       'panel_user_search',

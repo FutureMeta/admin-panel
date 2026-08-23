@@ -170,6 +170,7 @@ export function applyEvent(state: SvState, event: SvEvent): SvState {
 const TOOL_LABELS: Record<string, string> = {
   audit_recent: 'sta leggendo il registro attività',
   duels_summary: 'sta guardando i duels',
+  network_countries: 'sta guardando da dove vengono',
   network_online: 'sta guardando chi è online',
   network_trend: 'sta guardando l’andamento',
   panel_user_search: 'sta cercando nel pannello',

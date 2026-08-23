@@ -12,19 +12,30 @@ Svetlana è un pannello dentro l'app shell, non una schermata. Vede su quale
 pagina si trova chi le scrive (e con che periodo e che modalità, dove la
 schermata ne ha), così «e i duels di ieri?» ha un significato.
 
-Ha cinque strumenti e nient'altro. Non riceve mai una connessione al database
+Ha sei strumenti e nient'altro. Non riceve mai una connessione al database
 né una query da eseguire:
 
 | Strumento | Cosa legge | Serve il modulo |
 |---|---|---|
 | `network_online` | giocatori adesso, ripartizione per modalità, record | `statistiche` ≥ 1 |
 | `network_trend` | media, picco, unici, copertura su un periodo | `statistiche` ≥ 1 |
+| `network_countries` | da quali paesi vengono i giocatori del periodo | `statistiche` ≥ 1 |
 | `duels_summary` | partite, top modalità e mappe, ore di punta | `duels` ≥ 1 |
 | `panel_user_search` | una persona dello staff: ruoli, stato, ultimo accesso | `utenti` ≥ 1 |
 | `audit_recent` | ultime voci del registro attività | `audit` ≥ 1 |
 
 Fuori da questo elenco non c'è niente: nessuna scrittura, nessuna
 configurazione, nessun ban, nessun invito.
+
+**E fuori dal pannello non c'è niente affatto.** Ricette, leggi, codice,
+opinioni: una domanda fuori ambito si chiude in una riga, senza ragionarci
+sopra e **senza rispondere lo stesso**. Il modo tipico di sbagliare non è
+rispondere: è rifiutare e poi rispondere — «non è il mio campo, comunque
+servono pecorino e guanciale» — che è la risposta con in più l'aria di aver
+rispettato una regola. Svetlana non ha fonti oltre agli strumenti: non
+naviga, non cita norme, non usa quello che sa del mondo. E il **regolamento
+del network non sta nel pannello**: se le chiedono cosa è permesso ai
+giocatori, la risposta è che qui non c'è.
 
 **I numeri sono gli stessi delle schermate.** Statistiche e duels passano dagli
 stessi costruttori di payload e dalla stessa cache che servono le rotte del
@@ -54,7 +65,7 @@ il controllo la chiamata riesce. Il test verifica che il risultato non
 contenga l'indirizzo cercato — la differenza fra «ha detto di no» e «non ha
 guardato».
 
-Gli strumenti ci sono **tutti e cinque per tutti**, anche per chi non ha i
+Gli strumenti ci sono **tutti, per tutti**, anche per chi non ha i
 permessi. Un elenco filtrato per ruolo sposterebbe la decisione fuori dal
 corpo dello strumento (e invita a fidarsene), e farebbe cambiare il prefisso
 della richiesta da persona a persona, cioè una cache che non si riusa mai.

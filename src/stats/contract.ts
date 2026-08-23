@@ -386,13 +386,15 @@ export function assertPayload(p: OverviewPayload | ModePayload): void {
   // in entrambe le legende — cioe' una mappa contata in giocatori-GIORNO
   // accanto a un KPI contato in giocatori.
   //
-  // La mappa guarda UN SOLO GIORNO CIVILE, quello in corso, come chiede il
-  // design («Giocatori unici oggi»). Su un giorno solo giocatori e
-  // giocatori-giorno coincidono per definizione, e l'errore di unita' non e'
-  // costruibile. Confrontarla con `kpi.uniques`, che copre il PERIODO
-  // INTERO — giorno in corso compreso, da quando la finestra arriva fino ad
-  // adesso — sarebbe confrontare due popolazioni
-  // diverse e far fallire il payload per un disaccordo che non e' un difetto.
+  // LA MAPPA CONTA PERSONE, non giocatori-giorno: `DISTINCT ON (player_id)`
+  // sul periodo, un paese a testa. L'errore di unita' quindi non e'
+  // costruibile, ed e' questo che l'invariante deve difendere.
+  //
+  // Non si confronta con `kpi.uniques` benche' oggi guardino lo stesso
+  // periodo: quello si ferma ai bucket chiusi e la mappa arriva ad adesso, e
+  // basta una riga di `player_day` committata fra le due query — a mezzanotte
+  // succede — per far fallire il payload su un disaccordo che non e' un
+  // difetto.
   //
   // Resta da difendere che i conteggi siano conteggi.
   if (p.geo) {

@@ -10,7 +10,7 @@
 // risposta incompleta che sembra completa.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { MAX_ITERATIONS } from '#src/assistant/config.ts';
+import { ASSISTANT_MODEL, costUsd, MAX_ITERATIONS, PRICE_USD_PER_MTOK } from '#src/assistant/config.ts';
 import { SYSTEM_PROMPT } from '#src/assistant/prompt.ts';
 import type { AssistantData } from '#src/assistant/reader.ts';
 import { type AssistantEvent, type RunResult, runAssistant } from '#src/assistant/runner.ts';
@@ -194,7 +194,7 @@ describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
 
   it('modello, pensiero, profondita` e ripiego sono quelli decisi', async () => {
     const { capture } = await run([{ text: 'ciao' }]);
-    expect(capture.params?.model).toBe('claude-opus-5');
+    expect(capture.params?.model).toBe(ASSISTANT_MODEL);
     // Adattivo: sul modello corrente un budget fisso di token e' un 400.
     expect(capture.params?.thinking).toEqual({ type: 'adaptive' });
     // La profondita' si regola con l'effort, non con la temperatura — che su
@@ -204,6 +204,35 @@ describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
     expect(capture.params?.fallbacks).toBe('default');
     expect(capture.params?.betas).toContain('server-side-fallback-2026-07-01');
     expect(capture.params?.max_iterations).toBe(MAX_ITERATIONS);
+  });
+
+  // IL PARAMETRO E IL SUO HEADER NON SI SEPARANO. `speed: "fast"` senza
+  // `fast-mode-2026-02-01` e' un campo sconosciuto, cioe' un 400 su OGNI
+  // messaggio; l'header senza il parametro e' un giro a vuoto. Vengono dalla
+  // stessa tabella proprio per non poter divergere, e questo test guarda la
+  // richiesta vera invece della tabella — altrimenti proverebbe se stessa.
+  it('la velocita` viaggia insieme al suo header, o non viaggia', async () => {
+    const { capture } = await run([{ text: 'ciao' }]);
+    const chiesta = capture.params?.speed as string | undefined;
+    const betas = (capture.params?.betas as string[] | undefined) ?? [];
+    const header = betas.includes('fast-mode-2026-02-01');
+    expect(chiesta === 'fast').toBe(header);
+    // E la configurazione in vigore e' quella normale: `fast` esiste solo su
+    // Opus e raddoppia il listino, quindi accenderla si vede da qui.
+    expect(chiesta).toBeUndefined();
+  });
+
+  // I prezzi seguono il modello DA SOLI. Erano una costante a parte, ed e' il
+  // guasto silenzioso per eccellenza: cambi modello, il tetto di spesa
+  // continua a contare col listino di prima e nessuno se ne accorge finche'
+  // non arriva la fattura.
+  it('i prezzi sono quelli del modello scelto, non di un altro', () => {
+    expect(ASSISTANT_MODEL).toBe('claude-sonnet-5');
+    expect(PRICE_USD_PER_MTOK).toEqual({ input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 });
+    // Un milione di token in ingresso costa due dollari. Se questa riga
+    // cambia senza che sia cambiato il modello, e' un errore di battitura nel
+    // listino.
+    expect(costUsd({ input: 1_000_000, output: 0, cacheWrite: 0, cacheRead: 0 })).toBeCloseTo(2, 10);
   });
 });
 

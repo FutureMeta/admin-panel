@@ -251,6 +251,32 @@ arriverebbe tutta insieme.
 
 ## 6. Costi — cosa guardare
 
+### Il modello, e perché questo
+
+`ASSISTANT_MODEL` e `ASSISTANT_SPEED` stanno in `config.ts`, non nell'ambiente:
+cambiarli cambia i prezzi, il comportamento degli strumenti e la validità della
+cache, quindi è una modifica che qualcuno rivede.
+
+In vigore: **`claude-sonnet-5` a velocità normale**, 2 $/MTok in ingresso e
+10 $/MTok in uscita. Prima era `claude-opus-5` a 5 e 25. Le domande di un
+pannello sono ricerche su dati già aggregati, non ragionamenti lunghi: è il
+lavoro su cui Sonnet 5 sta nella classe di latenza «veloce» dove Opus 5 sta in
+«moderata». Meno attesa e meno spesa, dalla stessa riga.
+
+**Sulla velocità `fast`.** Esiste solo su Opus 5 e Opus 4.8, è in anteprima di
+ricerca (l'accesso si chiede), e raddoppia il listino: 10 e 50 $/MTok. Soprattutto,
+accelera i token *in uscita* e non il tempo fino alla prima parola — che in una
+chat con gli strumenti arriva dopo le letture, cioè proprio la parte che `fast`
+non tocca. Per provarla servono due righe in `config.ts`: `claude-opus-5` come
+modello e `'fast'` come velocità.
+
+Le combinazioni impossibili **non compilano**. I prezzi stanno dentro la tabella
+dei modelli e la coppia modello + velocità li sceglie da sola: `'fast'` con
+Sonnet 5 è un errore di tipo, non un 400 scoperto dai log, e cambiare modello
+non può lasciare indietro il listino su cui conta il tetto di spesa.
+
+### I limiti
+
 Una chat con gli strumenti può chiamare l'API più volte per una sola domanda,
 quindi il costo non è intuitivo. I limiti sono strutturali:
 
@@ -330,7 +356,7 @@ Il primo messaggio dopo un rilascio va quindi guardato, non dato per buono.
 
 ```
 src/assistant/
-  config.ts    modello, tetti, prezzi, conversione dei token
+  config.ts    modello e velocità, tetti, prezzi, conversione dei token
   prompt.ts    il prompt CONGELATO, e il contesto variabile della pagina
   pages.ts     le schermate viste dal server: il titolo non viene dal client
   reader.ts    le letture — tutta la superficie che l'assistente può toccare

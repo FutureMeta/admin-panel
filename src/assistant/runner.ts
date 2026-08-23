@@ -30,6 +30,7 @@ import {
   MAX_ITERATIONS,
   MAX_TOKENS,
   NO_TOKENS,
+  SPEED_PARAM,
   type TokenUsage,
   usageOf,
 } from './config.ts';
@@ -192,6 +193,9 @@ export async function* runAssistant(
     {
       model: ASSISTANT_MODEL,
       max_tokens: MAX_TOKENS,
+      // Vuoto a velocita' normale. Quando c'e', arriva con il suo header beta
+      // dalla stessa tabella: il parametro e l'header non si separano.
+      ...SPEED_PARAM,
       betas: [...ASSISTANT_BETAS, 'compact-2026-01-12'],
       // Sul modello corrente il pensiero e' adattivo: decide da se' quanto
       // pensare. La PROFONDITA' si regola con l'effort, non con parametri di

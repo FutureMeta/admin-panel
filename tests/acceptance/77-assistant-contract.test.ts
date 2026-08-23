@@ -32,11 +32,20 @@ describe('i token si convertono in dollari come il fornitore li conta', () => {
   it('la lettura dalla cache costa un decimo dell`input', () => {
     const soloInput = costUsd({ input: 1_000_000, output: 0, cacheWrite: 0, cacheRead: 0 });
     const soloCache = costUsd({ input: 0, output: 0, cacheWrite: 0, cacheRead: 1_000_000 });
-    expect(soloInput).toBeCloseTo(5, 6);
-    expect(soloCache).toBeCloseTo(0.5, 6);
-    // E' il rapporto che rende la cache la voce piu' pesante di tutte su una
-    // conversazione lunga: dieci volte meno per gli stessi token.
+    // I RAPPORTI e non le cifre: il listino cambia quando cambia il modello, e
+    // un test sui numeri assoluti si romperebbe a ogni cambio senza aver
+    // provato niente. Le cifre in vigore le fissa il test 76, dove stanno
+    // accanto al nome del modello che le giustifica.
+    //
+    // Questo e' il rapporto documentato dal fornitore, uguale su ogni modello
+    // e su ogni velocita', ed e' cio' che rende la cache la voce piu' pesante
+    // di tutte su una conversazione lunga: dieci volte meno per gli stessi
+    // token.
     expect(soloInput / soloCache).toBeCloseTo(10, 6);
+    // E la scrittura a cinque minuti costa un quarto in piu' dell'input. Le
+    // due insieme dicono che la cache si ripaga dopo UNA sola rilettura.
+    const soloScrittura = costUsd({ input: 0, output: 0, cacheWrite: 1_000_000, cacheRead: 0 });
+    expect(soloScrittura / soloInput).toBeCloseTo(1.25, 6);
   });
 
   it('zero token costano zero, non NaN', () => {

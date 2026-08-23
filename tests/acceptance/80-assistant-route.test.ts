@@ -11,6 +11,7 @@
 
 import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ASSISTANT_MODEL } from '#src/assistant/config.ts';
 import { type Actor, loginAs, seedUser } from '#tests/support/actors.ts';
 import { cookieHeader, sameOriginHeaders, startTestApp, type TestApp } from '#tests/support/app.ts';
 import { emptyCapture, type FakeTurn, fakeAnthropic } from '#tests/support/fake-anthropic.ts';
@@ -257,7 +258,7 @@ describe('il registro attivita`', () => {
     // interpretabili.
     expect(meta.via).toBe('assistant');
     expect(meta.question).toBe('quanti online adesso?');
-    expect(meta.model).toBe('claude-opus-5');
+    expect(meta.model).toBe(ASSISTANT_MODEL);
     // Senza gli strumenti chiamati, «ha parlato con Svetlana» non risponde a
     // «chi ha guardato quei dati».
     expect(meta.calls.map((c) => c.tool)).toEqual(['network_online']);

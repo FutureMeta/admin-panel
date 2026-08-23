@@ -151,6 +151,9 @@ describe('le metriche dicono la cosa che serve sapere', () => {
       usage: { input: 10, output: 5, cacheWrite: 0, cacheRead: 900 },
       iterations: 2,
       truncated: false,
+      totalMs: 4200,
+      firstTextMs: 3100,
+      toolMs: 180,
     });
     meter.recordTool('audit_recent', 'denied');
     const lines = metricLines(meter, { usd: 1.5, capUsd: 50 }).join('\n');
@@ -163,6 +166,13 @@ describe('le metriche dicono la cosa che serve sapere', () => {
     expect(lines).toContain('metamc_assistant_iterations_total 2');
     expect(lines).toContain('metamc_assistant_tool_calls_total{tool="audit_recent",outcome="denied"} 1');
     expect(lines).toContain('metamc_assistant_spend_usd 1.5000');
+    // I TRE TEMPI SEPARATI: «e' lenta» ha tre cause con tre rimedi diversi, e
+    // un totale solo non dice quale. `tool_ms` basso con `duration` alto vuol
+    // dire che il tempo e' nell'attesa dell'API, non nelle query.
+    expect(lines).toContain('metamc_assistant_duration_ms_total 4200');
+    expect(lines).toContain('metamc_assistant_first_text_ms_total 3100');
+    expect(lines).toContain('metamc_assistant_tool_ms_total 180');
+    expect(lines).toContain('metamc_assistant_answered_total 1');
   });
 });
 

@@ -76,6 +76,26 @@ export type RunDeps = {
   signal: AbortSignal;
 };
 
+/**
+ * DOVE VA IL TEMPO di una risposta.
+ *
+ * Senza questi numeri «e' lenta» non e' una diagnosi: puo' essere l'API, i
+ * giri del ciclo, o una query. Sono tre cause con tre rimedi diversi e
+ * nessuna somiglianza fra loro, e sceglierne una a occhio significa
+ * ottimizzare la parte sbagliata.
+ *
+ * `firstTextMs` e' la LATENZA PERCEPITA: quanto passa prima che compaia la
+ * prima parola. In una chat conta piu' del totale — e con i tool arriva DOPO
+ * le letture, non prima, perche' il modello parla quando ha i dati.
+ */
+export type RunTimings = {
+  totalMs: number;
+  /** Dalla domanda alla prima parola scritta. `null` se non ha scritto niente. */
+  firstTextMs: number | null;
+  /** Somma del tempo passato DENTRO i tool: query, cache, database. */
+  toolMs: number;
+};
+
 export type RunResult = {
   /** I turni da conservare. Senza i messaggi di sistema: vedi `stripSystem`. */
   turns: Turn[];
@@ -84,6 +104,7 @@ export type RunResult = {
   iterations: number;
   truncated: boolean;
   stopReason: string | null;
+  timings: RunTimings;
 };
 
 /** Il client verso l'API. La chiave sta nell'ambiente del processo e non esce da qui. */
@@ -208,6 +229,8 @@ export async function* runAssistant(
   let usage: TokenUsage = NO_TOKENS;
   let iterations = 0;
   let drained = 0;
+  const startedAt = Date.now();
+  let firstTextAt: number | null = null;
 
   /** Gli esiti dei tool eseguiti dall'ultimo giro. */
   function* fresh(): Generator<AssistantEvent> {
@@ -232,6 +255,7 @@ export async function* runAssistant(
         yield { type: 'tool', name: event.content_block.name, outcome: 'running' };
       }
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        firstTextAt ??= Date.now();
         yield { type: 'text', delta: event.delta.text };
       }
     }
@@ -271,6 +295,12 @@ export async function* runAssistant(
     iterations,
     truncated,
     stopReason,
+    timings: {
+      totalMs: Date.now() - startedAt,
+      firstTextMs: firstTextAt === null ? null : firstTextAt - startedAt,
+      // I tool si sommano da soli: ognuno si e' misurato in `guarded`.
+      toolMs: calls.reduce((a, c) => a + c.ms, 0),
+    },
   };
 }
 

@@ -25,6 +25,18 @@ export type AssistantMetrics = {
   /** Messaggi rifiutati perche' il tetto di spesa del mese e' finito. */
   overBudget: number;
   iterations: number;
+  /**
+   * I millisecondi, sommati. Divisi per `messages` danno la media.
+   *
+   * TRE NUMERI E NON UNO, perche' «e' lenta» ha tre cause con tre rimedi
+   * diversi: l'attesa dell'API, i giri del ciclo, le query. Un totale solo
+   * non dice quale.
+   */
+  totalMs: number;
+  firstTextMs: number;
+  /** Quanti messaggi hanno prodotto testo: e' il denominatore di `firstTextMs`. */
+  answered: number;
+  toolMs: number;
   tokens: TokenUsage;
   /** Chiamate per tool e per esito: `bySucceeded['audit_recent']`, e cosi' via. */
   toolCalls: Map<string, number>;
@@ -37,6 +49,10 @@ function empty(): AssistantMetrics {
     truncated: 0,
     overBudget: 0,
     iterations: 0,
+    totalMs: 0,
+    firstTextMs: 0,
+    answered: 0,
+    toolMs: 0,
     tokens: { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 },
     toolCalls: new Map(),
   };
@@ -49,10 +65,23 @@ export class AssistantMeter {
     return this.#state;
   }
 
-  recordMessage(opts: { usage: TokenUsage; iterations: number; truncated: boolean }): void {
+  recordMessage(opts: {
+    usage: TokenUsage;
+    iterations: number;
+    truncated: boolean;
+    totalMs: number;
+    firstTextMs: number | null;
+    toolMs: number;
+  }): void {
     const s = this.#state;
     s.messages += 1;
     s.iterations += opts.iterations;
+    s.totalMs += opts.totalMs;
+    s.toolMs += opts.toolMs;
+    if (opts.firstTextMs !== null) {
+      s.firstTextMs += opts.firstTextMs;
+      s.answered += 1;
+    }
     if (opts.truncated) s.truncated += 1;
     s.tokens = {
       input: s.tokens.input + opts.usage.input,
@@ -109,6 +138,18 @@ export function metricLines(meter: AssistantMeter, spend: { usd: number; capUsd:
     // fra un messaggio e l'altro: la cache non lavora e ogni turno si paga per
     // intero. E' l'unico sintomo che quel guasto produce.
     `metamc_assistant_tokens_total{kind="cache_read"} ${s.tokens.cacheRead}`,
+    '# HELP metamc_assistant_duration_ms_total millisecondi totali, sommati su tutti i messaggi',
+    '# TYPE metamc_assistant_duration_ms_total counter',
+    `metamc_assistant_duration_ms_total ${s.totalMs}`,
+    '# HELP metamc_assistant_first_text_ms_total millisecondi fino alla prima parola, sommati',
+    '# TYPE metamc_assistant_first_text_ms_total counter',
+    `metamc_assistant_first_text_ms_total ${s.firstTextMs}`,
+    '# HELP metamc_assistant_answered_total messaggi che hanno prodotto testo: denominatore di first_text',
+    '# TYPE metamc_assistant_answered_total counter',
+    `metamc_assistant_answered_total ${s.answered}`,
+    '# HELP metamc_assistant_tool_ms_total millisecondi passati DENTRO i tool: query e cache',
+    '# TYPE metamc_assistant_tool_ms_total counter',
+    `metamc_assistant_tool_ms_total ${s.toolMs}`,
     '# HELP metamc_assistant_spend_usd stima della spesa del mese corrente, in dollari',
     '# TYPE metamc_assistant_spend_usd gauge',
     `metamc_assistant_spend_usd ${spend.usd.toFixed(4)}`,

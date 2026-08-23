@@ -87,6 +87,8 @@ export type AssistantTool = {
 export type ToolCall = {
   name: string;
   outcome: 'success' | 'denied' | 'failure';
+  /** Quanto ci ha messo, in millisecondi. Serve a sapere DOVE va il tempo. */
+  ms: number;
   /** I parametri VALIDATI. Piccoli e strutturati: e' cio' che rende il registro utile. */
   args: unknown;
 };
@@ -152,16 +154,19 @@ function guarded<Input>(
   work: (input: Input) => Promise<unknown>,
 ): (input: Input) => Promise<string> {
   return async (input: Input) => {
+    // IL TEMPO SI MISURA ANCHE SUL RAMO NEGATO: un rifiuto costa quasi zero, e
+    // saperlo e' cio' che permette di dire che la lentezza NON e' nei tool.
+    const startedAt = Date.now();
     if (!can(context.actor, spec.module, spec.level)) {
-      context.calls.push({ name: spec.name, outcome: 'denied', args: input });
+      context.calls.push({ name: spec.name, outcome: 'denied', args: input, ms: Date.now() - startedAt });
       return denied(spec.module);
     }
     try {
       const data = await work(input);
-      context.calls.push({ name: spec.name, outcome: 'success', args: input });
+      context.calls.push({ name: spec.name, outcome: 'success', args: input, ms: Date.now() - startedAt });
       return ok(data);
     } catch (err) {
-      context.calls.push({ name: spec.name, outcome: 'failure', args: input });
+      context.calls.push({ name: spec.name, outcome: 'failure', args: input, ms: Date.now() - startedAt });
       if (err instanceof NotConfigured) return unavailable(err.what);
       if (err instanceof UnknownMode) {
         // LA VIA D'USCITA VIAGGIA CON L'ERRORE. Senza, l'unica mossa che resta

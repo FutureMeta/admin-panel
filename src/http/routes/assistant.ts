@@ -219,6 +219,9 @@ export function registerAssistantRoutes(app: FastifyInstance, ctx: AppContext): 
           usage: final.usage,
           iterations: final.iterations,
           truncated: final.truncated,
+          totalMs: final.timings.totalMs,
+          firstTextMs: final.timings.firstTextMs,
+          toolMs: final.timings.toolMs,
         });
         for (const call of final.calls) assistant.meter.recordTool(call.name, call.outcome);
         await assistant.spend
@@ -252,6 +255,9 @@ export function registerAssistantRoutes(app: FastifyInstance, ctx: AppContext): 
           screen: screen.path,
           iterations: final?.iterations ?? 0,
           truncated: final?.truncated ?? false,
+          // I tempi nel registro e non solo nelle metriche: una risposta lenta
+          // si indaga su QUELLA riga, non sulla media di tutte.
+          timings: final?.timings ?? null,
           calls: (final?.calls ?? []).map((c) => ({ tool: c.name, outcome: c.outcome, args: c.args })),
           tokens: final?.usage ?? null,
         },

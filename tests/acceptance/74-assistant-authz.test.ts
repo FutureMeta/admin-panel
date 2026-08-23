@@ -145,9 +145,14 @@ describe('senza il permesso, il dato non esce — e non viene nemmeno letto', ()
     // riga fallisce mentre le due sopra passerebbero comunque su un rifiuto
     // scritto altrove.
     expect(raw).not.toContain(VITTIMA);
-    expect(calls).toEqual([
+    // `toMatchObject` e non `toEqual`: la chiamata porta anche quanto ci ha
+    // messo, e un test che fissasse i millisecondi fallirebbe a caso.
+    expect(calls).toMatchObject([
       { name: 'panel_user_search', outcome: 'denied', args: { query: 'bersaglio', limit: 5 } },
     ]);
+    // Il tempo c'e' e su un rifiuto e' quasi zero: e' cio' che permette di
+    // dire che la lentezza NON sta nei tool.
+    expect(calls[0]?.ms).toBeGreaterThanOrEqual(0);
   });
 
   it('e nemmeno il registro attivita`', async () => {

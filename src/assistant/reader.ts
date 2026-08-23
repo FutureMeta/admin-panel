@@ -105,12 +105,48 @@ export type OnlineNow = {
    * costruito ogni pochi minuti. Presentarle come un unico «adesso» e'
    * esattamente il tipo di piccola bugia che rende inutile un pannello.
    */
-  byMode: { at: number; players: Record<string, number> } | null;
+  byMode: { at: number; modes: Array<Mode & { players: number }> } | null;
+  /**
+   * TUTTE le modalita' conosciute, con la loro CHIAVE.
+   *
+   * E' il vocabolario, e sta qui perche' questo e' lo strumento piu' economico
+   * e senza parametri: una chiamata sola e Svetlana sa come si chiamano le
+   * cose. Comprende anche le modalita' senza nessuno adesso — «e Survival?» e'
+   * una domanda che si fa proprio quando e' vuota.
+   */
+  catalogue: Mode[];
   /** Il massimo di sempre, con l'istante e da quando si guarda. */
   record: { players: number; at: number | null; since: number } | null;
   /** Come si conta «online»: la definizione viaggia col numero. */
   note: string;
 };
+
+/**
+ * Una modalita' viaggia SEMPRE con la sua chiave, non col solo nome.
+ *
+ * IL DIFETTO CHE QUESTO TIPO TOGLIE. I risultati portavano il nome leggibile —
+ * «Survival» — e basta, perche' e' quello che si legge bene in una risposta.
+ * Ma la chiave e' l'unica cosa con cui si chiama un altro strumento: sapendo
+ * solo il nome, Svetlana vedeva la modalita' nella ripartizione e non riusciva
+ * a chiedere niente su di lei. Rispondeva «dimmi tu la chiave esatta», cioe'
+ * chiedeva all'operatore di fare il lavoro che lei ha gli strumenti per fare.
+ *
+ * E' la stessa regola delle righe dei settings, dove il nome leggibile sta
+ * sopra e la costante sotto: una serve a chi legge, l'altra a chi lavora, e
+ * toglierne una non e' semplificare.
+ */
+export type Mode = { key: string; name: string };
+
+function modeOf(labels: Record<string, string>, key: string): Mode {
+  return { key, name: labels[key] ?? key };
+}
+
+/** Il vocabolario completo, ordinato per nome: e' un elenco da leggere. */
+function catalogueOf(labels: Record<string, string>): Mode[] {
+  return Object.keys(labels)
+    .map((key) => modeOf(labels, key))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 export async function readOnlineNow(data: AssistantData): Promise<OnlineNow> {
   const db = data.statsDb;
@@ -130,11 +166,12 @@ export async function readOnlineNow(data: AssistantData): Promise<OnlineNow> {
     byMode: payload.current
       ? {
           at: payload.current.at,
-          players: Object.fromEntries(
-            Object.entries(payload.current.byMode).map(([key, v]) => [labels[key] ?? key, v]),
-          ),
+          modes: Object.entries(payload.current.byMode)
+            .map(([key, players]) => ({ ...modeOf(labels, key), players }))
+            .sort((a, b) => b.players - a.players),
         }
       : null,
+    catalogue: catalogueOf(labels),
     record: payload.record,
     note:
       'Online = identita` con una chiave viva nel Redis di gioco (TTL ~104 s), ' +
@@ -145,8 +182,8 @@ export async function readOnlineNow(data: AssistantData): Promise<OnlineNow> {
 
 export type NetworkTrend = {
   range: Range;
-  /** La modalita' chiesta, o `null` per tutta la rete. */
-  mode: string | null;
+  /** La modalita' chiesta, o `null` per tutta la rete. Chiave E nome. */
+  mode: Mode | null;
   /** Media normalizzata sul profilo orario; `null` se la copertura e' zero. */
   average: number | null;
   /** Massimo nei soli bucket chiusi, con l'istante e la copertura di quel bucket. */
@@ -157,8 +194,8 @@ export type NetworkTrend = {
   coverage: number;
   /** Ultimo istante definitivo: oltre, il dato e' ancora in formazione. */
   closedThrough: number;
-  /** Le modalita' piu' popolate del periodo, per media. */
-  topModes: Array<{ mode: string; average: number }>;
+  /** Le modalita' piu' popolate del periodo, per media. Con la chiave, non solo il nome. */
+  topModes: Array<Mode & { average: number }>;
 };
 
 /**
@@ -224,7 +261,7 @@ function project(payload: OverviewPayload, range: Range, mode: string | null): N
   const topModes = payload.modes
     .filter((key) => !payload.outOfBreakdown.includes(key))
     .map((key) => ({
-      mode: payload.labels[key] ?? key,
+      ...modeOf(payload.labels, key),
       average: Math.round(averageOf(payload.online.series[key] ?? []) * 10) / 10,
     }))
     .sort((a, b) => b.average - a.average)
@@ -232,7 +269,7 @@ function project(payload: OverviewPayload, range: Range, mode: string | null): N
 
   return {
     range,
-    mode: mode === null ? null : (payload.labels[mode] ?? mode),
+    mode: mode === null ? null : modeOf(payload.labels, mode),
     average: payload.kpi.avg === null ? null : Math.round(payload.kpi.avg * 10) / 10,
     peak:
       payload.kpi.peak === null
@@ -251,7 +288,7 @@ function project(payload: OverviewPayload, range: Range, mode: string | null): N
 
 export type NetworkCountries = {
   range: Range;
-  mode: string | null;
+  mode: Mode | null;
   /**
    * `false` quando la geolocalizzazione non e' attiva su questa installazione.
    *
@@ -302,7 +339,7 @@ export async function readNetworkCountries(
 
   return {
     range,
-    mode: mode === null ? null : (payload.labels[mode] ?? mode),
+    mode: mode === null ? null : modeOf(payload.labels, mode),
     enabled: payload.geoEnabled,
     // IL TOTALE E' QUELLO VERO, non la somma delle righe spedite: un taglio
     // che cambia anche il denominatore trasforma ogni percentuale in una

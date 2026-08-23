@@ -161,7 +161,14 @@ function guarded<Input>(
       context.calls.push({ name: spec.name, outcome: 'failure', args: input });
       if (err instanceof NotConfigured) return unavailable(err.what);
       if (err instanceof UnknownMode) {
-        return reply({ ok: false, error: 'sconosciuto', detail: err.message });
+        // LA VIA D'USCITA VIAGGIA CON L'ERRORE. Senza, l'unica mossa che resta
+        // e' chiedere la chiave all'operatore — cioe' far fare a lui il lavoro
+        // che gli strumenti sanno gia' fare.
+        return reply({
+          ok: false,
+          error: 'sconosciuto',
+          detail: `${err.message}. L'elenco completo delle chiavi e' in \`catalogue\` di network_online.`,
+        });
       }
       if (err instanceof BadArgument) {
         return reply({ ok: false, error: 'argomento_non_valido', detail: err.message });
@@ -362,7 +369,8 @@ export function buildTools(context: ToolContext): AssistantTool[] {
           '("IQ" e` l`Iraq). DUE VALORI NON SONO PAESI e non vanno mai riportati come tali: "XX" e` chi ' +
           'ha un indirizzo che non si e` riusciti a risolvere, "--" chi e` stato visto quando la ' +
           'geolocalizzazione era spenta. Se `enabled` e` falso la funzione non e` attiva su questa ' +
-          'installazione, che e` diverso da «nessuno in questo periodo». Segue il periodo scelto: su ' +
+          'installazione, che e` diverso da «nessuno in questo periodo». `mode` vuole la CHIAVE di una ' +
+          'modalita`, non il nome: la trovi in `catalogue` di network_online. Segue il periodo scelto: su ' +
           '24 ore e su un anno sono due domande diverse.',
         inputSchema: z.strictObject({
           range: rangeSchema.describe('il periodo: 24h, 7d, 30d, 90d o 1y'),
@@ -389,7 +397,11 @@ export function buildTools(context: ToolContext): AssistantTool[] {
           'Quanti giocatori ci sono ADESSO sul network, come sono ripartiti per modalita`, e il record di ' +
           'sempre. Il totale vivo e la ripartizione hanno due istanti diversi e il risultato li dichiara ' +
           'entrambi: dire la ripartizione come se fosse dello stesso momento del totale sarebbe una bugia ' +
-          'piccola e plausibile. Non prende parametri.',
+          'piccola e plausibile. Non prende parametri. ' +
+          'PORTA ANCHE IL VOCABOLARIO: `catalogue` elenca TUTTE le modalita` conosciute con la loro ' +
+          'CHIAVE e il loro nome. La chiave e` cio` che gli altri strumenti vogliono in `mode`. Se ti ' +
+          'serve una modalita` di cui non conosci la chiave, chiama questo strumento: non chiederla ' +
+          'all`operatore, ce l`hai.',
         inputSchema: z.strictObject({}),
         run: guarded({ name: 'network_online', module: 'statistiche', level: 1 }, context, () =>
           readOnlineNow(context.data),
@@ -404,8 +416,10 @@ export function buildTools(context: ToolContext): AssistantTool[] {
         name: 'network_trend',
         description:
           'L`andamento dei giocatori su un periodo: media, picco con il suo istante, giocatori distinti, ' +
-          'copertura della raccolta e le modalita` piu` popolate. Passa `mode` con la chiave di una ' +
-          'modalita` (per esempio "bedwars") per avere solo quella, oppure null per tutta la rete. ' +
+          'copertura della raccolta e le modalita` piu` popolate, ognuna con la sua CHIAVE. ' +
+          'Passa `mode` con la CHIAVE di una modalita`, non con il suo nome: le chiavi sono minuscole ' +
+          'con trattini bassi ("bedwars"), e se non la conosci la trovi in `catalogue` di ' +
+          'network_online. Null per tutta la rete. ' +
           'Sulla singola modalita` il picco e` sempre assente: e` una conseguenza aritmetica, non un dato ' +
           'mancante, perche` il massimo di una modalita` non si ricostruisce dai massimi dei suoi server.',
         inputSchema: z.strictObject({

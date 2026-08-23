@@ -157,6 +157,47 @@ function byCcOf(geo: { countries: Array<{ cc: string; players: number }> }): Rec
   return Object.fromEntries(geo.countries.map((c) => [c.cc, c.players]));
 }
 
+describe('una modalita` non esce mai senza la sua CHIAVE', () => {
+  // IL DIFETTO CHE QUESTO GRUPPO TOGLIE, visto in produzione il 2026-08-23.
+  //
+  // «Quanti iracheni giocano sulla survival?» — e Svetlana ha risposto: «la
+  // modalita` esiste nella ripartizione live (132,1 giocatori) ma non conosco
+  // la sua chiave interna. Prendila dalla schermata Dettaglio modalita` e
+  // dimmela.»
+  //
+  // Aveva ragione: i risultati portavano il NOME leggibile e basta, perche'
+  // e' quello che si legge bene in una risposta. Ma la chiave e' l'unica cosa
+  // con cui si chiama un altro strumento, quindi la vedeva e non poteva
+  // toccarla — e chiedeva all'operatore di fare il lavoro che lei ha gli
+  // strumenti per fare.
+  //
+  // Nessun errore, nessun permesso mancante: una risposta cortese che manda
+  // l'operatore a cercare a mano.
+  it('la ripartizione di adesso porta chiave e nome', async () => {
+    const online = await readOnlineNow(data);
+    for (const m of online.byMode?.modes ?? []) {
+      expect(m.key, `nome senza chiave: ${m.name}`).toMatch(/^[a-z0-9_]+$/);
+      expect(m.name.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('e il VOCABOLARIO c`e` sempre, anche per le modalita` vuote adesso', async () => {
+    // «E Survival?» e' una domanda che si fa proprio quando e' vuota: se il
+    // vocabolario contenesse solo chi ha giocatori in questo momento, la
+    // chiave sparirebbe esattamente quando serve.
+    const online = await readOnlineNow(data);
+    expect(Array.isArray(online.catalogue)).toBe(true);
+    for (const m of online.catalogue) expect(m.key).toMatch(/^[a-z0-9_]+$/);
+  });
+
+  it('e le modalita` piu` popolate dell`andamento pure', async () => {
+    const trend = await readNetworkTrend(data, '7d', null);
+    for (const m of trend.topModes) {
+      expect(m.key, `nome senza chiave: ${m.name}`).toMatch(/^[a-z0-9_]+$/);
+    }
+  });
+});
+
 describe('senza le sorgenti, le letture lo dicono invece di rompersi', () => {
   const spento: () => AssistantData = () => ({
     panelDb: null,

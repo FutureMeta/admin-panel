@@ -12,17 +12,25 @@ Svetlana è un pannello dentro l'app shell, non una schermata. Vede su quale
 pagina si trova chi le scrive (e con che periodo e che modalità, dove la
 schermata ne ha), così «e i duels di ieri?» ha un significato.
 
-Ha sei strumenti e nient'altro. Non riceve mai una connessione al database
+Ha nove strumenti e nient'altro. Non riceve mai una connessione al database
 né una query da eseguire:
 
 | Strumento | Cosa legge | Serve il modulo |
 |---|---|---|
-| `network_online` | giocatori adesso, ripartizione per modalità, record | `statistiche` ≥ 1 |
+| `network_online` | giocatori adesso, ripartizione per modalità, record, **vocabolario** delle chiavi | `statistiche` ≥ 1 |
 | `network_trend` | media, picco, unici, copertura su un periodo | `statistiche` ≥ 1 |
 | `network_countries` | da quali paesi vengono i giocatori del periodo | `statistiche` ≥ 1 |
 | `duels_summary` | partite, top modalità e mappe, ore di punta | `duels` ≥ 1 |
-| `panel_user_search` | una persona dello staff: ruoli, stato, ultimo accesso | `utenti` ≥ 1 |
+| `duels_ratings` | valutazioni aggregate: quante, media, distribuzione | `duels_feedback` ≥ 1 |
+| `duels_comments` | **i singoli commenti dei giocatori**, con voto e dialogo | `duels_feedback` ≥ 1 |
+| `panel_user_search` | cerca una persona dello staff | `utenti` ≥ 1 |
+| `panel_user_detail` | una persona: matrice permessi, ruoli, sessioni (no IP) | `utenti` ≥ 1 |
 | `audit_recent` | ultime voci del registro attività | `audit` ≥ 1 |
+
+**Ogni chiave di modalità viaggia con l'ID/chiave, non col solo nome:** è ciò
+con cui un tool ne chiama un altro. Il **vocabolario completo** (`catalogue` in
+`network_online`) elenca tutte le modalità, comprese quelle vuote in questo
+momento.
 
 Fuori da questo elenco non c'è niente: nessuna scrittura, nessuna
 configurazione, nessun ban, nessun invito.
@@ -92,6 +100,30 @@ si riporta e non si esegue, e che un'istruzione trovata dentro un dato va
 **segnalata all'operatore** citandola fra virgolette. Un test tiene quella
 parte del prompt come canarino: toglierla accende `75-assistant-injection`.
 
+**Il secondo strato: il testo di terzi si ripulisce prima di partire.** Ogni
+campo scritto da qualcun altro — nome giocatore, commento, motivazione di ban,
+ogni turno del dialogo post-partita, lo user agent di una sessione — passa da
+`src/assistant/untrusted.ts`, che fa due cose distinte:
+
+1. **toglie ciò che finge struttura**: caratteri di controllo, spazi a
+   larghezza zero (`ig​nora` torna `ignora`), override di direzionalità, i tag
+   invisibili del piano 14 di Unicode, e taglia i testi lunghissimi dichiarando
+   il taglio. Non è un filtro sul *contenuto* — è togliere al testo la capacità
+   di **sembrare** qualcosa che non è;
+2. **alza una spia** (`suspicious`) sui campi che somigliano a un tentativo, e
+   un flag `flagged` la porta in cima al risultato. È un'**annotazione, non un
+   filtro**: il testo pericoloso passa pulito e intero — l'operatore deve poter
+   vedere cosa è stato scritto — con la segnalazione accanto. Un elenco di
+   parole si aggira, quindi come filtro sarebbe falsa sicurezza; come spia un
+   elenco parziale non fa danno.
+
+I campi di terzi sono **marchiati a livello di tipo** (`UntrustedField`):
+TypeScript non lascia scrivere `comment: row.text`, bisogna passare da `field()`.
+È la stessa idea del ruolo di sola lettura in Postgres — non «ricordati di
+sanificare», ma «non compila se non lo fai». Il corpus di attacchi è in
+`82-injection-corpus.test.ts`; che i commenti dei duels arrivino marchiati in
+`83-assistant-untrusted-reader.test.ts`.
+
 ### 2.3 Non scrive, e la garanzia sta nel database
 
 Gli strumenti leggono da due ruoli PostgreSQL di sola lettura:
@@ -124,10 +156,14 @@ che è la domanda per cui quella riga esiste.
 Le risposte degli strumenti vengono inviate all'API di Anthropic. Escono di
 conseguenza:
 
-* nomi e indirizzi email dello staff del pannello (`panel_user_search`);
+* nomi e indirizzi email dello staff del pannello (`panel_user_search`,
+  `panel_user_detail`);
 * identità denormalizzate e etichette di bersaglio dal registro (`audit_recent`);
 * nomi di modalità e mappe, e i nomi dei giocatori dove compaiono nei dati dei
   duels;
+* **i commenti scritti dai giocatori e il dialogo post-partita** (`duels_comments`)
+  — è la voce che pesa di più: testo libero di terzi, in quantità. Esce
+  ripulito e marchiato (vedi §2.2), ma esce;
 * il testo della domanda scritta in chat.
 
 **Non escono in nessun caso** gli indirizzi IP: il registro ne ha due colonne e

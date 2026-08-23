@@ -131,10 +131,13 @@ describe('la richiesta e` costruita perche` la cache possa lavorare', () => {
     // cache di ogni conversazione in corso.
     expect(names).toEqual([
       'audit_recent',
+      'duels_comments',
+      'duels_ratings',
       'duels_summary',
       'network_countries',
       'network_online',
       'network_trend',
+      'panel_user_detail',
       'panel_user_search',
     ]);
   });

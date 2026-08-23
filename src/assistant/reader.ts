@@ -23,7 +23,7 @@
 import { sql } from 'kysely';
 import { dominates } from '#src/authz/dominance.ts';
 import type { Database } from '#src/db/pool.ts';
-import { DK, type DuelsTrends, duelsQuality, TOP_LIMIT } from '#src/duels/contract.ts';
+import { DK, type DuelsModeScore, type DuelsTrends, duelsQuality, TOP_LIMIT } from '#src/duels/contract.ts';
 import type { DuelsProvider } from '#src/duels/provider.ts';
 import { inflate, type StatsCache } from '#src/stats/cache.ts';
 import {
@@ -34,6 +34,7 @@ import {
 } from '#src/stats/contract.ts';
 import { buildAll } from '#src/stats/read.ts';
 import { K, ttlOf } from '#src/stats/warm.ts';
+import { field, type UntrustedField } from './untrusted.ts';
 
 /** Le porte sui dati. Ognuna puo' mancare: il tool corrispondente lo dice. */
 export type AssistantData = {
@@ -361,8 +362,9 @@ export type DuelsSummary = {
   matches: number;
   /** 'YYYY-MM-DD': prima di questo giorno il dato non esiste. */
   since: string | null;
-  topModes: Array<{ name: string; matches: number; type: string | null; ranking: string | null }>;
-  topMaps: Array<{ name: string | null; matches: number; type: string | null }>;
+  /** L'ID e' la CHIAVE dei duels: gli altri tool lo vogliono in `mode`. */
+  topModes: Array<{ id: number; name: string; matches: number; type: string | null; ranking: string | null }>;
+  topMaps: Array<{ id: number; name: string | null; matches: number; type: string | null }>;
   /** Le tre ore della settimana con piu' partite, in fuso locale. */
   busiest: Array<{ day: string; hour: number; matches: number }>;
 };
@@ -401,13 +403,16 @@ export async function readDuelsSummary(data: AssistantData, range: Range, now: D
     since: trends.since,
     // `TOP_LIMIT` righe escono dal provider; qui ne bastano cinque. Il totale
     // resta quello vero — e' `totals.matches`, non la somma di queste.
-    topModes: trends.modes.slice(0, 5).map((m) => ({
+    topModes: trends.modes.slice(0, 8).map((m) => ({
+      id: m.id,
       name: m.name,
       matches: m.matches,
       type: m.type,
       ranking: m.ranking,
     })),
-    topMaps: trends.maps.slice(0, 5).map((m) => ({ name: m.name, matches: m.matches, type: m.type })),
+    topMaps: trends.maps
+      .slice(0, 8)
+      .map((m) => ({ id: m.id, name: m.name, matches: m.matches, type: m.type })),
     busiest,
   };
 }
@@ -416,16 +421,160 @@ export async function readDuelsSummary(data: AssistantData, range: Range, now: D
 export { TOP_LIMIT };
 
 // ---------------------------------------------------------------------------
+// Valutazioni dei duels — e i commenti, che sono testo scritto dai giocatori
+// ---------------------------------------------------------------------------
+
+export type DuelsRatingsSummary = {
+  range: Range;
+  /** L'ID modalita' chiesto, o `null` per tutte. La chiave e' l'ID. */
+  mode: number | null;
+  total: number;
+  /** Media grezza: con un voto solo dice 5. La soglia sta in `minSample`. */
+  average: number;
+  /** Quante valutazioni hanno un commento. Il denominatore e' `total`. */
+  withComment: number;
+  /** r1..r5, cinque elementi anche a zero voti. */
+  distribution: [number, number, number, number, number];
+  /** Solo nello scope globale: le due modalita' notevoli, con l'ID. */
+  mostRated: { id: number; name: string; count: number; average: number } | null;
+  bestRated: { id: number; name: string; count: number; average: number } | null;
+  minSample: number;
+  since: string | null;
+};
+
+export async function readDuelsRatings(
+  data: AssistantData,
+  range: Range,
+  mode: number | null,
+  now: Date,
+): Promise<DuelsRatingsSummary> {
+  const provider = data.duels;
+  if (!provider) throw new NotConfigured('duels');
+
+  const r = await provider.ratings(range, mode, now);
+  const score = (s: DuelsModeScore | null) =>
+    s === null ? null : { id: s.id, name: s.name, count: s.count, average: s.average };
+
+  return {
+    range,
+    mode,
+    total: r.total,
+    average: r.average,
+    withComment: r.withComment,
+    distribution: r.distribution,
+    mostRated: score(r.mostRated),
+    bestRated: score(r.bestRated),
+    minSample: r.bestRatedMinSample,
+    since: r.since,
+  };
+}
+
+/** Un turno del dialogo post-partita. `speaker` e `text` sono ENTRAMBI di terzi. */
+export type CommentTurn = { speaker: UntrustedField | null; text: UntrustedField | null };
+
+export type DuelsComment = {
+  at: number;
+  /** Il nome del giocatore. Testo di terzi. */
+  player: UntrustedField | null;
+  modeName: UntrustedField | null;
+  rating: number;
+  /** Il commento libero. Testo di terzi, ed e' la superficie piu' esposta. */
+  comment: UntrustedField | null;
+  /**
+   * Il dialogo in cui un bot invita il giocatore a scrivere liberamente. E'
+   * ESATTAMENTE il posto progettato perche' qualcuno scriva quello che vuole,
+   * quindi ogni turno passa dal marchio.
+   */
+  dialog: CommentTurn[] | null;
+};
+
+export type DuelsComments = {
+  range: Range;
+  mode: number | null;
+  rows: DuelsComment[];
+  /** Il totale della combinazione di filtri, quando contato. */
+  total: number | null;
+  /** `true` se almeno una riga porta la spia di iniezione: lo dice all'operatore. */
+  flagged: boolean;
+};
+
+export type CommentsQuery = {
+  range: Range;
+  mode: number | null;
+  filter: 'all' | 'with' | 'without';
+  sort: 'recent' | 'worst' | 'best';
+  query: string | null;
+  limit: number;
+};
+
+/**
+ * Le singole valutazioni, COMMENTI COMPRESI.
+ *
+ * E' il tool che porta al modello la maggior quantita' di testo scritto da
+ * terzi del pannello: nome giocatore, commento libero, e il dialogo in cui un
+ * bot invita a scrivere in liberta'. Ogni campo passa da `field`, che toglie
+ * cio' che finge struttura e alza la spia su cio' che sembra rivolto al
+ * modello. `flagged` porta quella spia in cima, dove l'operatore la vede.
+ */
+export async function readDuelsComments(
+  data: AssistantData,
+  q: CommentsQuery,
+  now: Date,
+): Promise<DuelsComments> {
+  const provider = data.duels;
+  if (!provider) throw new NotConfigured('duels');
+
+  const page = await provider.recent({
+    range: q.range,
+    mode: q.mode,
+    q: q.query,
+    comment: q.filter,
+    sort: q.sort,
+    cursor: null,
+    withTotal: true,
+    now,
+  });
+
+  let flagged = false;
+  const mark = (v: unknown, max?: number): UntrustedField | null => {
+    const f = field(v, max);
+    if (f?.suspicious) flagged = true;
+    return f;
+  };
+
+  const rows: DuelsComment[] = page.rows.slice(0, q.limit).map((row) => ({
+    at: row.at,
+    player: mark(row.player, 60),
+    modeName: mark(row.modeName, 60),
+    rating: row.rating,
+    comment: mark(row.comment),
+    dialog:
+      row.dialog === null
+        ? null
+        : row.dialog
+            .slice(0, 20)
+            .map((turn) => ({ speaker: mark(turn.speaker, 40), text: mark(turn.text) }))
+            // Un turno in cui non resta niente dopo la pulizia non e' un turno:
+            // si toglie, invece di occupare una riga con due campi vuoti.
+            .filter((t) => t.speaker !== null || t.text !== null),
+  }));
+
+  return { range: q.range, mode: q.mode, rows, total: page.total, flagged };
+}
+
+// ---------------------------------------------------------------------------
 // Utenti del pannello
 // ---------------------------------------------------------------------------
 
 export type PanelUser = {
   id: string;
   email: string;
-  name: string;
+  /** Scritto da una persona: passa dal marchio. */
+  name: UntrustedField | null;
   status: string;
   banned: boolean;
-  banReason: string | null;
+  /** Scritta da chi ha bannato: testo libero, quindi marchiata. */
+  banReason: UntrustedField | null;
   banExpires: string | null;
   createdAt: string;
   /** L'ultima sessione toccata. `null` se non e' mai entrato. */
@@ -523,10 +672,10 @@ export async function searchPanelUsers(
   return rows.map((u, index) => ({
     id: u.id,
     email: u.email,
-    name: u.name,
+    name: field(u.name, 120),
     status: u.status,
     banned: u.banned,
-    banReason: u.ban_reason,
+    banReason: field(u.ban_reason),
     banExpires: u.ban_expires instanceof Date ? u.ban_expires.toISOString() : (u.ban_expires ?? null),
     createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : String(u.createdAt),
     lastSeenAt: (() => {
@@ -539,6 +688,115 @@ export async function searchPanelUsers(
   }));
 }
 
+export type PanelUserDetail = {
+  id: string;
+  email: string;
+  name: UntrustedField | null;
+  status: string;
+  banned: boolean;
+  banReason: UntrustedField | null;
+  banExpires: string | null;
+  twoFactorEnabled: boolean;
+  createdAt: string;
+  roles: string[];
+  /** La matrice effettiva: livello per modulo, 1..3, i moduli a zero omessi. */
+  permissions: Record<string, number>;
+  /** Le sessioni aperte: da dove e da quando. NIENTE indirizzi IP. */
+  sessions: Array<{ createdAt: string; lastSeenAt: string; userAgent: UntrustedField | null; aal: number }>;
+  /** Chi chiede puo' AGIRE su questa persona? SEC-08. */
+  canManage: boolean;
+};
+
+/**
+ * Il dettaglio di UNA persona dello staff: la sua matrice dei permessi e le
+ * sessioni aperte.
+ *
+ * E' cio' che la schermata Utenti mostra aprendo una riga, e risponde a «cosa
+ * puo' fare X» e «X e' entrato di recente». La dominanza (SEC-08) NON e' un
+ * filtro sull'apertura — chiunque abbia `utenti >= 1` puo' guardare la scheda,
+ * come nel pannello — ma `canManage` dice se puo' anche toccarla, cosi'
+ * Svetlana non suggerisce operazioni che il pannello rifiuterebbe.
+ *
+ * NIENTE INDIRIZZI IP. Le sessioni li hanno (`ipAddress`), e non escono: la
+ * SELECT non li nomina. E' la stessa minimizzazione del registro, un piano
+ * piu' in giu'.
+ */
+export async function readUserDetail(
+  data: AssistantData,
+  actorId: string,
+  userId: string,
+): Promise<PanelUserDetail | null> {
+  const db = data.panelDb;
+  if (!db) throw new NotConfigured('assistente');
+
+  const user = await db
+    .selectFrom('auth.user')
+    .select([
+      'id',
+      'email',
+      'name',
+      'status',
+      'banned',
+      'ban_reason',
+      'ban_expires',
+      'twoFactorEnabled',
+      'createdAt',
+    ])
+    .where('id', '=', userId)
+    .where('deleted_at', 'is', null)
+    .executeTakeFirst();
+  // `null`, non un errore: la rotta degli utenti risponde 404 a un id che non
+  // esiste, e qui la forma equivalente e' «non c'e'».
+  if (!user) return null;
+
+  const [permissions, roles, sessions, canManage] = await Promise.all([
+    db
+      .selectFrom('auth.effective_permissions')
+      .select(['module_key', 'level'])
+      .where('user_id', '=', userId)
+      .where('level', '>', 0)
+      .execute(),
+    db
+      .selectFrom('auth.user_roles as ur')
+      .innerJoin('auth.roles as r', 'r.id', 'ur.role_id')
+      .select('r.name')
+      .where('ur.user_id', '=', userId)
+      .execute(),
+    db
+      .selectFrom('auth.session')
+      .select(['createdAt', 'updatedAt', 'userAgent', 'aal'])
+      .where('userId', '=', userId)
+      .orderBy('updatedAt', 'desc')
+      .limit(20)
+      .execute(),
+    dominates(db, actorId, userId),
+  ]);
+
+  const asIso = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v ?? ''));
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: field(user.name, 120),
+    status: user.status,
+    banned: user.banned,
+    banReason: field(user.ban_reason),
+    banExpires:
+      user.ban_expires instanceof Date ? user.ban_expires.toISOString() : (user.ban_expires ?? null),
+    twoFactorEnabled: user.twoFactorEnabled,
+    createdAt: asIso(user.createdAt),
+    roles: roles.map((r) => r.name),
+    permissions: Object.fromEntries(permissions.map((p) => [p.module_key, p.level])),
+    sessions: sessions.map((s) => ({
+      createdAt: asIso(s.createdAt),
+      lastSeenAt: asIso(s.updatedAt),
+      userAgent: field(s.userAgent, 200),
+      aal: s.aal,
+    })),
+    canManage,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Registro attivita'
 // ---------------------------------------------------------------------------
@@ -546,10 +804,10 @@ export async function searchPanelUsers(
 export type AuditEntry = {
   occurredAt: string;
   /** Denormalizzato: com'era l'identita' AL MOMENTO DEL FATTO. */
-  actor: { email: string | null; name: string | null };
+  actor: { email: string | null; name: UntrustedField | null };
   action: string;
   moduleKey: string | null;
-  target: { type: string | null; id: string | null; label: string | null };
+  target: { type: string | null; id: string | null; label: UntrustedField | null };
   outcome: string;
 };
 
@@ -599,10 +857,10 @@ export async function readRecentAudit(data: AssistantData, filter: AuditFilter):
   const rows = await query.execute();
   return rows.map((r) => ({
     occurredAt: r.occurred_at instanceof Date ? r.occurred_at.toISOString() : String(r.occurred_at),
-    actor: { email: r.actor_email, name: r.actor_display_name },
+    actor: { email: r.actor_email, name: field(r.actor_display_name, 120) },
     action: r.action,
     moduleKey: r.module_key,
-    target: { type: r.target_type, id: r.target_id, label: r.target_label },
+    target: { type: r.target_type, id: r.target_id, label: field(r.target_label) },
     outcome: r.outcome,
   }));
 }

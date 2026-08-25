@@ -45,6 +45,21 @@ naviga, non cita norme, non usa quello che sa del mondo. E il **regolamento
 del network non sta nel pannello**: se le chiedono cosa è permesso ai
 giocatori, la risposta è che qui non c'è.
 
+**Ma una stima sui dati del pannello è dentro l'ambito, in pieno.** «Quanti duels
+faremo la settimana prossima» si risponde con un numero, non con un rifiuto:
+legge il periodo, porta il totale a un ritmo giornaliero — **dividendo per i
+giorni coperti, non per quelli nominali** — moltiplica per l'orizzonte e
+confronta 7 con 30 giorni per vedere se il ritmo sta cambiando. Prima il numero,
+poi da dove viene; i limiti in una riga *dopo*, e solo se veri e specifici.
+
+Non era timidezza del modello: era scritto nel prompt. La riga contro i numeri
+inventati diceva «riferisci quello **invece di stimare un numero**», e quella
+parola non distingue l'inventare un dato — che resta il danno peggiore possibile
+— dal fare i conti su dati letti davvero, che è il mestiere. Gli appigli erano
+tre, in tre sezioni diverse, e `86-assistant-estimates.test.ts` li tiene chiusi:
+un rifiuto suona sempre più prudente di una stima, quindi è la risposta che un
+modello sceglie appena gliene lasci uno.
+
 **I numeri sono gli stessi delle schermate.** Statistiche e duels passano dagli
 stessi costruttori di payload e dalla stessa cache che servono le rotte del
 pannello — non da una seconda aggregazione «più semplice» che darebbe risposte

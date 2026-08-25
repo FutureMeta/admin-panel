@@ -4,12 +4,18 @@
 // sinistra, «Primi 10 paesi» a destra. Nel mockup la mappa e' un segnaposto
 // tratteggiato — il disegno vero e' questo file.
 //
-// SCALA PER QUANTILI, NON LINEARE, ed e' scritto nel sottotitolo del design
-// perche' e' una decisione, non un dettaglio: con l'Italia in testa e una coda
-// lunga sotto il 5%, una scala lineare colorerebbe l'Italia e lascerebbe
-// l'intero pianeta dello stesso identico grigio. Il colore qui dice la
-// POSIZIONE IN CLASSIFICA, non il valore assoluto — e la classifica e' quello
-// che si guarda su una mappa.
+// IL COLORE VIENE DAL VALORE, e c'e' voluto un giro sbagliato per arrivarci.
+// Veniva dalla POSIZIONE IN CLASSIFICA, per una ragione che sembrava buona:
+// con l'Italia in testa e una coda lunga sotto il 5%, una scala lineare
+// dipinge l'Italia e lascia il pianeta di un grigio unico. Il rimedio era
+// pero' peggiore del male — un paese da 900 giocatori e uno da 1.200 finivano
+// identici perche' erano secondo e primo, e quindici paesi con lo STESSO
+// numero finivano di quindici colori diversi perche' la classifica li mette
+// comunque in fila. La scala sta in `lib/heat.ts` (`mapPosition`), e' una
+// radice quadrata sul valore, e ha i suoi test.
+//
+// LA LEGENDA NON E' ORNAMENTO: senza, un colore si puo' solo confrontare a
+// occhio con un altro colore. Con i due estremi scritti, diventa leggibile.
 //
 // I NON ATTRIBUITI NON SONO NELL'ELENCO, ma nemmeno spariscono: stanno in una
 // riga sotto la mappa, col loro numero. Toglierli e basta farebbe sembrare la
@@ -28,13 +34,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ALPHA2_TO_NUMERIC } from '../lib/country-codes.ts';
 import { numberFmt } from '../lib/format.ts';
+import { MAP_GRADIENT, mapPosition, rampColour } from '../lib/heat.ts';
 import { type CountryShape, loadWorld, MAP_HEIGHT, MAP_WIDTH, pathOf } from '../lib/world.ts';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
 export type GeoData = { cc: string[]; v: number[]; asOf: number; exact: boolean };
-
-/** La rampa del design system, la stessa della heatmap. */
-const RAMP = ['#0F212A', '#16394B', '#1E5670', '#4C6E72', '#8A7147', '#C08129', '#F0A63F'];
 
 /** Codici che non sono paesi: fuori dall'elenco e fuori dal denominatore. */
 const UNATTRIBUTED: Record<string, string> = {
@@ -60,18 +64,6 @@ function nameOf(cc: string): string {
   } catch {
     return cc;
   }
-}
-
-function lerp(a: string, b: string, t: number): string {
-  const hex = (s: string, i: number) => Number.parseInt(s.slice(1 + i * 2, 3 + i * 2), 16);
-  const mix = (i: number) => Math.round(hex(a, i) + (hex(b, i) - hex(a, i)) * t);
-  return `#${[0, 1, 2].map((i) => mix(i).toString(16).padStart(2, '0')).join('')}`;
-}
-
-function rampColor(t: number): string {
-  const x = Math.max(0, Math.min(1, t)) * (RAMP.length - 1);
-  const i = Math.min(RAMP.length - 2, Math.floor(x));
-  return lerp(RAMP[i] as string, RAMP[i + 1] as string, x - i);
 }
 
 // ---------------------------------------------------------------------------
@@ -139,19 +131,12 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
   }, [geo]);
 
   /**
-   * Il colore dice la POSIZIONE in classifica, non il valore.
+   * Il tetto della scala: il paese con più giocatori.
    *
-   * Con un paese solo non c'è classifica, e il ripiego era `1` — cioè il
-   * colore di massima intensità, quello che altrove significa «il paese con
-   * più giocatori di tutti». Su una mappa con un solo paese acceso non c'è
-   * niente con cui confrontarlo, quindi quel rosso pieno non riporta un
-   * primato: lo suggerisce e basta. Il centro scala è neutro: dice «unico»
-   * invece di «massimo».
+   * `rows` è già ordinato per valore decrescente, quindi è il primo. Con zero
+   * paesi è zero, e `mapPosition` se ne accorge da sé.
    */
-  const rankOf = useMemo(() => {
-    const asc = [...rows].sort((a, b) => a.v - b.v);
-    return new Map(asc.map((x, i) => [x.cc, asc.length > 1 ? i / (asc.length - 1) : 0.5]));
-  }, [rows]);
+  const top = rows[0]?.v ?? 0;
 
   const byNumeric = useMemo(() => {
     const m = new Map<string, { cc: string; v: number; fill: string }>();
@@ -161,11 +146,11 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
       // — degrada a «non disegnato». Resta nell'elenco a destra, dove il numero
       // si legge lo stesso.
       if (numeric) {
-        m.set(numeric, { cc: r.cc, v: r.v, fill: rampColor(0.15 + (rankOf.get(r.cc) ?? 0) * 0.85) });
+        m.set(numeric, { cc: r.cc, v: r.v, fill: rampColour(mapPosition(r.v, top)) });
       }
     }
     return m;
-  }, [rows, rankOf]);
+  }, [rows, top]);
 
   const pct = useCallback(
     (v: number) => (resolved > 0 ? `${((v / resolved) * 100).toFixed(1).replace('.', ',')}%` : '—'),
@@ -251,27 +236,47 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
             Provenienza geografica
           </h3>
           <div style={{ fontSize: 12, color: 'var(--tx-muted)' }}>
-            Giocatori unici · {label} · scala per quantili, non lineare
+            Giocatori unici · {label} · scala a radice, sul valore
           </div>
         </div>
-        {zoomed ? (
-          <button
-            type="button"
-            onClick={() => setView(FULL)}
-            style={{
-              border: '1px solid var(--bd-subtle)',
-              borderRadius: 'var(--r-xs)',
-              background: 'var(--s-inset)',
-              color: 'var(--tx-secondary)',
-              fontFamily: 'var(--font-ui)',
-              fontSize: 11.5,
-              padding: '4px 9px',
-              cursor: 'pointer',
-            }}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {/* LA LEGENDA. Senza, un colore non si può leggere: si può solo
+              confrontare con un altro colore, a occhio, a due centimetri di
+              distanza sulla carta. Con i due estremi scritti, una tinta
+              diventa un ordine di grandezza — ed è la risposta vera a «questi
+              due mi sembrano uguali»: la mappa mostra il disegno, il numero si
+              legge qui, nel riquadro al passaggio del mouse e nell'elenco a
+              destra. Stessa forma della legenda della heatmap, stessa rampa. */}
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: 'var(--tx-muted)' }}
           >
-            Tutto il mondo
-          </button>
-        ) : null}
+            <span>1</span>
+            {/* Il gradiente parte da `MAP_FLOOR`, non da zero: sotto quella
+                soglia nessun paese viene mai disegnato, e una legenda che
+                mostrasse anche quel tratto prometterebbe colori che sulla
+                carta non esistono. */}
+            <span style={{ width: 96, height: 8, borderRadius: 4, background: MAP_GRADIENT }} />
+            <span>{top > 0 ? numberFmt.format(top) : '—'}</span>
+          </div>
+          {zoomed ? (
+            <button
+              type="button"
+              onClick={() => setView(FULL)}
+              style={{
+                border: '1px solid var(--bd-subtle)',
+                borderRadius: 'var(--r-xs)',
+                background: 'var(--s-inset)',
+                color: 'var(--tx-secondary)',
+                fontFamily: 'var(--font-ui)',
+                fontSize: 11.5,
+                padding: '4px 9px',
+                cursor: 'pointer',
+              }}
+            >
+              Tutto il mondo
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 260px', gap: 18 }}>
@@ -372,7 +377,11 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
                     width: 8,
                     height: 8,
                     borderRadius: 2,
-                    background: rampColor(0.15 + (rankOf.get(c.cc) ?? 0) * 0.85),
+                    // Lo stesso colore che ha sulla carta, dalla stessa
+                    // funzione: il quadratino dell'elenco è il ponte fra un
+                    // nome e una tinta, e se i due divergessero servirebbe a
+                    // sbagliare invece che a leggere.
+                    background: rampColour(mapPosition(c.v, top)),
                     flex: 'none',
                   }}
                 />

@@ -47,6 +47,27 @@
   --on-ac: #160a02;
 }
 
+/* Le misure del pallino di Svetlana, e lo spazio che si tiene libero sotto.
+ *
+ * IL DIFETTO CHE HANNO RISOLTO. Il pallino è fisso nell'angolo in basso a
+ * destra; la barra in fondo a un riquadro tiene le frecce di paginazione
+ * nello stesso angolo. Con `main` che finiva a 40px dal bordo, le due cose
+ * si sovrapponevano e le frecce diventavano semplicemente non cliccabili —
+ * nel registro attività, negli utenti, nelle valutazioni: ovunque ci sia una
+ * tabella paginata. Non un errore, non un avviso: un click che non arriva.
+ *
+ * STANNO QUI E NON NEL COMPONENTE perché il numero serve a DUE posti che non
+ * si vedono fra loro: chi disegna il pallino e chi gli lascia spazio. Scritti
+ * due volte, il giorno che uno cambia l'altro resta indietro e il difetto
+ * torna identico. `svetlana.tsx` legge queste stesse variabili. */
+:root {
+  --fab-gap: 24px;
+  --fab-size: 52px;
+  /* Lo stacco finale è respiro, non allineamento: una freccia che sfiora il
+   * pallino si clicca male anche quando tecnicamente si può cliccare. */
+  --fab-clear: calc(var(--fab-gap) + var(--fab-size) + 16px);
+}
+
 /* --------------------------------------------------------------------------
  * Base
  * ------------------------------------------------------------------------ */
@@ -664,7 +685,8 @@ body {
   .app-main {
     flex: 1;
     overflow-y: auto;
-    padding: 24px 20px 40px;
+    /* In fondo si lascia passare il pallino di Svetlana: vedi --fab-clear. */
+    padding: 24px 20px var(--fab-clear);
     display: flex;
     flex-direction: column;
     gap: 24px;

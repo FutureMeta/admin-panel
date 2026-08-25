@@ -181,8 +181,13 @@ export function Svetlana({ me, page }: { me: Me; page: SvetlanaPage }) {
     <div
       style={{
         position: 'fixed',
-        bottom: 24,
-        right: 24,
+        // Le misure vengono da `app.css`, e non sono scritte qui, perché lo
+        // stesso numero serve a `--fab-clear`: è lo spazio che `main` tiene
+        // libero in fondo perché il pallino non copra le frecce di
+        // paginazione. Due copie dello stesso 24 sono due copie che prima o
+        // poi divergono, e quando divergono il click smette di arrivare.
+        bottom: 'var(--fab-gap)',
+        right: 'var(--fab-gap)',
         zIndex: 80,
         display: 'flex',
         flexDirection: 'column',
@@ -453,8 +458,10 @@ export function Svetlana({ me, page }: { me: Me; page: SvetlanaPage }) {
         aria-label={open ? 'Chiudi Svetlana' : 'Apri Svetlana'}
         aria-expanded={open}
         style={{
-          width: 52,
-          height: 52,
+          // Stessa ragione di `--fab-gap`: la misura la conosce `app.css`,
+          // che è anche l'unico posto che sa quanto spazio lasciare sotto.
+          width: 'var(--fab-size)',
+          height: 'var(--fab-size)',
           border: '1px solid var(--bd-strong)',
           borderRadius: 'var(--r-full)',
           background: 'var(--s-elevated)',

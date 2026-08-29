@@ -19,12 +19,16 @@
 // pannello, guardandole.
 //
 // Uso:
-//   node scripts/import-duels-configs.ts "C:/Users/fiore/Desktop/Progetti/duels" > import.sql
+//   node scripts/import-duels-configs.ts "C:/Users/fiore/Desktop/Progetti/duels" import.sql
 //
 // Poi si legge `import.sql`, e si applica con psql come qualunque altra cosa.
+//
+// IL FILE LO SCRIVE LUI: la redirezione della console lo rovinerebbe, e per
+// come e` fatto il danno non se ne accorgerebbe nessuno fino al gioco. Vedi la
+// nota in fondo, e `fix-config-encoding.ts`.
 
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { CONFIG_FORBIDDEN, CONFIG_MODULES, isConfigPath } from '#src/duels/config-store.ts';
 
@@ -95,8 +99,9 @@ function digest(content: string): string {
 
 function main(): void {
   const checkout = process.argv[2];
-  if (!checkout) {
-    console.error('uso: node scripts/import-duels-configs.ts <percorso del checkout di duels>');
+  const out = process.argv[3];
+  if (!checkout || !out) {
+    console.error('uso: node scripts/import-duels-configs.ts <checkout di duels> <file da scrivere>');
     process.exit(2);
   }
 
@@ -176,7 +181,16 @@ function main(): void {
   }
 
   lines.push('COMMIT;');
-  console.log(lines.join('\n'));
+  // SCRIVE LUI IL FILE, e non si fa redirigere lo standard output.
+  //
+  // La console di Windows non parla UTF-8: passando di li', `●` — che e' un
+  // carattere solo, tre byte — arriva nel file come `ÔùÅ`, cioe' i suoi tre
+  // byte letti uno per uno come CP850 e riscritti. Da quel momento il testo
+  // giusto non esiste piu' da nessuna parte, e i server servono ai giocatori
+  // dei menu pieni di caratteri a caso. E' successo davvero: a rimetterlo a
+  // posto c'e' voluto `fix-config-encoding.ts`.
+  writeFileSync(out, `${lines.join('\n')}\n`, 'utf8');
+  console.error(`scritto ${out}`);
 
   console.error(
     `${paths.length} percorsi · ${shared} con una versione condivisa · ${split} divisi per modulo`,

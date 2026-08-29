@@ -883,7 +883,7 @@ function ServerGroup({
               color: 'var(--tx-muted)',
             }}
           >
-            {s.cpu === null ? '—' : `${Math.round(s.cpu * 100)}%`}
+            {s.cpu === null ? '—' : `${Math.round(s.cpu)}%`}
           </span>
         </div>
       ))}

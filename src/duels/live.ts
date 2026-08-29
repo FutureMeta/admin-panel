@@ -73,7 +73,20 @@ export type LiveServer = {
   /** Media dei campioni. `null` quando il server non ne ha pubblicato nessuno. */
   tps: number | null;
   mspt: number | null;
-  /** Frazione 0..1, come la pubblica il plugin. */
+  /**
+   * PERCENTUALE GIA' FATTA, 0..100, come la pubblica il plugin. Non una
+   * frazione.
+   *
+   * Il mockup la moltiplica per cento perche' i suoi dati finti erano `0.41`,
+   * ma i dati veri non sono quelli, e il vecchio pannello lo dice due volte in
+   * due punti che non si conoscono fra loro: la mostrava con
+   * `formatPercent(s.cpu)`, cioe' il numero cosi' com'e' con un `%` in fondo, e
+   * nel calcolo del punteggio scriveva `1 - min(1, v / 100)` — che con una
+   * frazione 0..1 darebbe sempre quasi 1 e non misurerebbe niente.
+   *
+   * Moltiplicarla qui e' il difetto piu' silenzioso possibile: un server al
+   * 4% diventa un server al 400%, e nessuno sbaglia una riga di codice.
+   */
   cpu: number | null;
 };
 

@@ -110,7 +110,8 @@ function seed() {
         matches: 'm-1,m-2',
         tps: '19.8,19.9,20.0',
         mspt: '6.0,6.8',
-        cpu: '0.40,0.42',
+        // PERCENTUALI, 0..100: e' cosi' che il plugin le pubblica.
+        cpu: '40.0,42.0',
       },
       'duels:servers:duels_2': {
         identifier: 'duels_2',
@@ -131,7 +132,7 @@ function seed() {
         matches: 'm-3',
         tps: '19.6',
         mspt: '7.1',
-        cpu: '0.34',
+        cpu: '34.0',
       },
       'duels:match:m-1': {
         identifier: 'm-1',
@@ -155,7 +156,7 @@ function seed() {
         matches: 'm-4',
         tps: '19.9',
         mspt: '4.0',
-        cpu: '0.20',
+        cpu: '20.0',
       },
       'duels:match:m-4': {
         identifier: 'm-4',
@@ -192,7 +193,7 @@ describe('la fotografia: server, partite, modalita`', () => {
 
     expect(one?.tps).toBeCloseTo((19.8 + 19.9 + 20.0) / 3, 6);
     expect(one?.mspt).toBeCloseTo(6.4, 6);
-    expect(one?.cpu).toBeCloseTo(0.41, 6);
+    expect(one?.cpu).toBeCloseTo(41, 6);
 
     // LA RIGA CHE CONTA. Zero e ignoto non sono la stessa cosa: con zero
     // questo server verrebbe dipinto di rosso — TPS 0 — e chi guarda andrebbe
@@ -384,5 +385,26 @@ describe('i server che non sono DUEL ne` EVENT non esistono, qui', () => {
     };
     const snap = await readLiveSnapshot(fakeRedis(orfana), null, NOW);
     expect(snap.matches.find((m) => m.id === 'm-orfana')?.server).toBeNull();
+  });
+});
+
+describe('la CPU e` gia` una percentuale, e non si moltiplica', () => {
+  it('quaranta per cento resta quaranta, non quattromila', async () => {
+    // IL DIFETTO CHE QUESTA RIGA IMPEDISCE e` invisibile in una code review:
+    // moltiplicare per cento una percentuale gia` fatta non rompe niente, non
+    // solleva niente, e trasforma un server al 41% in un server al 4100%.
+    //
+    // La prova che il plugin pubblica gia` percentuali sta nel vecchio
+    // pannello, in due punti che non si conoscono fra loro: la mostrava con
+    // `formatPercent(s.cpu)` — il numero cosi` com'e` con un `%` in fondo — e
+    // nel punteggio scriveva `1 - min(1, v / 100)`, che con una frazione 0..1
+    // darebbe sempre quasi 1 e non misurerebbe niente.
+    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const one = snap.servers.find((s) => s.id === 'duels_1');
+    expect(one?.cpu).toBeCloseTo(41, 6);
+    // Il lettore NON tocca la scala: media dei campioni e basta. La
+    // percentuale la scrive la schermata, e la scrive cosi` com'e`.
+    expect(one?.cpu).toBeGreaterThan(1);
+    expect(one?.cpu).toBeLessThanOrEqual(100);
   });
 });

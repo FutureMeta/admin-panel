@@ -29,6 +29,7 @@ import { pageFilters } from './lib/svetlana.ts';
 import './app.css';
 import { AcceptPage } from './routes/accept.tsx';
 import { AuditPage_ } from './routes/audit.tsx';
+import { DuelsLiveRoute as DuelsLivePage } from './routes/duels-live.tsx';
 import { DuelsMapsRoute as DuelsMapsPage } from './routes/duels-maps.tsx';
 import { DuelsModesRoute as DuelsModesPage } from './routes/duels-modes.tsx';
 import { DuelsRatingsRoute as DuelsRatingsPage } from './routes/duels-ratings.tsx';
@@ -266,6 +267,13 @@ function DuelsMapsRoute() {
   return <DuelsMapsPage me={me.data} />;
 }
 
+function DuelsLiveRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!canOpen(me.data, 'duels_live')) return <ForbiddenPage />;
+  return <DuelsLivePage />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -361,6 +369,11 @@ const duelsMapsRoute = createRoute({
   path: '/duels/maps',
   component: DuelsMapsRoute,
 });
+const duelsLiveRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/duels/live',
+  component: DuelsLiveRoute,
+});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -382,6 +395,7 @@ const routeTree = rootRoute.addChildren([
     duelsRatingsRoute,
     duelsModesRoute,
     duelsMapsRoute,
+    duelsLiveRoute,
     auditRoute,
   ]),
 ]);

@@ -107,6 +107,14 @@ export const NAV: readonly NavEntry[] = [
     hint: 'configurazione delle mappe',
   },
   {
+    to: '/duels/live',
+    title: 'Duels · Live',
+    label: 'Live',
+    area: 'Duels',
+    modules: ['duels_live'],
+    hint: 'cosa sta girando adesso',
+  },
+  {
     to: '/utenti',
     title: 'Utenti & Ruoli',
     label: 'Utenti & Ruoli',

@@ -43,6 +43,7 @@ const DECOR: Record<string, { icon: string; prefetch?: () => void }> = {
   '/duels/ratings': { icon: ICONS.star },
   '/duels/modes': { icon: ICONS.cfg },
   '/duels/maps': { icon: ICONS.grid },
+  '/duels/live': { icon: ICONS.pulse },
   '/utenti': { icon: ICONS.users },
   '/registro': { icon: ICONS.log },
 };

@@ -51,6 +51,7 @@ const ME: Me = {
     duels_feedback: 3,
     duels_modes: 3,
     duels_maps: 3,
+    duels_live: 3,
     assistente: 3,
   },
   modules: [

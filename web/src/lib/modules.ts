@@ -39,6 +39,7 @@ export const MODULE_KEYS = [
   'duels_feedback',
   'duels_modes',
   'duels_maps',
+  'duels_live',
   'assistente',
 ] as const;
 
@@ -69,6 +70,7 @@ export const MODULE_AREAS: Record<string, string> = {
   duels_feedback: 'Duels',
   duels_modes: 'Duels',
   duels_maps: 'Duels',
+  duels_live: 'Duels',
   server: 'Sistema',
   // Sta con «Impostazioni» e «Server» e non con «Analisi»: non e' una
   // schermata di dati, e' una capacita' del pannello che si accende o si

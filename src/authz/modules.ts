@@ -22,6 +22,10 @@ export const MODULES = [
   // non compare e' un permesso che nessuno revoca. Vedi migration 018.
   'duels_modes',
   'duels_maps',
+  // La schermata realtime. Chiave a se' perche' e' l'unica dei duels che
+  // mostra CHI sta giocando adesso, per nome, con server e ping: appoggiarla
+  // su `duels` la regalerebbe a chiunque abbia i grafici. Vedi migration 020.
+  'duels_live',
   // L'assistente conversazionale. Un modulo a se' perche' altrimenti non si
   // puo' spegnere: le risposte passano da un fornitore esterno, e dare o non
   // dare quell'accesso e' una decisione che la matrice deve poter esprimere.

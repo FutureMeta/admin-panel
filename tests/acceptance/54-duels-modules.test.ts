@@ -65,7 +65,7 @@ describe('il vocabolario dei moduli e` uno solo', () => {
       'duels_feedback',
       'duels_modes',
       'duels_maps',
-      'assistente',
+      'duels_live',
       'server',
     ]);
   });
@@ -102,6 +102,18 @@ describe('la matrice dei permessi e` quella dichiarata', () => {
     expect(await livelli('duels_feedback')).toEqual({ owner: 3, admin: 2, dev: 0, moderatore: 1 });
   });
 
+  it('`duels_live`: il moderatore vede chi sta giocando, e non e` un caso', async () => {
+    // E` la riga che spiega perche` il modulo esiste. La schermata Live e`
+    // l'unica dei duels che dica CHI sta giocando adesso, per nome, con server
+    // e ping: sui `duels` sarebbe arrivata in regalo a chiunque avesse i
+    // grafici, senza che nessuna riga della matrice lo dicesse.
+    //
+    // `moderatore` a 1 perche` guardare chi sta giocando e` il suo lavoro;
+    // `dev` a 1 perche` la meta` bassa della schermata e` TPS, MSPT e CPU per
+    // server, che e` una diagnosi.
+    expect(await livelli('duels_live')).toEqual({ owner: 3, admin: 3, dev: 1, moderatore: 1 });
+  });
+
   it('owner ha 3 su entrambi, o la dominanza si rompe', async () => {
     // La matrice determina chi puo` agire su chi. Se un ruolo non-owner avesse
     // su un modulo un livello superiore a quello di admin, admin smetterebbe
@@ -114,7 +126,7 @@ describe('la matrice dei permessi e` quella dichiarata', () => {
         WHERE m.key LIKE 'duels%'`,
     );
     expect(res.rows.every((r) => r.level === 3)).toBe(true);
-    expect(res.rows).toHaveLength(4);
+    expect(res.rows).toHaveLength(5);
   });
 });
 

@@ -489,6 +489,9 @@ export const ICONS = {
   trend: 'M3 17l5-7 4 4 9-11',
   star: 'M12 3.5l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6-4.4-4.2 6-.8z',
   cfg: 'M4.5 7h15M4.5 12h15M4.5 17h15M8 5v4M16 10v4M11 15v4',
+  // Il battito: la schermata Live. Stesso tratto delle icone di sistema,
+  // una riga che sale e ricade — «adesso», non «nel tempo» come `trend`.
+  pulse: 'M3 12h4l2.5-6 4 12L16 12h5',
 } as const;
 
 /**

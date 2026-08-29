@@ -78,6 +78,16 @@ export type AppContext = {
    */
   duelsMysql: DuelsMysql | null;
   /**
+   * Il Redis di GIOCO, per la schermata Live. Client dedicato, e non quello
+   * del pannello.
+   *
+   * Non e' simmetria estetica: il client del pannello regge le sessioni, e una
+   * lettura lenta verso una macchina che non e' nostra si vedrebbe come un
+   * login che non arriva. `null` quando non c'e' un Redis di gioco: la rotta
+   * risponde 503 e il resto del pannello non cambia.
+   */
+  gameRedis: Redis | null;
+  /**
    * L'ingestione dei duels. `null` finche' non la si accende con
    * DUELS_INGEST_ENABLED: senza, nessuna connessione al MySQL del gioco viene
    * aperta e le schermate leggono lo storico gia' importato.
@@ -297,6 +307,15 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   // nella stessa pipeline del round trip di autorizzazione di un login. Le
   // chiavi vivono tutte sotto `stats:v<n>:`, quindi il giorno in cui l'istanza
   // si separa non cambia una riga di codice.
+  // IL REDIS DI GIOCO, con il suo client. Puo' essere la stessa istanza del
+  // pannello — in questa installazione lo e' — e il client resta comunque
+  // separato: sono i timeout a contare, non l'indirizzo. Le letture della
+  // schermata Live non devono mai finire nella coda che serve un login.
+  const gameRedis = createCacheRedis({
+    url: env.GAME_REDIS_URL ?? env.REDIS_URL,
+    label: 'game',
+  });
+
   const cacheRedis = createCacheRedis({
     url: env.CACHE_REDIS_URL ?? env.REDIS_URL,
     label: 'cache',
@@ -410,6 +429,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     statsDb,
     duels,
     duelsMysql,
+    gameRedis,
     statsCache,
     cacheRedis,
     // Si accende DOPO `listen()`, in `startStatsWarming`.
@@ -437,6 +457,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       context.statsWarm?.stop();
       await assistant?.close().catch(() => undefined);
       await statsDb?.destroy().catch(() => undefined);
+      await gameRedis.quit().catch(() => undefined);
       await cacheRedis.quit().catch(() => undefined);
       await db.destroy().catch(() => undefined);
       await redis.quit().catch(() => undefined);

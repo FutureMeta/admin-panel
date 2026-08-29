@@ -11,6 +11,7 @@
     {id:'utenti', label:'Utenti & Ruoli'},
     {id:'registro', label:'Registro attività'},
     {id:'responsive', label:'Responsive'},
+    {id:'duels-live', label:'Duels · Live'},
     {id:'duels-trends', label:'Duels · Trends'},
     {id:'duels-ratings', label:'Duels · Ratings'},
     {id:'duels-config', label:'Duels · Modes'},
@@ -40,7 +41,9 @@
     trend:'M3 17l5-7 4 4 9-11',
     star:'M12 3.5l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6-4.4-4.2 6-.8z',
     cfg:'M4.5 7h15M4.5 12h15M4.5 17h15M8 5v4M16 10v4M11 15v4',
-    swords:'M6.5 17.5 17.5 6.5M14 6h4v4M6 14v4h4M17.5 17.5 6.5 6.5M10 6H6v4M18 14v4h-4'
+    swords:'M6.5 17.5 17.5 6.5M14 6h4v4M6 14v4h4M17.5 17.5 6.5 6.5M10 6H6v4M18 14v4h-4',
+    pulse:'M3 12h3.5l2-5 3 10 2.5-5H21',
+    server:'M4 4.5h16v5H4zM4 14.5h16v5H4zM7.5 7h.01M7.5 17h.01'
   };
   const NAV = [
     { area:'Analisi', items:[
@@ -48,6 +51,7 @@
       { label:'Dettaglio modalità', icon:I.modes, screen:'towny' }
     ]},
     { area:'Duels', items:[
+      { label:'Live', icon:I.pulse, screen:'duels-live' },
       { label:'Trends', icon:I.trend, screen:'duels-trends' },
       { label:'Ratings', icon:I.star, screen:'duels-ratings' },
       { label:'Modes', icon:I.swords, screen:'duels-config' },
@@ -61,7 +65,7 @@
   const BREAD = {
     shell:'App shell', panoramica:'Panoramica network', towny:'Dettaglio modalità · Towny',
     utenti:'Utenti & Ruoli', registro:'Registro attività',
-    'duels-trends':'Duels · Trends', 'duels-ratings':'Duels · Ratings', 'duels-config':'Duels · Modes', 'duels-maps':'Duels · Maps'
+    'duels-live':'Duels · Live', 'duels-trends':'Duels · Trends', 'duels-ratings':'Duels · Ratings', 'duels-config':'Duels · Modes', 'duels-maps':'Duels · Maps'
   };
   const RAMP = ['#0F212A','#16394B','#1E5670','#4C6E72','#8A7147','#C08129','#F0A63F'];
   const fmt = n => Number(n).toLocaleString('it-IT');
@@ -115,7 +119,7 @@
     sistema:'0-design-system.dc.html', login:'1-login.dc.html', invito:'2-accettazione-invito.dc.html',
     shell:'3-app-shell.dc.html', panoramica:'4-panoramica-network.dc.html', towny:'5-dettaglio-modalita.dc.html',
     utenti:'6-utenti-e-ruoli.dc.html', registro:'7-registro-attivita.dc.html', responsive:'8-responsive.dc.html',
-    'duels-trends':'9-duels-trends.dc.html', 'duels-ratings':'10-duels-ratings.dc.html', 'duels-config':'11-duels-configurazione.dc.html', 'duels-maps':'12-duels-mappe.dc.html'
+    'duels-live':'13-duels-live.dc.html', 'duels-trends':'9-duels-trends.dc.html', 'duels-ratings':'10-duels-ratings.dc.html', 'duels-config':'11-duels-configurazione.dc.html', 'duels-maps':'12-duels-mappe.dc.html'
   };
 
   function hexField() {
@@ -1290,7 +1294,7 @@
         bg: p === ctx.state.period ? 'var(--s-overlay)' : 'transparent',
         fg: p === ctx.state.period ? 'var(--tx-primary)' : 'var(--tx-muted)'
       })),
-      showFilters: scr !== 'utenti' && scr !== 'registro' && scr !== 'duels-ratings' && scr !== 'duels-config' && scr !== 'duels-maps',
+      showFilters: scr !== 'utenti' && scr !== 'registro' && scr !== 'duels-ratings' && scr !== 'duels-config' && scr !== 'duels-maps' && scr !== 'duels-live',
       modeTabs: MODES.map(m => ({
         name: m.name,
         go: () => ctx.setState({modeSel: m.name}),
@@ -1408,7 +1412,152 @@
     };
   }
 
+  /* ---------- Duels · Live (operatività realtime) ---------- */
+  const LIVE_GROUPS = [
+    {type:'DUEL', label:'Server DUEL', desc:'', hasMatches:true, servers:[
+      {id:'duels_1', players:148, matches:41, tps:19.8, mspt:6.4,  cpu:0.41},
+      {id:'duels_2', players:132, matches:36, tps:19.9, mspt:5.7,  cpu:0.37},
+      {id:'duels_3', players:88,  matches:24, tps:19.4, mspt:8.9,  cpu:0.52}
+    ]},
+    {type:'EVENT', label:'Server EVENT', desc:'', hasMatches:true, servers:[
+      {id:'duels_event_1', players:61, matches:2, tps:19.6, mspt:7.1, cpu:0.34, event:'Crystal Royale'},
+      {id:'duels_event_2', players:34, matches:1, tps:19.9, mspt:4.2, cpu:0.21, event:'TNT Run'}
+    ]}
+  ];
+  const LIVE_MATCHES = [
+    {id:'m-8f21', mode:'NoDebuff', map:'Ancient Ashes', type:'DUEL', context:'NORMAL', server:'duels_1', age:'04:12', players:['Lorenzo_98','Giadaaa']},
+    {id:'m-8f22', mode:'Sumo', map:'Pillar', type:'DUEL', context:'NORMAL', server:'duels_1', age:'01:38', players:['MatteoRossi','Sbrodino']},
+    {id:'m-8f23', mode:'SkyWars Duel', map:'Frozen Keep', type:'DUEL', context:'NORMAL', server:'duels_2', age:'06:55', players:['Zenith_','Psicosi']},
+    {id:'m-8f24', mode:'Bridge', map:'Twin Towers', type:'DUEL', context:'NORMAL', server:'duels_2', age:'02:07', players:['Fede_TM','Alessia04']},
+    {id:'m-8f25', mode:'Crystal Royale', map:'Colosseo', type:'FFA', context:'EVENT', server:'duels_event_1', age:'11:43', players:['Miky88','Gabriele_','Chiara_R','Nico2010']},
+    {id:'m-8f26', mode:'Classic', map:'Ancient Ashes', type:'DUEL', context:'NORMAL', server:'duels_3', age:'00:52', players:['Ludovica_','Andrea_Bianchi']},
+    {id:'m-8f27', mode:'UHC Meetup', map:'Highlands', type:'DUEL', context:'NORMAL', server:'duels_3', age:'08:19', players:['Vally90','Simone_92']},
+    {id:'m-8f28', mode:'TNT Run', map:'Torre Cava', type:'FFA', context:'EVENT', server:'duels_event_2', age:'03:28', players:['Marco_DP','Elisa_','Tommy_04','Riccardo99','Sofia_M']},
+    {id:'m-8f29', mode:'Boxing', map:'Pillar', type:'DUEL', context:'NORMAL', server:'duels_1', age:'01:11', players:['Davide_R','Cristian_7']},
+    {id:'m-8f30', mode:'Gapple', map:'Frozen Keep', type:'DUEL', context:'NORMAL', server:'duels_2', age:'03:36', players:['Nicolò_M','Alberto_88']},
+    {id:'m-8f31', mode:'NoDebuff', map:'Twin Towers', type:'DUEL', context:'NORMAL', server:'duels_3', age:'05:44', players:['Giulia_R','Pietro_09']},
+    {id:'m-8f32', mode:'Sumo', map:'Colosseo', type:'DUEL', context:'NORMAL', server:'duels_2', age:'00:33', players:['Leo_Mancini','Dario_T']}
+  ];
+  const LIVE_PING = {Lorenzo_98:34, Giadaaa:58, MatteoRossi:71, Sbrodino:63, Zenith_:22, Psicosi:41, Fede_TM:52, Alessia04:88,
+    Miky88:96, 'Gabriele_':66, Chiara_R:45, Nico2010:148, 'Ludovica_':39, Andrea_Bianchi:57, Vally90:19, Simone_92:74,
+    Marco_DP:83, 'Elisa_':112, Tommy_04:77, Riccardo99:203, Sofia_M:49, Davide_R:36, Cristian_7:61, 'Nicolò_M':44,
+    Alberto_88:92, Giulia_R:55, Pietro_09:68, Leo_Mancini:29, Dario_T:104};
+  const LIVE_BY_MODE = [
+    {name:'NoDebuff', ctx:'DUEL', active:24, queued:12}, {name:'Sumo', ctx:'DUEL', active:19, queued:8},
+    {name:'SkyWars Duel', ctx:'DUEL', active:16, queued:6}, {name:'Classic', ctx:'DUEL', active:13, queued:9},
+    {name:'Bridge', ctx:'DUEL', active:11, queued:4}, {name:'UHC Meetup', ctx:'DUEL', active:9, queued:3},
+    {name:'Boxing', ctx:'DUEL', active:7, queued:5}, {name:'Gapple', ctx:'DUEL', active:2, queued:2},
+    {name:'Crystal Royale', ctx:'EVENT', active:2, queued:0}, {name:'TNT Run', ctx:'EVENT', active:1, queued:0}
+  ];
+
+  function duelsLive(ctx) {
+    const s = ctx.state;
+    const allServers = LIVE_GROUPS.flatMap(g => g.servers.map(x => ({...x, type:g.type, hasMatches:g.hasMatches})));
+    const totalMatches = allServers.reduce((acc,x) => acc + (x.matches || 0), 0);
+    const inQueue = LIVE_BY_MODE.reduce((acc,x) => acc + x.queued, 0);
+
+    const tpsColor = t => t >= 19.5 ? 'var(--ok)' : t >= 18 ? 'var(--warn)' : 'var(--err)';
+    const tpsSoft = t => t >= 19.5 ? 'var(--ok-soft)' : t >= 18 ? 'var(--warn-soft)' : 'var(--err-soft)';
+    const pingColor = p => p <= 60 ? 'var(--ok)' : p <= 120 ? 'var(--warn)' : 'var(--err)';
+
+    /* --- partite attive --- */
+    const matchServer = s.liveMatchServer || 'Tutti';
+    const matchServers = ['Tutti', ...allServers.filter(x => x.hasMatches).map(x => x.id)];
+    const matches = LIVE_MATCHES.filter(m => matchServer === 'Tutti' || m.server === matchServer)
+      .map(m => ({
+        ...m,
+        playersLabel: m.players.length + ' giocatori',
+        isEvent: m.context === 'EVENT',
+        typeColor: m.context === 'EVENT' ? 'var(--blu-viz)' : 'var(--ac-text)',
+        typeBg: m.context === 'EVENT' ? 'var(--blu-soft)' : 'var(--ac-soft)',
+        open: () => ctx.setState({liveMatch: m.id})
+      }));
+
+    /* --- partite per modalità --- */
+    const maxActive = Math.max(...LIVE_BY_MODE.map(x => x.active));
+    const byMode = LIVE_BY_MODE.map(x => ({
+      name: x.name, active: x.active, queued: x.queued, ctx: x.ctx,
+      dotColor: x.ctx === 'EVENT' ? 'var(--blu-viz)' : 'var(--ac)',
+      w: (x.active / maxActive * 100).toFixed(1) + '%',
+      qw: (x.queued / maxActive * 100).toFixed(1) + '%'
+    }));
+
+    /* --- salute server, divisa per tipo --- */
+    const sort = s.liveSort || {key:'players', dir:'desc'};
+    const f = sort.dir === 'asc' ? 1 : -1;
+    const mkHeaders = (g) => [
+      {key:'id', label:'ID server', align:'left'},
+      {key:'players', label:'Giocatori', align:'right'},
+      ...(g.hasMatches ? [{key:'matches', label:'Partite', align:'right'}] : []),
+      {key:'tps', label:'TPS', align:'right'}, {key:'mspt', label:'MSPT', align:'right'}, {key:'cpu', label:'CPU', align:'right'}
+    ].map(h => ({
+      ...h, just: h.align === 'right' ? 'flex-end' : 'flex-start',
+      arrow: sort.key === h.key ? (sort.dir === 'asc' ? '↑' : '↓') : '',
+      fg: sort.key === h.key ? 'var(--tx-primary)' : 'var(--tx-muted)',
+      go: () => ctx.setState({liveSort: {key:h.key, dir: sort.key === h.key && sort.dir === 'desc' ? 'asc' : 'desc'}})
+    }));
+    const groups = LIVE_GROUPS.map(g => {
+      const players = g.servers.reduce((acc,x) => acc + x.players, 0);
+      const avg = g.servers.reduce((acc,x) => acc + x.tps, 0) / g.servers.length;
+      const gm = g.servers.reduce((acc,x) => acc + (x.matches || 0), 0);
+      return {
+        type: g.type, label: g.label, desc: g.desc, hasMatches: g.hasMatches,
+        cols: g.hasMatches ? 'minmax(0,1.5fr) minmax(0,.8fr) minmax(0,.8fr) minmax(0,.7fr) minmax(0,.8fr) minmax(0,.7fr)' : 'minmax(0,1.5fr) minmax(0,.8fr) minmax(0,.7fr) minmax(0,.8fr) minmax(0,.7fr)',
+        headers: mkHeaders(g),
+        chipFg: g.type === 'EVENT' ? 'var(--blu-viz)' : g.type === 'FFA' ? 'var(--tx-secondary)' : 'var(--ac-text)',
+        chipBg: g.type === 'EVENT' ? 'var(--blu-soft)' : g.type === 'FFA' ? 'var(--s-inset)' : 'var(--ac-soft)',
+        statCount: g.servers.length + (g.servers.length === 1 ? ' server' : ' server'),
+        statPlayers: fmt(players) + ' giocatori',
+        statThird: g.hasMatches ? fmt(gm) + ' partite' : 'nessuna partita',
+        statTps: 'TPS medio ' + avg.toFixed(2).replace('.', ','),
+        statTpsColor: tpsColor(avg),
+        rows: g.servers.slice().sort((x,y) => {
+          const xv = x[sort.key], yv = y[sort.key];
+          if (xv === undefined || yv === undefined) return 0;
+          return (typeof xv === 'string' ? String(xv).localeCompare(String(yv)) : xv - yv) * f;
+        }).map(x => ({
+          id: x.id, dot: tpsColor(x.tps),
+          playersLabel: fmt(x.players),
+          hasMatches: g.hasMatches,
+          thirdLabel: x.matches ? fmt(x.matches) : '—',
+          tpsLabel: x.tps.toFixed(1), tpsColor: tpsColor(x.tps), tpsBg: tpsSoft(x.tps),
+          msptLabel: x.mspt.toFixed(1) + ' ms',
+          cpuLabel: Math.round(x.cpu * 100) + '%',
+          note: x.event ? x.event + ' in corso' : ''
+        }))
+      };
+    });
+
+    const selMatch = LIVE_MATCHES.find(m => m.id === s.liveMatch) || null;
+    const matchDetail = selMatch ? {
+      ...selMatch,
+      isEvent: selMatch.context === 'EVENT',
+      roster: selMatch.players.map(n => {
+        const p = LIVE_PING[n];
+        return { name:n, hasAvatar:true, avatar:'https://mc-heads.net/avatar/' + encodeURIComponent(n) + '/48',
+          ping: p ? p + ' ms' : '—', pingColor: p ? pingColor(p) : 'var(--tx-muted)', server: selMatch.server };
+      })
+    } : null;
+
+    return {
+      liveMatchTotal: fmt(totalMatches),
+      liveMatches: matches,
+      liveMatchCount: matches.length + ' di ' + fmt(totalMatches) + ' partite',
+      liveMatchServerLabel: matchServer,
+      liveMatchServerMenuOpen: !!s.liveMatchServerMenu,
+      toggleLiveMatchServerMenu: () => ctx.setState(st => ({liveMatchServerMenu: !st.liveMatchServerMenu})),
+      liveMatchServerOptions: matchServers.map(id => ({
+        label: id, fg: id === matchServer ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        go: () => ctx.setState({liveMatchServer: id, liveMatchServerMenu: false})
+      })),
+      liveByMode: byMode, liveQueueTotal: inQueue,
+      liveGroups: groups,
+      liveMatchOpen: !!selMatch, liveMatchDetail: matchDetail,
+      closeLiveMatch: () => ctx.setState({liveMatch: null})
+    };
+  }
+
   window.MetaMC = { SCREENS, MODES, I, NAV, BREAD, RAMP, HOURLY, SHARES, NOW_MODE, OTHER,
     fmt, hx, lerpHex, rampColor, linePath, areaPath, arcPath,
-    hexField, netStatus, overview, admin, duels, duelsModes, duelsMaps, baseVals };
+    hexField, netStatus, overview, admin, duels, duelsModes, duelsMaps, duelsLive, baseVals };
 })();

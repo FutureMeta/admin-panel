@@ -291,3 +291,131 @@ describe('l`albero: un riepilogo per percorso, senza i contenuti', () => {
     expect(files.some((f) => f.hasDraft)).toBe(true);
   });
 });
+
+describe('aggiungere un modulo a un file diviso non appiattisce gli altri', () => {
+  const PATH = 'inventories/settings.yml';
+
+  it('tre moduli, tre contenuti diversi', async () => {
+    const id = await seedShared(PATH, ['lobby', 'ffa', 'game']);
+    await saveConfigDraft(db, { versionId: id, content: 'title: comune', author: 'vally90@metamc.it' });
+    await publishConfigDrafts(db, 'vally90@metamc.it');
+
+    await setConfigLinks(db, {
+      path: PATH,
+      modules: ['lobby', 'ffa', 'game'],
+      split: true,
+      keepVersionId: id,
+      author: 'vally90@metamc.it',
+    });
+
+    const file = await readConfigFile(db, PATH);
+    for (const version of file.versions) {
+      await saveConfigDraft(db, {
+        versionId: version.id,
+        content: `title: ${version.modules.join('')}`,
+        author: 'vally90@metamc.it',
+      });
+    }
+    await publishConfigDrafts(db, 'vally90@metamc.it');
+
+    expect((await readConfigBundle(db, 'lobby')).files.find((f) => f.path === PATH)?.content).toBe(
+      'title: lobby',
+    );
+    expect((await readConfigBundle(db, 'ffa')).files.find((f) => f.path === PATH)?.content).toBe(
+      'title: ffa',
+    );
+    expect((await readConfigBundle(db, 'game')).files.find((f) => f.path === PATH)?.content).toBe(
+      'title: game',
+    );
+  });
+
+  it('IL DIFETTO: aggiungendo `event` mentre guardo lobby, gli altri restano loro', async () => {
+    // E` il caso vero, e il piu` innocuo di tutta la schermata: apro un file
+    // diviso, apro i legami, spunto un modulo in piu`, salvo.
+    //
+    // La prima versione di `setConfigLinks` cancellava ogni versione tranne
+    // quella aperta e la ricopiava su tutti: lobby, ffa e game diventavano
+    // tutti «title: lobby», senza un avviso e senza un errore.
+    const file = await readConfigFile(db, PATH);
+    const lobby = file.versions.find((v) => v.modules.includes('lobby'));
+
+    await setConfigLinks(db, {
+      path: PATH,
+      modules: ['lobby', 'ffa', 'game', 'event'],
+      split: true,
+      keepVersionId: lobby?.id as number,
+      author: 'matty@metamc.it',
+    });
+
+    const bundle = async (module: string) =>
+      (await readConfigBundle(db, module)).files.find((f) => f.path === PATH)?.content;
+
+    expect(await bundle('ffa')).toBe('title: ffa');
+    expect(await bundle('game')).toBe('title: game');
+    expect(await bundle('lobby')).toBe('title: lobby');
+    // Il modulo nuovo parte da quello che si stava guardando: e` l'unica
+    // sorgente sensata, e un file vuoto sarebbe una sorpresa peggiore.
+    expect(await bundle('event')).toBe('title: lobby');
+
+    const after = await readConfigFile(db, PATH);
+    expect(after.versions).toHaveLength(4);
+  });
+
+  it('e togliere un modulo lascia intatti gli altri', async () => {
+    const file = await readConfigFile(db, PATH);
+    const game = file.versions.find((v) => v.modules.includes('game'));
+
+    await setConfigLinks(db, {
+      path: PATH,
+      modules: ['lobby', 'ffa', 'event'],
+      split: true,
+      keepVersionId: game?.id as number,
+      author: 'matty@metamc.it',
+    });
+
+    const bundle = async (module: string) =>
+      (await readConfigBundle(db, module)).files.find((f) => f.path === PATH)?.content;
+
+    expect(await bundle('lobby')).toBe('title: lobby');
+    expect(await bundle('ffa')).toBe('title: ffa');
+    expect(await bundle('event')).toBe('title: lobby');
+    // `game` non lo riceve piu`.
+    expect((await readConfigBundle(db, 'game')).files.map((f) => f.path)).not.toContain(PATH);
+  });
+
+  it('e la versione rimasta senza moduli sparisce, invece di restare invisibile', async () => {
+    // Nessuna schermata sa mostrare una versione che non riceve nessuno:
+    // lasciarla vorrebbe dire righe che si accumulano per sempre.
+    const after = await readConfigFile(db, PATH);
+    expect(after.versions).toHaveLength(3);
+    expect(after.versions.every((v) => v.modules.length > 0)).toBe(true);
+  });
+});
+
+describe('togliere tutti i moduli lascia il percorso apribile', () => {
+  it('resta una versione sola, quella che si stava guardando', async () => {
+    // Senza questa eccezione il percorso resterebbe con zero versioni, cioe`
+    // una riga nell'albero che la schermata non sa aprire: si vede, si clicca,
+    // e non succede niente.
+    const path = 'inventories/settings.yml';
+    const file = await readConfigFile(db, path);
+    const lobby = file.versions.find((v) => v.modules.includes('lobby'));
+
+    await setConfigLinks(db, {
+      path,
+      modules: [],
+      split: true,
+      keepVersionId: lobby?.id as number,
+      author: 'matty@metamc.it',
+    });
+
+    const after = await readConfigFile(db, path);
+    expect(after.versions).toHaveLength(1);
+    expect(after.versions[0]?.modules).toEqual([]);
+    expect(after.versions[0]?.published).toBe('title: lobby');
+    // E nessun server lo riceve piu`.
+    for (const module of ['lobby', 'ffa', 'game', 'event']) {
+      expect((await readConfigBundle(db, module)).files.map((f) => f.path)).not.toContain(path);
+    }
+  });
+});

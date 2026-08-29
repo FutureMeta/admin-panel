@@ -271,12 +271,23 @@ export function LinksDialog({
     onSuccess: onSaved,
   });
 
-  // Si perde qualcosa SOLO passando da diviso a condiviso, e solo se i
-  // contenuti non sono gia' tutti uguali. E' l'unico caso che merita un
-  // avviso: uno che comparisse sempre non lo leggerebbe piu' nessuno.
+  // DUE modi di perdere contenuto, e nessun altro. Un avviso che comparisse a
+  // ogni salvataggio non lo leggerebbe piu' nessuno, quindi si calcolano
+  // esattamente i casi in cui qualcosa sparisce davvero.
+  //
+  // Il primo: riunire versioni che dicono cose diverse. Ne resta una.
   const contents = new Set(file.versions.map((v) => v.draft ?? v.published ?? ''));
   const collapsing = file.split && !split && contents.size > 1;
   const kept = file.versions.find((v) => v.id === keepVersionId)?.modules ?? [];
+
+  // Il secondo: togliere un modulo da un file diviso. La sua versione non e'
+  // legata a nessun altro, quindi va via con lui — e nessuna schermata sa
+  // mostrare una versione che non riceve nessuno.
+  const dropped = file.split && split ? current.filter((m) => !picked.includes(m)) : [];
+  const losing = dropped.filter((m) => {
+    const version = file.versions.find((v) => v.modules.includes(m));
+    return version !== undefined && version.modules.every((x) => !picked.includes(x));
+  });
 
   const modes = [
     {
@@ -419,6 +430,26 @@ export function LinksDialog({
               </>
             ) : null}
             , e le altre si perdono.
+          </div>
+        ) : null}
+        {losing.length > 0 ? (
+          <div
+            style={{
+              marginTop: 12,
+              padding: '11px 13px',
+              border: '1px solid rgba(224,163,46,.35)',
+              borderRadius: 'var(--r-md)',
+              background: 'var(--warn-soft)',
+              fontSize: 12,
+              color: 'var(--tx-primary)',
+              lineHeight: '18px',
+            }}
+          >
+            {losing.length === 1 ? 'Il modulo ' : 'I moduli '}
+            <span style={{ fontFamily: 'var(--font-mono)' }}>{losing.join(', ')}</span>
+            {losing.length === 1 ? ' perde la sua versione' : ' perdono le loro versioni'}: nessun altro
+            modulo {losing.length === 1 ? 'la' : 'le'} usa, quindi{' '}
+            {losing.length === 1 ? 'sparisce' : 'spariscono'} insieme al legame.
           </div>
         ) : null}
       </div>

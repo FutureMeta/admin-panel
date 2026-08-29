@@ -301,6 +301,14 @@ export async function setConfigLinks(
     const keep = versions.rows.find((v) => v.id === input.keepVersionId) ?? versions.rows[0];
     if (!keep) throw new UnknownPath(input.path);
 
+    // I legami di PRIMA, letti prima di toccarli. Sono ciò che permette di
+    // distinguere un modulo che c'era già — e che deve tenersi la sua versione
+    // — da uno appena aggiunto. Senza questa riga la funzione non sa la
+    // differenza, ed è esattamente il difetto che aveva.
+    const existing = await sql<{ module: string; version_id: number }>`
+      SELECT module, version_id FROM stats.duels_config_binding WHERE path_id = ${pathId}
+    `.execute(trx);
+
     // I legami si rifanno da zero. Aggiornarli in differenza — quali togliere,
     // quali aggiungere, quali spostare — significherebbe passare per stati in
     // cui un modulo e' legato due volte, e la chiave primaria li rifiuterebbe
@@ -321,44 +329,117 @@ export async function setConfigLinks(
       return;
     }
 
-    // Diviso: la versione tenuta va al primo modulo, e per gli altri si
-    // creano copie con lo stesso contenuto. Nessuno parte da un file vuoto
-    // senza averlo chiesto.
-    const [first, ...others] = [...input.modules];
-    if (first === undefined) {
-      // Nessun modulo legato: resta la versione, senza legami. Il percorso
-      // esiste ancora nel pannello e non lo riceve nessuno.
-      await sql`
-        DELETE FROM stats.duels_config_version WHERE path_id = ${pathId} AND id <> ${keep.id}
-      `.execute(trx);
-      return;
+    // -----------------------------------------------------------------------
+    // Diviso.
+    //
+    // OGNI MODULO GIA' LEGATO TIENE LA SUA VERSIONE. Sembra ovvio e non lo era:
+    // la prima versione di questa funzione cancellava tutte le versioni tranne
+    // quella aperta e le ricreava come copie, perche' era stata scritta
+    // pensando solo al passaggio da condiviso a diviso. L'effetto era che
+    // AGGIUNGERE UN MODULO a un file gia' diviso appiattiva lobby, ffa e game
+    // sul contenuto che chi guardava aveva davanti — senza chiedere niente,
+    // sull'azione piu' innocua della schermata.
+    //
+    // Si copia solo per i moduli che una versione non ce l'hanno ancora.
+    // -----------------------------------------------------------------------
+
+    /** Da modulo alla versione che aveva prima. Vuota se prima non era legato. */
+    const previous = new Map(existing.rows.map((b) => [b.module, b.version_id]));
+
+    /**
+     * Quante volte una versione resta usata dopo questo giro. Serve a due cose
+     * in fondo: sapere quali versioni sfaldare, e quali sono rimaste orfane.
+     */
+    const used = new Map<number, string[]>();
+
+    for (const module of input.modules) {
+      const before = previous.get(module);
+      if (before === undefined) continue;
+      used.set(before, [...(used.get(before) ?? []), module]);
     }
 
-    await sql`
-      DELETE FROM stats.duels_config_version WHERE path_id = ${pathId} AND id <> ${keep.id}
-    `.execute(trx);
-    await sql`
-      INSERT INTO stats.duels_config_binding (path_id, module, version_id)
-      VALUES (${pathId}, ${first}, ${keep.id})
-    `.execute(trx);
-
-    for (const module of others) {
-      const copy = await sql<{ id: number }>`
-        INSERT INTO stats.duels_config_version
-          (path_id, published, published_at, published_by, draft, draft_at, draft_by)
-        VALUES (${pathId}, ${keep.published}, ${keep.published === null ? null : sql`now()`},
-                ${keep.published === null ? null : input.author},
-                ${keep.draft}, ${keep.draft === null ? null : sql`now()`},
-                ${keep.draft === null ? null : input.author})
-        RETURNING id
-      `.execute(trx);
-      const copyId = copy.rows[0]?.id as number;
+    for (const module of input.modules) {
+      const before = previous.get(module);
+      if (before !== undefined) {
+        // Aveva gia' una versione: si rimette il legame com'era. La versione
+        // non si tocca — e' il punto di tutta questa riscrittura.
+        await sql`
+          INSERT INTO stats.duels_config_binding (path_id, module, version_id)
+          VALUES (${pathId}, ${module}, ${before})
+        `.execute(trx);
+        continue;
+      }
+      // Modulo nuovo: parte da una copia di quella che si sta guardando, che e'
+      // l'unica sorgente sensata. Un file vuoto sarebbe una sorpresa.
+      const copyId = await copyVersion(trx, pathId, keep, input.author);
       await sql`
         INSERT INTO stats.duels_config_binding (path_id, module, version_id)
         VALUES (${pathId}, ${module}, ${copyId})
       `.execute(trx);
+      used.set(copyId, [module]);
     }
+
+    // Una versione condivisa da piu' moduli, in modalita' divisa, va sfaldata:
+    // uno la tiene, gli altri ne ricevono una copia. E' il passaggio da
+    // condiviso a diviso, ed e' l'unico caso in cui qui si creano copie di
+    // qualcosa che esisteva gia'.
+    for (const [versionId, modules] of used) {
+      if (modules.length < 2) continue;
+      const source = versions.rows.find((v) => v.id === versionId) ?? keep;
+      for (const module of modules.slice(1)) {
+        const copyId = await copyVersion(trx, pathId, source, input.author);
+        await sql`
+          UPDATE stats.duels_config_binding SET version_id = ${copyId}
+           WHERE path_id = ${pathId} AND module = ${module}
+        `.execute(trx);
+      }
+    }
+
+    // Le versioni rimaste senza nessun modulo. Sono irraggiungibili — nessuna
+    // schermata sa mostrare una versione che non riceve nessuno — e lasciarle
+    // vorrebbe dire righe che si accumulano per sempre. Si cancellano, ed e'
+    // perdita di contenuto: e' il prezzo di togliere un modulo da un file
+    // diviso, e la schermata lo dice prima.
+    //
+    // `keep` non e' protetta: se e' rimasta senza moduli va via come le altre.
+    // L'unica eccezione e' quando NON RESTA NESSUN LEGAME — si sono tolti tutti
+    // i moduli — perche' allora cancellarle tutte lascerebbe un percorso senza
+    // nemmeno una versione, cioe' una riga che la schermata non sa aprire. In
+    // quel caso sopravvive quella che si stava guardando, e il file torna
+    // modificabile appena gli si rilega un modulo.
+    await sql`
+      DELETE FROM stats.duels_config_version v
+       WHERE v.path_id = ${pathId}
+         AND NOT EXISTS (
+           SELECT 1 FROM stats.duels_config_binding b WHERE b.version_id = v.id
+         )
+         AND (
+           v.id <> ${keep.id}
+           OR EXISTS (
+             SELECT 1 FROM stats.duels_config_binding b2 WHERE b2.path_id = ${pathId}
+           )
+         )
+    `.execute(trx);
   });
+}
+
+/** Una versione identica a quella data, senza legami: chi chiama li mette. */
+async function copyVersion(
+  trx: Database,
+  pathId: number,
+  source: { published: string | null; draft: string | null },
+  author: string,
+): Promise<number> {
+  const copy = await sql<{ id: number }>`
+    INSERT INTO stats.duels_config_version
+      (path_id, published, published_at, published_by, draft, draft_at, draft_by)
+    VALUES (${pathId}, ${source.published}, ${source.published === null ? null : sql`now()`},
+            ${source.published === null ? null : author},
+            ${source.draft}, ${source.draft === null ? null : sql`now()`},
+            ${source.draft === null ? null : author})
+    RETURNING id
+  `.execute(trx);
+  return copy.rows[0]?.id as number;
 }
 
 export type PublishSummary = {

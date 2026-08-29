@@ -58,6 +58,7 @@ describe('rimettendo insieme i pezzi si riottiene la riga', () => {
     '  url: http://example.com/x#y',
     '  chiave con spazi: valore',
     '  "chiave: con i due punti": valore',
+    '  - "<gray>x<gray>: y"',
     '  ancora: &base',
     '  riferimento: *base',
     '  lista-inline: [uno, due]',
@@ -207,5 +208,42 @@ describe('il testo di un valore passa da MiniMessage, il resto no', () => {
     const righe = highlightYaml('a: <red>rosso\nb: normale');
     const dopo = (righe[1] as Token[]).find((t) => t.text === 'normale');
     expect(dopo?.style?.colour).toBeUndefined();
+  });
+});
+
+describe('una stringa con i due punti dentro non e` una chiave', () => {
+  // IL DIFETTO CHE QUESTO GRUPPO IMPEDISCE, e che si e` visto in una riga
+  // vera: `- "<gray>x<gray>: y"` veniva tagliato sui due punti che stanno
+  // DENTRO la stringa. Meta` riga diventava una chiave — e alle chiavi la
+  // formattazione MiniMessage non si applica — quindi il messaggio restava del
+  // colore delle chiavi e il `<gray>` sembrava non prendere.
+  const RIGA = '  - "<gray>• <yellow>GRADUAL<gray>: shrinks 20%"';
+
+  it('la riga e` tutta una stringa, non chiave piu` valore', () => {
+    expect(row(RIGA).some((t) => t.kind === 'key')).toBe(false);
+    expect(only(RIGA, 'string').join('')).toBe('"• GRADUAL: shrinks 20%"');
+  });
+
+  it('e la formattazione ci arriva', () => {
+    const pezzi = row(RIGA);
+    expect(pezzi.find((t) => t.text === '• ')?.style?.colour).toBe('#AAAAAA');
+    expect(pezzi.find((t) => t.text === 'GRADUAL')?.style?.colour).toBe('#FFFF55');
+    expect(pezzi.find((t) => t.text.startsWith(': shrinks'))?.style?.colour).toBe('#AAAAAA');
+  });
+
+  it('ma una chiave CITATA resta una chiave, due punti compresi', () => {
+    // La differenza sta tutta in cosa c'e` dopo la virgoletta di chiusura: i
+    // due punti fanno di quella stringa una chiave, la fine della riga no.
+    const pezzi = row('  "chiave: con i due punti": valore');
+    expect(pezzi.find((t) => t.kind === 'key')?.text).toBe('"chiave: con i due punti"');
+  });
+
+  it('e una chiave normale non cambia di una virgola', () => {
+    expect(shape('normale: valore')).toEqual([
+      ['key', 'normale'],
+      ['punct', ':'],
+      ['plain', ' '],
+      ['plain', 'valore'],
+    ]);
   });
 });

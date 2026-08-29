@@ -75,8 +75,19 @@ function pushText(out: Token[], kind: TokenKind, text: string): void {
 
 /** Una stringa fra virgolette o apici, con la sua chiusura se c'e'. */
 const QUOTED = /^("(?:[^"\\]|\\.)*"?|'(?:[^']|'')*'?)/;
-/** `chiave:` — anche fra virgolette, anche vuota. Il `:` vuole spazio o fine. */
-const KEY = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^:#\s][^:#]*|)(:)(?=\s|$)/;
+/**
+ * `chiave:` — anche fra virgolette, anche vuota. Il `:` vuole spazio o fine.
+ *
+ * UNA CHIAVE SENZA VIRGOLETTE NON COMINCIA CON UNA VIRGOLETTA, ed e' la parte
+ * che sembra pignoleria e non lo e'. Se comincia con una virgoletta, o e' una
+ * chiave citata — e allora la prima alternativa la prende TUTTA, chiusura
+ * compresa, e vuole i due punti subito dopo — oppure non e' una chiave affatto:
+ * e' un valore. Senza questo, `- "<gray>x<gray>: y"` finiva tagliato sui due
+ * punti che stanno DENTRO la stringa: meta' riga diventava una chiave, e alle
+ * chiavi la formattazione MiniMessage non si applica. Il messaggio restava del
+ * colore delle chiavi e nessuno capiva perche' quel `<gray>` non prendesse.
+ */
+const KEY = /^("(?:[^"\\]|\\.)*"|'(?:[^']|'')*'|[^:#\s"'][^:#]*|)(:)(?=\s|$)/;
 /** `|`, `>`, con i loro indicatori: apre un blocco di testo libero. */
 const BLOCK = /^([|>][+-]?\d*)(\s*)$/;
 const NUMBER = /^[-+]?(?:\d[\d_]*)(?:\.\d+)?(?:[eE][-+]?\d+)?$/;

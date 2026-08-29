@@ -75,7 +75,7 @@
      l'editor non sarà il riquadro rimasto indietro.
      I colori dei codici di formattazione (<red>, &a) NON stanno qui: quelli
      non sono una scelta di disegno, sono ciò che il giocatore vedrà, e vivono
-     in web/src/lib/yaml-highlight.ts insieme al loro significato. */
+     in web/src/lib/minimessage.ts insieme al loro significato. */
   --yml-key: var(--blu-viz);
   --yml-string: var(--ok);
   --yml-number: var(--vio-viz);
@@ -83,6 +83,13 @@
   --yml-comment: var(--tx-disabled);
   --yml-punct: var(--tx-muted);
   --yml-anchor: var(--ac);
+  /* I tag MiniMessage: TUTTI DELLO STESSO GRIGIO, e non del colore che
+     significano. Il colore ce l'ha il testo che vestono — quello che il
+     giocatore vedra' — e due colori nella stessa riga, uno per il tag e uno
+     per la parola, si contendevano l'occhio proprio dove serve leggere il
+     messaggio. Il grigio li lascia dov'e' giusto che stiano: leggibili, e un
+     passo indietro. */
+  --yml-tag: #5c6f7a;
 
   /* Spacing — base 4px */
   --sp1: 4px;

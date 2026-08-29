@@ -747,7 +747,8 @@ const KIND: Record<TokenKind, string> = {
   comment: 'var(--yml-comment)',
   punct: 'var(--yml-punct)',
   anchor: 'var(--yml-anchor)',
-  code: 'inherit',
+  // I tag: uno stesso grigio per tutti, vedi `--yml-tag`.
+  code: 'var(--yml-tag)',
   plain: 'var(--tx-primary)',
 };
 
@@ -800,10 +801,6 @@ function spanStyle(token: Token): React.CSSProperties {
     // Senza colore proprio resta quello del suo genere — chiave, numero,
     // commento — cioe' esattamente cio' che si vedeva prima.
     ...(colour === undefined ? { color: KIND[token.kind] } : paint(colour)),
-    // IL TAG STA UN PASSO INDIETRO. In queste righe i tag sono piu' di meta'
-    // dei caratteri: a piena intensita' sono loro il disegno, e il messaggio
-    // — che e' la cosa che si sta scrivendo — sparisce in mezzo alla sintassi.
-    ...(token.kind === 'code' ? { opacity: 0.68 } : {}),
     ...(style?.bold === true ? { WebkitTextStroke: '0.25px' } : {}),
     ...(style?.italic === true ? { fontStyle: 'italic' } : {}),
     ...(decor === '' ? {} : { textDecoration: decor }),
@@ -813,19 +810,24 @@ function spanStyle(token: Token): React.CSSProperties {
   };
 }
 
-function Highlight({ text }: { text: string }) {
+function Highlight({ text, tags }: { text: string; tags: boolean }) {
   const rows = useMemo(() => highlightYaml(text), [text]);
   return (
     <>
       {rows.map((row, line) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: la riga E' la sua posizione
         <span key={line}>
-          {row.map((token, at) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: idem, il pezzo e' la sua posizione nella riga
-            <span key={at} style={spanStyle(token)}>
-              {token.text}
-            </span>
-          ))}
+          {row.map((token, at) =>
+            // SPENTI I TAG, SPARISCONO DAVVERO: nasconderli lasciando il loro
+            // spazio darebbe il messaggio a buchi, che non e' come si vedra'
+            // in gioco — e vederlo com'e' in gioco e' tutto il punto.
+            !tags && token.kind === 'code' ? null : (
+              // biome-ignore lint/suspicious/noArrayIndexKey: idem, il pezzo e' la sua posizione nella riga
+              <span key={at} style={spanStyle(token)}>
+                {token.text}
+              </span>
+            ),
+          )}
           {line < rows.length - 1 ? '\n' : null}
         </span>
       ))}
@@ -862,7 +864,10 @@ function Editor({
   onPick: (index: number) => void;
 }) {
   const gutter = useRef<HTMLDivElement>(null);
-  const paint = useRef<HTMLPreElement>(null);
+  const mirror = useRef<HTMLPreElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  // I tag si possono spegnere per leggere il messaggio come uscira` in gioco.
+  const [tags, setTags] = useState(true);
   const lines = text === '' ? 1 : text.split('\n').length;
   const split = versions.length > 1;
   const current = versions[index];
@@ -889,6 +894,46 @@ function Editor({
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-muted)' }}>
           {lines} righe · UTF-8
         </span>
+        {/* SPEGNERE I TAG per leggere il messaggio come uscira' in gioco.
+            Mentre sono spenti NON SI SCRIVE, e si vede: il testo cambia
+            colonna, perche' i tag tolti occupavano spazio. E' un'anteprima —
+            il modo di rispondere a «come verra'» senza avviare un server. */}
+        <button
+          type="button"
+          onClick={() => setTags((on) => !on)}
+          aria-pressed={!tags}
+          title={tags ? 'Nascondi i tag e leggi il messaggio' : 'Rimetti i tag e torna a scrivere'}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            height: 24,
+            padding: '0 9px',
+            border: `1px solid ${tags ? 'var(--bd-subtle)' : 'rgba(219,110,25,.45)'}`,
+            borderRadius: 'var(--r-sm)',
+            background: tags ? 'transparent' : 'var(--ac-soft)',
+            color: tags ? 'var(--tx-muted)' : 'var(--ac-text)',
+            fontFamily: 'var(--font-ui)',
+            fontSize: 11,
+            cursor: 'pointer',
+          }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="12"
+            height="12"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            aria-hidden="true"
+          >
+            <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z" />
+            <circle cx="12" cy="12" r="2.6" />
+            {tags ? null : <path d="m4 20 16-16" />}
+          </svg>
+          {tags ? 'Anteprima' : 'Solo testo'}
+        </button>
         {split ? (
           <span style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 9 }}>
             <span
@@ -1012,8 +1057,17 @@ function Editor({
         </div>
         <div style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0 }}>
           <pre
-            ref={paint}
-            aria-hidden="true"
+            ref={mirror}
+            aria-hidden={tags}
+            onScroll={(e) => {
+              // Serve SOLO senza i tag, quando e' questo strato a scorrere
+              // perche' la textarea sotto e' nascosta. Da qui i numeri di riga
+              // e la textarea seguono, cosi' riaccendendo i tag ci si ritrova
+              // dove si era rimasti invece che in cima al file.
+              if (tags) return;
+              if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
+              if (box.current) box.current.scrollTop = e.currentTarget.scrollTop;
+            }}
             style={{
               // Le stesse misure della textarea, una per una. Sono la ragione
               // per cui i due strati restano incolonnati.
@@ -1021,13 +1075,14 @@ function Editor({
               position: 'absolute',
               inset: 0,
               margin: 0,
-              overflow: 'hidden',
-              pointerEvents: 'none',
+              overflow: tags ? 'hidden' : 'auto',
+              pointerEvents: tags ? 'none' : 'auto',
             }}
           >
-            <Highlight text={text} />
+            <Highlight text={text} tags={tags} />
           </pre>
           <textarea
+            ref={box}
             value={text}
             readOnly={readOnly}
             spellCheck={false}
@@ -1035,26 +1090,26 @@ function Editor({
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={(e) => {
               if (readOnly || e.ctrlKey || e.metaKey || e.altKey) return;
-              const box = e.currentTarget;
+              const area = e.currentTarget;
               const edit = keyEdit({
-                text: box.value,
-                from: box.selectionStart,
-                to: box.selectionEnd,
+                text: area.value,
+                from: area.selectionStart,
+                to: area.selectionEnd,
                 key: e.key,
                 shift: e.shiftKey,
               });
               if (edit === null) return;
               e.preventDefault();
-              apply(box, edit);
-              onChange(box.value);
+              apply(area, edit);
+              onChange(area.value);
             }}
             onScroll={(e) => {
               if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
               // Anche in orizzontale: una riga lunga scorre di lato, e il
               // colore deve scorrere con lei.
-              if (paint.current) {
-                paint.current.scrollTop = e.currentTarget.scrollTop;
-                paint.current.scrollLeft = e.currentTarget.scrollLeft;
+              if (mirror.current) {
+                mirror.current.scrollTop = e.currentTarget.scrollTop;
+                mirror.current.scrollLeft = e.currentTarget.scrollLeft;
               }
             }}
             style={{
@@ -1075,6 +1130,16 @@ function Editor({
               color: 'transparent',
               caretColor: 'var(--tx-primary)',
               overflowX: 'auto',
+              // SENZA I TAG NON SI SCRIVE, e la textarea si nasconde invece di
+              // sparire: `visibility` la toglie dalla vista e dal fuoco ma le
+              // lascia il suo spazio, che e' quello che tiene in piedi
+              // l'altezza del riquadro — e con essa la posizione del testo
+              // sopra. Un `display: none` farebbe collassare tutto.
+              //
+              // E' un'anteprima, non una modalita' di modifica: il testo che
+              // si vede li' non e' piu' incolonnato con quello vero, perche' i
+              // tag tolti erano larghi.
+              ...(tags ? {} : { visibility: 'hidden' as const }),
             }}
           />
         </div>

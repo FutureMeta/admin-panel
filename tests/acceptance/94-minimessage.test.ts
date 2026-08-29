@@ -18,7 +18,7 @@
 //      righe le tinge tutte.
 
 import { describe, expect, it } from 'vitest';
-import { codeColour, gradientAt, NEUTRAL, paint, renderMiniMessage } from '#web/lib/minimessage.ts';
+import { gradientAt, paint, renderMiniMessage } from '#web/lib/minimessage.ts';
 
 /** Il colore del testo — non dei tag — pezzo per pezzo. */
 function colours(source: string): Array<[string, string | undefined]> {
@@ -178,8 +178,10 @@ describe('i vecchi codici valgono ancora, con le loro regole', () => {
   });
 
   it('e sono gli stessi colori dei nomi', () => {
-    expect(codeColour('&a')).toBe(codeColour('<green>'));
-    expect(codeColour('§c')).toBe(codeColour('<red>'));
+    // La tavolozza e` una sola: i codici legacy si ricavano dai nomi invece di
+    // essere riscritti, o le due potrebbero divergere restando plausibili.
+    expect(colours('&ax')).toEqual(colours('<green>x'));
+    expect(colours('§cx')).toEqual(colours('<red>x'));
   });
 
   it('un colore legacy azzera lo stile, come nel gioco', () => {
@@ -215,16 +217,23 @@ describe('i tag che non vestono niente', () => {
     expect(colours('<red>a<domani>b').at(-1)?.[1]).toBe('#FF5555');
   });
 
-  it('e il tag stesso si disegna col colore che significa', () => {
-    // Serve a vedere a colpo d'occhio dove comincia un colore, anche quando il
-    // testo che veste e` lontano.
-    expect(renderMiniMessage('<red>x')[0]).toEqual({
-      text: '<red>',
-      tag: true,
-      style: { colour: '#FF5555' },
-    });
-    expect(codeColour('<bold>')).toBe(NEUTRAL);
-    expect(codeColour('<gradient:#FFF3C4:#FFD27A>')).toBe('#FFF3C4');
+  it('e il tag stesso non ha un colore suo', () => {
+    // IL COLORE CE L'HA IL TESTO, non il tag. Dipingere anche il tag del suo
+    // colore metteva due colori nella stessa riga a contendersi l'occhio
+    // proprio dove serve leggere il messaggio: chi disegna da` a tutti i tag
+    // lo stesso grigio, e per farlo gli basta sapere che sono tag.
+    expect(renderMiniMessage('<red>x')[0]).toEqual({ text: '<red>', tag: true, style: {} });
+    expect(renderMiniMessage('<gradient:#FFF3C4:#FFD27A>x')[0]?.style).toEqual({});
+    expect(renderMiniMessage('&ax')[0]).toEqual({ text: '&a', tag: true, style: {} });
+  });
+
+  it('e si riconosce dal fatto che e` un tag, non dal testo', () => {
+    // E` cio` che permette di spegnerli tutti insieme per leggere il messaggio
+    // come uscira` in gioco: chi disegna non deve indovinare che `<red>` e` un
+    // tag guardando le parentesi.
+    const pezzi = renderMiniMessage('<bold>ciao</bold>');
+    expect(pezzi.map((p) => p.tag)).toEqual([true, false, true]);
+    expect(pezzi.filter((p) => !p.tag).map((p) => p.text)).toEqual(['ciao']);
   });
 });
 

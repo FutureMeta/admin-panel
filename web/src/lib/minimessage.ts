@@ -77,7 +77,7 @@ const NAMED: Record<string, string> = {
 const LEGACY = Object.keys(NAMED);
 
 /** Un tag che colore non ha: stile, click, segnaposto. */
-export const NEUTRAL = '#8FA3AD';
+const NEUTRAL = '#8FA3AD';
 
 /** I nomi con cui si scrive la stessa cosa. `<b>` e `<bold>` sono un tag solo. */
 const ALIAS: Record<string, string> = {
@@ -112,13 +112,14 @@ function colourOf(word: string): string | null {
 }
 
 /**
- * Il colore che un codice significa, per dipingere il tag stesso.
+ * Il colore che un codice significa.
  *
  * Riconosce quello che c'e' davvero in questi file: i nomi, l'esadecimale, le
  * sfumature — di cui prende il primo estremo, il colore da cui la scritta
- * parte — e i vecchi codici `&a`. Tutto il resto e' un tag che colore non ha.
+ * parte — e i vecchi codici `&a`, che sono l'unico posto da cui lo chiama
+ * ancora qualcuno: i tag il colore non ce l'hanno piu', ce l'ha il testo.
  */
-export function codeColour(code: string): string {
+function codeColour(code: string): string {
   if (code.startsWith('&') || code.startsWith('§')) {
     const char = code[1] as string;
     // `&l`, `&o`, `&r`: stile, non colore.
@@ -325,9 +326,12 @@ export function renderMiniMessage(source: string): Piece[] {
     at = m.index + m[0].length;
 
     const raw = m[0];
-    // Il tag si disegna con il colore che significa, e non con quello del
-    // testo che veste: e' cosi' che si vede a colpo d'occhio dove comincia.
-    push(out, { text: raw, tag: true, style: { colour: codeColour(raw) } });
+    // IL TAG NON HA UN COLORE SUO, e chi lo disegna gli da' un grigio uguale
+    // per tutti (`--yml-tag`). Il colore ce l'ha il testo che il tag veste —
+    // quello che il giocatore vedra' — e due colori nella stessa riga, uno per
+    // il tag e uno per la parola, si contendevano l'occhio proprio dove serve
+    // leggere il messaggio.
+    push(out, { text: raw, tag: true, style: {} });
 
     if (raw.startsWith('&') || raw.startsWith('§')) {
       // I codici legacy non si annidano: ognuno riscrive quello che c'era.

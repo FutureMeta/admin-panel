@@ -17,6 +17,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { PageHeader, Panel } from '../components/page.tsx';
+import { Avatar } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
 import { numberFmt } from '../lib/format.ts';
 
@@ -1085,17 +1086,17 @@ function MatchDialog({
                   background: 'var(--s-inset)',
                 }}
               >
-                <img
-                  src={`/api/avatars/${encodeURIComponent(p.name)}.png`}
-                  alt=""
-                  style={{
-                    width: 26,
-                    height: 26,
-                    flex: 'none',
-                    borderRadius: 'var(--r-xs)',
-                    imageRendering: 'pixelated',
-                  }}
-                />
+                {/* `Avatar` e non un `<img>` sulla rotta delle skin. Quella
+                    rotta serve la SKIN INTERA — il file 64×64 che si carica
+                    sul sito di Minecraft — e un `<img>` la mostra tutta:
+                    braccia, gambe e la faccia grande un ottavo. La testa si
+                    ritaglia inquadrando due strati dentro una finestra, ed e'
+                    quello che questo componente fa gia' in tutto il pannello.
+                    In piu' porta le iniziali colorate sotto, che si vedono
+                    mentre la skin arriva e restano se non arriva. */}
+                <span style={{ flex: 'none' }}>
+                  <Avatar name={p.name} size={26} square />
+                </span>
                 <span style={{ flex: 1, fontSize: 13, fontWeight: 500 }}>{p.name}</span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--tx-muted)' }}>
                   {p.server ?? '—'}

@@ -1,4 +1,4 @@
-// I tipi e le funzioni pure di «Duels · Configurazioni».
+// I tipi e le funzioni pure di «Duels · Configs».
 //
 // STANNO IN UN MODULO SENZA JSX perche' li usano due componenti — la schermata
 // e i suoi dialoghi — e perche' l'albero si puo' provare senza montare React.
@@ -56,9 +56,18 @@ export function titleOf(path: string): string {
   return name.replace(/\.yml$/, '');
 }
 
-export type TreeRow =
-  | { kind: 'dir'; label: string; depth: number; key: string }
-  | { kind: 'file'; label: string; depth: number; key: string; path: string; versions: number };
+export type TreeRow = {
+  kind: 'dir' | 'file';
+  label: string;
+  depth: number;
+  /** Il percorso della riga: la cartella, o il file. Identifica la riga. */
+  key: string;
+  /** La cartella che la contiene, `''` per la radice. Serve a chiuderla. */
+  parent: string;
+  /** Solo sui file. */
+  path?: string;
+  versions?: number;
+};
 
 /**
  * Dall'elenco piatto dei percorsi all'albero della barra laterale.
@@ -67,37 +76,80 @@ export type TreeRow =
  * qui. E' il motivo per cui non c'e' modo di avere una cartella vuota da
  * ripulire — senza un file dentro, la cartella non compare.
  *
- * UNA CARTELLA SI SCRIVE SOLO QUANDO CAMBIA rispetto al file precedente. Senza
- * quel confronto, `inventories/` comparirebbe sessanta volte di fila, una per
- * ogni file che ci sta dentro.
+ * A OGNI LIVELLO PRIMA I FILE, POI LE CARTELLE, ognuno dei due gruppi in ordine
+ * alfabetico. Con l'ordinamento per percorso e basta, `inventories/` finiva in
+ * mezzo ai file della radice e ci si portava dietro sessanta righe: i due file
+ * di primo livello rimasti sotto sembravano stare dentro la cartella.
+ *
+ * SI SCENDE PER LIVELLI e non si ordina una lista piatta, ed e' la differenza
+ * che conta. Scrivendo le cartelle mentre si scorrono i percorsi in fila
+ * bisogna ricordarsi quale ramo si era gia' aperto — e sbagliare quel confronto
+ * produce una cartella ripetuta o, peggio, un file che sembra stare altrove.
+ * Camminando l'albero il problema non si pone: ogni cartella si scrive una
+ * volta, quando ci si entra.
  */
 export function buildTree(files: readonly ConfigFileSummary[]): TreeRow[] {
-  const rows: TreeRow[] = [];
-  let previous: string[] = [];
+  /** I file di ciascuna cartella, per percorso della cartella. */
+  const inDir = new Map<string, ConfigFileSummary[]>();
+  /** Le sottocartelle di ciascuna cartella. */
+  const subDirs = new Map<string, Set<string>>();
 
-  for (const file of [...files].sort((a, b) => a.path.localeCompare(b.path))) {
+  for (const file of files) {
     const parts = file.path.split('/');
-    const dirs = parts.slice(0, -1);
+    const dir = parts.slice(0, -1).join('/');
+    inDir.set(dir, [...(inDir.get(dir) ?? []), file]);
 
-    for (const [depth, dir] of dirs.entries()) {
-      // Basta che UN livello differisca perche' tutti quelli sotto vadano
-      // riscritti: passando da `inventories/event/` a `inventories/ffa/`, la
-      // prima cartella e' la stessa e la seconda no.
-      if (previous[depth] === dir && dirs.slice(0, depth).join('/') === previous.slice(0, depth).join('/')) {
-        continue;
-      }
-      rows.push({ kind: 'dir', label: `${dir}/`, depth, key: dirs.slice(0, depth + 1).join('/') });
+    // Tutta la catena di antenati, non solo il genitore: una cartella che
+    // contiene solo altre cartelle esiste lo stesso e va scritta.
+    for (let depth = 0; depth < parts.length - 1; depth += 1) {
+      const parent = parts.slice(0, depth).join('/');
+      const child = parts.slice(0, depth + 1).join('/');
+      subDirs.set(parent, (subDirs.get(parent) ?? new Set()).add(child));
     }
-
-    rows.push({
-      kind: 'file',
-      label: parts.at(-1) ?? file.path,
-      depth: dirs.length,
-      key: file.path,
-      path: file.path,
-      versions: file.versions,
-    });
-    previous = dirs;
   }
+
+  const rows: TreeRow[] = [];
+
+  const walk = (dir: string, depth: number): void => {
+    for (const file of (inDir.get(dir) ?? []).sort((a, b) => a.path.localeCompare(b.path))) {
+      rows.push({
+        kind: 'file',
+        label: file.path.split('/').at(-1) ?? file.path,
+        depth,
+        key: file.path,
+        parent: dir,
+        path: file.path,
+        versions: file.versions,
+      });
+    }
+    for (const child of [...(subDirs.get(dir) ?? [])].sort((a, b) => a.localeCompare(b))) {
+      rows.push({
+        kind: 'dir',
+        label: `${child.split('/').at(-1)}/`,
+        depth,
+        key: child,
+        parent: dir,
+      });
+      walk(child, depth + 1);
+    }
+  };
+
+  walk('', 0);
   return rows;
+}
+
+/**
+ * La riga e' nascosta perche' una cartella sopra di lei e' chiusa?
+ *
+ * Si guarda TUTTA la catena e non solo il genitore: chiudendo `inventories/`
+ * devono sparire anche i file dentro `inventories/event/`, che di genitore
+ * hanno `event` — ancora aperto.
+ */
+export function isHidden(row: TreeRow, collapsed: ReadonlySet<string>): boolean {
+  let dir = row.parent;
+  while (dir !== '') {
+    if (collapsed.has(dir)) return true;
+    dir = dir.split('/').slice(0, -1).join('/');
+  }
+  return false;
 }

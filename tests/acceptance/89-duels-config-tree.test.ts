@@ -10,7 +10,7 @@
 // sessanta file che contiene.
 
 import { describe, expect, it } from 'vitest';
-import { buildTree, type ConfigFileSummary, moduleHue, titleOf } from '#web/lib/duels-config.ts';
+import { buildTree, type ConfigFileSummary, isHidden, moduleHue, titleOf } from '#web/lib/duels-config.ts';
 
 function file(path: string, versions = 1): ConfigFileSummary {
   return { path, modules: ['lobby'], split: versions > 1, versions, hasDraft: false, by: null, at: null };
@@ -47,16 +47,29 @@ describe('le cartelle nascono dai percorsi, e non si ripetono', () => {
     ).toEqual(['inventories/', '  event/', '    tnt_run.yml', '    uhc.yml', '  ffa/', '    sword.yml']);
   });
 
-  it('tornando a un ramo gia` visto la cartella si riscrive', () => {
-    // IL CASO CHE UN CONFRONTO PIGRO SBAGLIA. Fra i due `inventories/` c'e'
-    // `items.yml`, che sta nella radice: senza riscrivere la cartella, gli
-    // ultimi due file sembrerebbero stare nella radice anche loro.
+  it('prima tutti i file di un livello, poi le sue cartelle', () => {
+    // E' L'ORDINE, ed e' anche la ragione per cui una vecchia classe di difetti
+    // non esiste piu'. Prima le righe uscivano scorrendo i percorsi in fila, e
+    // `items.yml` finiva DOPO `inventories/`: i due file della cartella
+    // restavano sopra di lui, e lui sembrava starci dentro. Camminando l'albero
+    // per livelli il caso non si presenta — i file della radice escono tutti
+    // prima che una cartella si apra.
     expect(render([file('inventories/a.yml'), file('items.yml'), file('inventories/z.yml')])).toEqual([
+      'items.yml',
       'inventories/',
       '  a.yml',
       '  z.yml',
-      'items.yml',
     ]);
+  });
+
+  it('e vale a ogni livello, non solo alla radice', () => {
+    expect(
+      render([
+        file('inventories/event/uhc.yml'),
+        file('inventories/settings.yml'),
+        file('inventories/ffa/sword.yml'),
+      ]),
+    ).toEqual(['inventories/', '  settings.yml', '  event/', '    uhc.yml', '  ffa/', '    sword.yml']);
   });
 
   it('non esiste una cartella senza file dentro', () => {
@@ -82,7 +95,7 @@ describe('l`ordine e` quello del percorso, sempre lo stesso', () => {
     // sotto il cursore mentre qualcuno la sta cliccando.
     const disordinati = [file('z.yml'), file('a.yml'), file('inventories/m.yml')];
     expect(render(disordinati)).toEqual(render([...disordinati].reverse()));
-    expect(render(disordinati)).toEqual(['a.yml', 'inventories/', '  m.yml', 'z.yml']);
+    expect(render(disordinati)).toEqual(['a.yml', 'z.yml', 'inventories/', '  m.yml']);
   });
 });
 
@@ -102,5 +115,43 @@ describe('le briciole della schermata', () => {
     // Un modulo che il pannello non conosce ha comunque un colore, invece di
     // una pastiglia trasparente che sembra un errore di disegno.
     expect(moduleHue('modulo-di-domani')).toMatch(/^#[0-9A-F]{6}$/i);
+  });
+});
+
+describe('le cartelle si chiudono, e si portano dietro tutto', () => {
+  const ALBERO = [
+    file('items.yml'),
+    file('inventories/settings.yml'),
+    file('inventories/event/uhc.yml'),
+    file('inventories/event/tnt_run.yml'),
+  ];
+
+  it('chiudendo una cartella spariscono anche i suoi nipoti', () => {
+    // SI GUARDA TUTTA LA CATENA, non solo il genitore: `uhc.yml` sta dentro
+    // `inventories/event/`, che e` ancora aperta — ma sua nonna no.
+    const rows = buildTree(ALBERO);
+    const chiuse = new Set(['inventories']);
+    const visibili = rows.filter((r) => !isHidden(r, chiuse)).map((r) => r.label);
+    expect(visibili).toEqual(['items.yml', 'inventories/']);
+  });
+
+  it('chiudendo solo la sottocartella resta il resto del livello', () => {
+    const rows = buildTree(ALBERO);
+    const chiuse = new Set(['inventories/event']);
+    const visibili = rows.filter((r) => !isHidden(r, chiuse)).map((r) => r.label);
+    expect(visibili).toEqual(['items.yml', 'inventories/', 'settings.yml', 'event/']);
+  });
+
+  it('una cartella chiusa non nasconde se stessa', () => {
+    // Sarebbe il difetto piu` sciocco possibile: la si chiude e sparisce, e da
+    // quel momento non c'e` piu` modo di riaprirla.
+    const rows = buildTree(ALBERO);
+    const dir = rows.find((r) => r.key === 'inventories');
+    expect(dir && isHidden(dir, new Set(['inventories']))).toBe(false);
+  });
+
+  it('senza niente di chiuso si vede tutto', () => {
+    const rows = buildTree(ALBERO);
+    expect(rows.every((r) => !isHidden(r, new Set()))).toBe(true);
   });
 });

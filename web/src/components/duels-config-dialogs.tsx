@@ -1,4 +1,4 @@
-// Le tre finestre di «Duels · Configurazioni»: legami, nuovo file, pubblica.
+// Le tre finestre di «Duels · Configs»: legami, nuovo file, pubblica.
 //
 // STANNO FUORI DALLA SCHERMATA perche' la schermata e' gia' lunga e perche'
 // queste tre sono l'unico punto in cui si prendono decisioni che cambiano piu'

@@ -1,4 +1,4 @@
-// Le rotte di «Duels · Configurazioni».
+// Le rotte di «Duels · Configs».
 //
 // DUE PUBBLICI, E NON SI SOMIGLIANO. Sei rotte parlano con il pannello e
 // vogliono una sessione; una parla con i server di gioco e vuole un token.

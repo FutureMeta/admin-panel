@@ -28,12 +28,28 @@ export function isActive(pathname: string, to: string): boolean {
   return pathname.startsWith(to);
 }
 
-/** La categoria che contiene la pagina aperta, se c'e'. */
-export function areaOf(groups: Array<[string, Array<{ to: string }>]>, pathname: string): string | null {
+/** Una voce della barra, per quel poco che serve a queste funzioni. */
+type Item = { to: string; group?: string | undefined };
+
+/**
+ * Le chiavi da aprire perche' la pagina corrente si veda: la categoria, e —
+ * quando la voce sta in un sottogruppo — anche quella del sottogruppo.
+ *
+ * DUE E NON UNA, ed e' il difetto che ha smesso di essere impossibile il
+ * giorno in cui Modes, Maps e Configs sono finiti dentro «Setup»: aprire la
+ * sola categoria lasciando chiuso il sottogruppo che contiene la voce
+ * evidenziata significa una barra che dice «sei qui» indicando un posto che
+ * non si vede.
+ *
+ * Nell'ordine dal fuori al dentro, che e' anche l'ordine in cui vanno aperte.
+ */
+export function chainOf(groups: Array<[string, Item[]]>, pathname: string): string[] {
   for (const [area, items] of groups) {
-    if (items.some((item) => isActive(pathname, item.to))) return area;
+    const item = items.find((x) => isActive(pathname, x.to));
+    if (item === undefined) continue;
+    return item.group === undefined ? [area] : [area, `${area}/${item.group}`];
   }
-  return null;
+  return [];
 }
 
 /**
@@ -70,7 +86,7 @@ export function toggleArea(collapsed: Set<string>, area: string): Set<string> {
 }
 
 /**
- * Apre la categoria in cui si e' appena arrivati.
+ * Apre tutto quello che sta sopra la pagina in cui si e' appena arrivati.
  *
  * IL DIFETTO CHE TOGLIE. Si puo' arrivare su una pagina senza passare dalla
  * barra — la palette con ⌘K, un link condiviso, il ritorno alla pagina
@@ -78,16 +94,23 @@ export function toggleArea(collapsed: Set<string>, area: string): Set<string> {
  * nessuna voce evidenziata: non e' un dettaglio estetico, e' l'unica cosa che
  * dice DOVE ci si trova, e senza sembra che la navigazione si sia persa.
  *
+ * PRENDE LA CATENA INTERA e non una chiave sola: da quando esistono i
+ * sottogruppi, aprire la categoria non basta piu' a rendere visibile la voce.
+ *
  * SI CHIAMA SOLO QUANDO IL PERCORSO CAMBIA, mai a ogni disegno. Chiamandola
  * sempre, chiudere la categoria della pagina aperta diventerebbe impossibile:
  * il clic la chiude, il disegno successivo la riapre, e il pulsante sembra
  * rotto. E' lo stesso stato finale con due significati opposti — chiuderla
  * mentre ci si sta dentro e' una scelta legittima, e va rispettata.
+ *
+ * RESTITUISCE LO STESSO INSIEME quando non c'e' niente da aprire. Non e'
+ * un'ottimizzazione: e' quello che permette di passarla a `setCollapsed` senza
+ * provocare un disegno in piu' a ogni cambio di pagina.
  */
-export function openArea(collapsed: Set<string>, area: string | null): Set<string> {
-  if (area === null || !collapsed.has(area)) return collapsed;
+export function openChain(collapsed: Set<string>, keys: readonly string[]): Set<string> {
+  if (!keys.some((key) => collapsed.has(key))) return collapsed;
   const next = new Set(collapsed);
-  next.delete(area);
+  for (const key of keys) next.delete(key);
   return next;
 }
 

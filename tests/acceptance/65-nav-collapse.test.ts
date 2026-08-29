@@ -15,20 +15,25 @@
 // rende impossibile chiuderla mentre ci si sta dentro. Il clic la chiude, il
 // disegno seguente la riapre, e il pulsante sembra rotto senza esserlo.
 
+// LA TERZA è arrivata con i sottogruppi. Da quando Modes, Maps e Configs
+// stanno dentro «Setup», la voce evidenziata può essere sepolta due livelli
+// sotto: aprire la sola categoria non basta più, e la barra tornerebbe a dire
+// «sei qui» indicando un posto che non si vede.
+
 import { describe, expect, it } from 'vitest';
 import {
-  areaOf,
+  chainOf,
   isActive,
-  openArea,
+  openChain,
   readCollapsed,
   toggleArea,
   writeCollapsed,
 } from '#web/lib/nav-collapse.ts';
 
 /** Gli stessi gruppi della barra, nell'ordine in cui li costruisce. */
-const GROUPS: Array<[string, Array<{ to: string }>]> = [
+const GROUPS: Array<[string, Array<{ to: string; group?: string }>]> = [
   ['Analisi', [{ to: '/panoramica' }, { to: '/dettaglio-modalita' }]],
-  ['Duels', [{ to: '/duels/trends' }, { to: '/duels/ratings' }]],
+  ['Duels', [{ to: '/duels/trends' }, { to: '/duels/ratings' }, { to: '/duels/config', group: 'Setup' }]],
   ['Amministrazione', [{ to: '/utenti' }, { to: '/registro' }]],
 ];
 
@@ -73,28 +78,47 @@ describe('il ricordo sopravvive a quello che ci trova dentro', () => {
   });
 });
 
-describe('arrivare su una pagina apre la sua categoria', () => {
+describe('arrivare su una pagina apre tutto quello che ci sta sopra', () => {
   it('sa quale categoria contiene la pagina aperta', async () => {
-    expect(areaOf(GROUPS, '/duels/ratings')).toBe('Duels');
-    expect(areaOf(GROUPS, '/panoramica')).toBe('Analisi');
-    expect(areaOf(GROUPS, '/impostazioni')).toBeNull();
+    expect(chainOf(GROUPS, '/duels/ratings')).toEqual(['Duels']);
+    expect(chainOf(GROUPS, '/panoramica')).toEqual(['Analisi']);
+    expect(chainOf(GROUPS, '/impostazioni')).toEqual([]);
+  });
+
+  it('per una voce dentro un sottogruppo la catena e` DOPPIA', async () => {
+    // IL DIFETTO CHE QUESTA RIGA IMPEDISCE: con la sola categoria, chi arriva
+    // su Configs da ⌘K vede «Duels» aperto, dentro «Setup» chiuso, e nessuna
+    // voce evidenziata da nessuna parte.
+    expect(chainOf(GROUPS, '/duels/config')).toEqual(['Duels', 'Duels/Setup']);
   });
 
   it('la categoria chiusa in cui si atterra si apre', async () => {
     // Il caso della palette ⌘K: senza questo la barra non evidenzia niente e
     // sembra che la navigazione abbia perso il segno.
-    const after = openArea(new Set(['Duels', 'Analisi']), 'Duels');
+    const after = openChain(new Set(['Duels', 'Analisi']), ['Duels']);
     expect([...after].sort()).toEqual(['Analisi']);
   });
 
+  it('e con essa il sottogruppo, non solo la categoria', async () => {
+    const after = openChain(new Set(['Duels', 'Duels/Setup']), chainOf(GROUPS, '/duels/config'));
+    expect([...after]).toEqual([]);
+  });
+
   it('le ALTRE categorie chiuse restano chiuse', async () => {
-    const after = openArea(new Set(['Duels', 'Amministrazione']), 'Duels');
+    const after = openChain(new Set(['Duels', 'Amministrazione']), ['Duels']);
     expect(after.has('Amministrazione')).toBe(true);
+  });
+
+  it('e gli ALTRI sottogruppi pure', async () => {
+    // Aprire «Duels/Setup» non deve aprire il sottogruppo omonimo di un'altra
+    // categoria: la chiave porta la categoria davanti proprio per questo.
+    const after = openChain(new Set(['Duels/Setup', 'Analisi/Setup']), chainOf(GROUPS, '/duels/config'));
+    expect([...after]).toEqual(['Analisi/Setup']);
   });
 
   it('su una pagina fuori dalle categorie non apre niente', async () => {
     const before = new Set(['Duels']);
-    expect(openArea(before, areaOf(GROUPS, '/impostazioni'))).toBe(before);
+    expect(openChain(before, chainOf(GROUPS, '/impostazioni'))).toBe(before);
   });
 
   it('se era gia` aperta restituisce lo STESSO insieme', async () => {
@@ -103,7 +127,7 @@ describe('arrivare su una pagina apre la sua categoria', () => {
     // ripartirebbe l'effetto che scrive il ricordo — un ciclo che non si
     // ferma piu'.
     const before = new Set(['Analisi']);
-    expect(openArea(before, 'Duels')).toBe(before);
+    expect(openChain(before, ['Duels', 'Duels/Setup'])).toBe(before);
   });
 });
 
@@ -115,13 +139,13 @@ describe('chi decide se una voce e` quella corrente decide anche la categoria', 
     for (const [area, items] of GROUPS) {
       for (const item of items) {
         expect(isActive(item.to, item.to)).toBe(true);
-        expect(areaOf(GROUPS, item.to)).toBe(area);
+        expect(chainOf(GROUPS, item.to)[0]).toBe(area);
       }
     }
   });
 
   it('una sotto-pagina appartiene alla categoria della sua voce', async () => {
     expect(isActive('/duels/trends?range=7d', '/duels/trends')).toBe(true);
-    expect(areaOf(GROUPS, '/dettaglio-modalita/bedwars')).toBe('Analisi');
+    expect(chainOf(GROUPS, '/dettaglio-modalita/bedwars')).toEqual(['Analisi']);
   });
 });

@@ -492,6 +492,9 @@ export const ICONS = {
   // Il battito: la schermata Live. Stesso tratto delle icone di sistema,
   // una riga che sale e ricade — «adesso», non «nel tempo» come `trend`.
   pulse: 'M3 12h4l2.5-6 4 12L16 12h5',
+  // La cartella: intestazione di un sottogruppo della barra laterale.
+  folder:
+    'M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2.5h7A1.5 1.5 0 0 1 19 10v7a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 3 17z',
 } as const;
 
 /**

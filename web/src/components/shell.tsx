@@ -10,10 +10,10 @@ import type { Me } from '../lib/api.ts';
 import { canOpen } from '../lib/modules.ts';
 import { NAV, type NavEntry } from '../lib/nav.ts';
 import {
-  areaOf,
   COLLAPSED_KEY,
+  chainOf,
   isActive,
-  openArea,
+  openChain,
   readCollapsed,
   safeStorage,
   toggleArea,
@@ -58,6 +58,39 @@ const DECOR: Record<string, { icon: string; prefetch?: () => void }> = {
 export function visibleNav(me: Me): NavEntry[] {
   return NAV.filter((n) => n.modules.some((m) => canOpen(me, m, n.minLevel ?? 1)));
 }
+
+/**
+ * I sottogruppi di una categoria, nell'ordine in cui compaiono le voci.
+ *
+ * Non alfabetico di proposito: l'ordine di `NAV` e' una decisione presa
+ * scrivendolo, e riordinare qui la scavalcherebbe senza che si veda.
+ */
+function subGroups(items: readonly NavEntry[]): Array<[string, NavEntry[]]> {
+  const map = new Map<string, NavEntry[]>();
+  for (const item of items) {
+    if (item.group === undefined) continue;
+    map.set(item.group, [...(map.get(item.group) ?? []), item]);
+  }
+  return [...map.entries()];
+}
+
+/** Una voce della barra. Identica ai due livelli: cambia solo il rientro. */
+function NavLink({ item, pathname }: { item: NavEntry; pathname: string }) {
+  const decor = DECOR[item.to];
+  return (
+    <Link
+      to={item.to}
+      className="nav-item"
+      data-active={isActive(pathname, item.to)}
+      onMouseEnter={decor?.prefetch}
+      onFocus={decor?.prefetch}
+    >
+      <Icon path={decor?.icon ?? ICONS.grid} />
+      <span className="nav-label">{item.label}</span>
+    </Link>
+  );
+}
+
 export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
@@ -90,7 +123,7 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
   // resterebbe l'unico non coperto, che è il modo in cui una correzione
   // sembra fatta e non lo è.
   const [collapsed, setCollapsed] = useState<Set<string>>(() =>
-    openArea(readCollapsed(safeStorage()?.getItem(COLLAPSED_KEY) ?? null), areaOf(groups, pathname)),
+    openChain(readCollapsed(safeStorage()?.getItem(COLLAPSED_KEY) ?? null), chainOf(groups, pathname)),
   );
   useEffect(() => {
     safeStorage()?.setItem(COLLAPSED_KEY, writeCollapsed(collapsed));
@@ -101,13 +134,13 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
   // una schermata con nessuna voce evidenziata — cioè senza l'unica cosa che
   // dice dove ci si trova.
   //
-  // Solo al CAMBIO di percorso: vedi `openArea`, chiuderla restando fermi deve
+  // Solo al CAMBIO di percorso: vedi `openChain`, chiuderla restando fermi deve
   // continuare a funzionare.
   const wasAt = useRef(pathname);
   useEffect(() => {
     if (wasAt.current === pathname) return;
     wasAt.current = pathname;
-    setCollapsed((prev) => openArea(prev, areaOf(groups, pathname)));
+    setCollapsed((prev) => openChain(prev, chainOf(groups, pathname)));
   }, [pathname, groups]);
 
   return (
@@ -196,20 +229,62 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
             </button>
             {open ? (
               <div id={`nav-${area}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                {items.map((item) => {
-                  const decor = DECOR[item.to];
+                {items
+                  .filter((item) => item.group === undefined)
+                  .map((item) => (
+                    <NavLink key={item.to} item={item} pathname={pathname} />
+                  ))}
+                {/* I SOTTOGRUPPI, dopo le voci sciolte. La chiave del ricordo e'
+                    `Area/Gruppo`: usa lo stesso insieme e lo stesso
+                    `localStorage` delle categorie, quindi aprire e chiudere si
+                    comporta allo stesso modo ai due livelli senza una seconda
+                    macchina che fa la stessa cosa. */}
+                {subGroups(items).map(([name, sub]) => {
+                  const key = `${area}/${name}`;
+                  const subOpen = !collapsed.has(key);
+                  // L'id del DOM non è la chiave del ricordo: quella contiene
+                  // una barra, e un id con dentro `/` diventa un selettore che
+                  // non si può scrivere il giorno in cui serve.
+                  const domId = `nav-${area}-${name}`;
                   return (
-                    <Link
-                      key={item.to}
-                      to={item.to}
-                      className="nav-item"
-                      data-active={isActive(pathname, item.to)}
-                      onMouseEnter={decor?.prefetch}
-                      onFocus={decor?.prefetch}
-                    >
-                      <Icon path={decor?.icon ?? ICONS.grid} />
-                      <span className="nav-label">{item.label}</span>
-                    </Link>
+                    <div key={key}>
+                      <button
+                        type="button"
+                        className="nav-item"
+                        aria-expanded={subOpen}
+                        aria-controls={domId}
+                        onClick={() => setCollapsed((prev) => toggleArea(prev, key))}
+                      >
+                        <Icon path={ICONS.folder} />
+                        <span className="nav-label">{name}</span>
+                        <Icon
+                          path={ICONS.chevron}
+                          size={12}
+                          style={{
+                            marginLeft: 'auto',
+                            transform: subOpen ? 'rotate(90deg)' : 'none',
+                            transition: 'transform var(--dur) var(--ease)',
+                          }}
+                        />
+                      </button>
+                      {subOpen ? (
+                        <div
+                          id={domId}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 2,
+                            // Il rientro e' l'unica cosa che dice che queste
+                            // voci stanno DENTRO il sottogruppo e non accanto.
+                            paddingLeft: 14,
+                          }}
+                        >
+                          {sub.map((item) => (
+                            <NavLink key={item.to} item={item} pathname={pathname} />
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>

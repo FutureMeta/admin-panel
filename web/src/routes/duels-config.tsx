@@ -1,4 +1,4 @@
-// «Duels · Configurazioni». Le misure vengono da
+// «Duels · Configs». Le misure vengono da
 // `frontend/14-duels-configurazioni.dc.html`.
 //
 // DUE COLONNE: a sinistra l'albero dei percorsi con la ricerca e il tasto
@@ -27,6 +27,7 @@ import {
   type ConfigFile,
   type ConfigTree,
   type ConfigVersion,
+  isHidden,
   titleOf,
 } from '../lib/duels-config.ts';
 import { canOpen } from '../lib/modules.ts';
@@ -36,6 +37,7 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [versionIndex, setVersionIndex] = useState(0);
   const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const [versionMenu, setVersionMenu] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [newOpen, setNewOpen] = useState(false);
@@ -62,6 +64,13 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
     return needle === '' ? files : files.filter((f) => f.path.toLowerCase().includes(needle));
   }, [files, search]);
   const rows = useMemo(() => buildTree(filtered), [filtered]);
+  // Le righe che si vedono davvero. La ricerca NON tiene conto delle cartelle
+  // chiuse: chi cerca vuole trovare, e nascondere un risultato dietro una
+  // cartella chiusa sarebbe rispondere «non c'e'».
+  const visible = useMemo(
+    () => (search.trim() === '' ? rows.filter((r) => !isHidden(r, collapsed)) : rows),
+    [rows, collapsed, search],
+  );
 
   const version = file.data?.versions[Math.min(versionIndex, (file.data?.versions.length ?? 1) - 1)];
   const summary = files.find((f) => f.path === selected);
@@ -105,7 +114,7 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
   return (
     <>
       <PageHeader
-        title="Duels · Configurazioni"
+        title="Duels · Configs"
         sub={`File YAML e legami fra moduli · ${files.length} percorsi su ${tree.data?.modules.length ?? 0} moduli`}
         action={
           pending.length > 0 && canPublish ? (
@@ -248,30 +257,64 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
               overflowY: 'auto',
             }}
           >
-            {rows.map((row) =>
+            {visible.map((row) =>
               row.kind === 'dir' ? (
-                <div
+                <button
                   key={`d:${row.key}`}
+                  type="button"
+                  aria-expanded={!collapsed.has(row.key)}
+                  onClick={() =>
+                    setCollapsed((prev) => {
+                      const next = new Set(prev);
+                      if (!next.delete(row.key)) next.add(row.key);
+                      return next;
+                    })
+                  }
                   style={{
                     display: 'flex',
                     alignItems: 'center',
+                    gap: 6,
                     height: 28,
                     paddingRight: 9,
                     paddingLeft: 12 + row.depth * 14,
+                    border: 'none',
+                    borderRadius: 'var(--r-sm)',
+                    background: 'transparent',
                     color: 'var(--tx-secondary)',
                     fontFamily: 'var(--font-mono)',
                     fontSize: 11.5,
                     fontWeight: 600,
+                    cursor: 'pointer',
+                    textAlign: 'left',
                   }}
                 >
-                  {row.label}
-                </div>
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="11"
+                    height="11"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    aria-hidden="true"
+                    style={{
+                      flex: 'none',
+                      transform: collapsed.has(row.key) ? 'none' : 'rotate(90deg)',
+                      transition: 'transform var(--dur-fast) var(--ease)',
+                    }}
+                  >
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {row.label}
+                  </span>
+                </button>
               ) : (
                 <button
                   key={`f:${row.key}`}
                   type="button"
                   onClick={() => {
-                    setSelected(row.path);
+                    setSelected(row.path ?? null);
                     setVersionIndex(0);
                   }}
                   style={{
@@ -304,12 +347,12 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
                   {/* Il numero di versioni: quando e' piu' di uno, quel file e'
                       diviso per modulo. Si vede dall'albero senza aprirlo. */}
                   <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--tx-muted)' }}>
-                    {row.versions > 1 ? row.versions : ''}
+                    {(row.versions ?? 1) > 1 ? row.versions : ''}
                   </span>
                 </button>
               ),
             )}
-            {rows.length === 0 ? (
+            {visible.length === 0 ? (
               <div style={{ padding: '18px 12px', fontSize: 12.5, color: 'var(--tx-muted)' }}>
                 {tree.isLoading ? 'Caricamento…' : 'Nessun percorso'}
               </div>

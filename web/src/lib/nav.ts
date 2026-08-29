@@ -35,6 +35,12 @@ export type NavEntry = {
   /** Il nome nella barra laterale, dove il gruppo e' gia' scritto sopra. */
   label: string;
   area: string;
+  /**
+   * Il sottogruppo dentro la categoria, se ne ha uno. Le voci senza stanno
+   * sciolte in cima; quelle con lo stesso nome finiscono in un gruppo
+   * chiudibile sotto di loro.
+   */
+  group?: string;
   /** Basta UNO di questi moduli per vedere la voce. */
   modules: readonly string[];
   /** Il livello minimo, quando avere il modulo non basta. */
@@ -103,6 +109,7 @@ export const NAV: readonly NavEntry[] = [
     title: 'Duels · Modes',
     label: 'Modes',
     area: 'Duels',
+    group: 'Setup',
     modules: ['duels_modes'],
     hint: 'configurazione delle modalità',
   },
@@ -111,14 +118,16 @@ export const NAV: readonly NavEntry[] = [
     title: 'Duels · Maps',
     label: 'Maps',
     area: 'Duels',
+    group: 'Setup',
     modules: ['duels_maps'],
     hint: 'configurazione delle mappe',
   },
   {
     to: '/duels/config',
-    title: 'Duels · Configurazioni',
-    label: 'Configurazioni',
+    title: 'Duels · Configs',
+    label: 'Configs',
     area: 'Duels',
+    group: 'Setup',
     modules: ['duels_config'],
     hint: 'i file YAML dei server',
   },

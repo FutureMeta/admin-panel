@@ -11,13 +11,12 @@
 // colori: rimettendo insieme i pezzi si riottiene la riga. Vale su ogni riga
 // storta che questi file contengono davvero.
 //
-// IL SECONDO GRUPPO E' SUI CODICI DI FORMATTAZIONE, ed e' la ragione per cui
-// tutto questo esiste: chi scrive `<dark_gray>` vuole vedere che colore sara'.
-// Dipingerlo di un colore diverso da quello che il giocatore vedra' sarebbe
-// peggio che non colorarlo affatto.
+// I TAG MINIMESSAGE — che sono la ragione per cui tutto questo esiste — hanno
+// il loro file: `94-minimessage.test.ts`. Qui si prova che il testo di un
+// valore ci passi attraverso e che un commento no.
 
 import { describe, expect, it } from 'vitest';
-import { codeColour, codeStyle, highlightYaml, type Token } from '#web/lib/yaml-highlight.ts';
+import { highlightYaml, type Token } from '#web/lib/yaml-highlight.ts';
 
 /** I pezzi di una riga sola, che e' il caso di quasi tutte le prove. */
 function row(source: string): Token[] {
@@ -183,65 +182,30 @@ describe('i blocchi di testo libero non sono YAML', () => {
   });
 });
 
-describe('i codici di formattazione hanno il colore che avranno in gioco', () => {
-  it('i nomi MiniMessage, aperti e chiusi', () => {
-    expect(codeColour('<red>')).toBe('#FF5555');
-    expect(codeColour('</white>')).toBe('#FFFFFF');
-    expect(codeColour('<dark_gray>')).toBe('#555555');
+describe('il testo di un valore passa da MiniMessage, il resto no', () => {
+  it('il tag veste il testo che viene dopo, non solo se stesso', () => {
+    const pezzi = row('  msg: <red>Perso').filter((t) => t.kind !== 'punct');
+    expect(pezzi.find((t) => t.text === 'Perso')?.style?.colour).toBe('#FF5555');
   });
 
-  it('l`esadecimale e` se stesso', () => {
-    expect(codeColour('<#FF5C5C>')).toBe('#FF5C5C');
-    expect(codeColour('</#9FE6B8>')).toBe('#9FE6B8');
+  it('ma in un commento i tag sono prosa, non formattazione', () => {
+    // Un commento che spiega come si usa `<red>` non deve diventare rosso: e`
+    // testo su cui il gioco non passa mai.
+    expect(row('# usa <red> per il rosso').every((t) => t.kind === 'comment')).toBe(true);
   });
 
-  it('una sfumatura prende il colore da cui parte', () => {
-    expect(codeColour('<gradient:#FFF3C4:#FFD27A>')).toBe('#FFF3C4');
+  it('e in una chiave nemmeno', () => {
+    const chiave = row('<red>: 1').find((t) => t.kind === 'key');
+    expect(chiave?.style).toBeUndefined();
   });
 
-  it('i vecchi codici valgono ancora, e sono gli stessi colori', () => {
-    // `&a` e `<green>` sono lo stesso verde: la tavolozza e` una sola, e i
-    // codici legacy si ricavano da quella invece di essere riscritti.
-    expect(codeColour('&a')).toBe(codeColour('<green>'));
-    expect(codeColour('&0')).toBe(codeColour('<black>'));
-    expect(codeColour('§c')).toBe(codeColour('<red>'));
-  });
-
-  it('cio` che colore non ha resta neutro', () => {
-    // Stile, click, segnaposto: non dire niente e` giusto, inventare un colore
-    // no — sarebbe un tag che sembra dipingere e non dipinge.
-    for (const code of ['<bold>', '&l', "<click:run_command:'/event join'>", '<player>', '<@&123456789>']) {
-      expect(codeColour(code)).toBe('#8FA3AD');
-    }
-  });
-
-  it('i colori troppo scuri si portano dietro una velatura', () => {
-    // SENZA, `<black>` SAREBBE INVISIBILE: sotto questo strato c'e` una
-    // textarea trasparente, quindi un tag nero su fondo scuro non e` poco
-    // leggibile — e` un pezzo di riga che sparisce.
-    expect(codeStyle('<black>').background).toBeDefined();
-    expect(codeStyle('<dark_blue>').background).toBeDefined();
-    expect(codeStyle('<white>').background).toBeUndefined();
-    expect(codeStyle('<yellow>').background).toBeUndefined();
-    // E il colore resta quello vero: cambia il dietro, non il davanti.
-    expect(codeStyle('<black>').color).toBe('#000000');
-  });
-
-  it('i codici si staccano dal testo che li circonda', () => {
-    expect(shape('  msg: "<red>Perso</red>"')).toEqual([
-      ['plain', '  '],
-      ['key', 'msg'],
-      ['punct', ':'],
-      ['plain', ' '],
-      ['string', '"'],
-      ['code', '<red>'],
-      ['string', 'Perso'],
-      ['code', '</red>'],
-      ['string', '"'],
-    ]);
-  });
-
-  it('ma non dentro un commento, dove sono prosa', () => {
-    expect(only('# usa <red> per il rosso', 'code')).toEqual([]);
+  it('la formattazione non passa da una riga all`altra', () => {
+    // UN TAG LASCIATO APERTO COLORA FINO A FINE RIGA E NON OLTRE. In gioco
+    // ogni messaggio e` una stringa a se`, quindi e` anche cio` che succede
+    // davvero — e per una dimenticanza in un file di seicento righe e` la
+    // differenza fra una riga storta e seicento.
+    const righe = highlightYaml('a: <red>rosso\nb: normale');
+    const dopo = (righe[1] as Token[]).find((t) => t.text === 'normale');
+    expect(dopo?.style?.colour).toBeUndefined();
   });
 });

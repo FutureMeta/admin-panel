@@ -16,10 +16,15 @@
 // questo file puo' rompere qualcosa, ed e' provato in
 // `tests/acceptance/92-yaml-highlight.test.ts`.
 //
+// I TAG MINIMESSAGE LI RISOLVE `minimessage.ts`: qui si decide che un pezzo
+// di riga e' testo, li' si decide di che colore sara' in gioco.
+//
 // NON E' UN PARSER YAML e non deve diventarlo. Non valida, non si lamenta, non
 // costruisce niente: guarda una riga alla volta e decide di che colore
 // dipingerla. Su una riga che non capisce ripiega su `plain`, che e' il colore
 // del testo normale — cioe' esattamente quello che si vedeva prima.
+
+import { renderMiniMessage, type Style } from './minimessage.ts';
 
 export type TokenKind =
   /** Il nome prima dei due punti. */
@@ -39,94 +44,23 @@ export type TokenKind =
   /** Tutto il resto, spazi compresi. */
   | 'plain';
 
-export type Token = { kind: TokenKind; text: string };
-
-/**
- * I sedici colori del client, per nome MiniMessage.
- *
- * STANNO QUI E NON FRA I TOKEN DI DISEGNO perche' non sono una scelta
- * estetica: `<red>` E' quel rosso — lo dice il gioco — e dipingerlo di un
- * altro colore vorrebbe dire mentire su cio' che il giocatore vedra'.
- */
-const NAMED: Record<string, string> = {
-  black: '#000000',
-  dark_blue: '#0000AA',
-  dark_green: '#00AA00',
-  dark_aqua: '#00AAAA',
-  dark_red: '#AA0000',
-  dark_purple: '#AA00AA',
-  gold: '#FFAA00',
-  gray: '#AAAAAA',
-  dark_gray: '#555555',
-  blue: '#5555FF',
-  green: '#55FF55',
-  aqua: '#55FFFF',
-  red: '#FF5555',
-  light_purple: '#FF55FF',
-  yellow: '#FFFF55',
-  white: '#FFFFFF',
+export type Token = {
+  kind: TokenKind;
+  text: string;
+  /**
+   * Come sara' scritto in gioco, quando il pezzo sta dentro del testo: il
+   * colore che i tag MiniMessage gli danno, il grassetto, il corsivo. Assente
+   * su tutto cio' che testo non e' — chiavi, numeri, commenti.
+   */
+  style?: Style;
 };
 
 /**
- * I codici legacy, nell'ordine che DEFINISCE quale colore sono: `&0` e' il
- * primo nome, `&f` l'ultimo. Ricavati dai nomi invece che riscritti, o le due
- * tavolozze potrebbero divergere restando tutt'e due plausibili.
- */
-const LEGACY = Object.keys(NAMED);
-
-/** Un tag o un codice che non e' un colore: `<bold>`, `<click:…>`, `&l`. */
-const NEUTRAL = '#8FA3AD';
-
-/**
- * Il colore che un codice significa.
+ * Aggiunge del testo, applicandogli la formattazione MiniMessage.
  *
- * Riconosce quello che c'e' davvero in questi file: i nomi MiniMessage, l'esa
- * `<#FF5C5C>`, le sfumature — di cui si prende il primo estremo, che e' il
- * colore da cui la scritta parte — e i vecchi codici `&a`. Tutto il resto e'
- * un tag che colore non ha: stile, click, segnaposto.
- */
-export function codeColour(code: string): string {
-  if (code.startsWith('&') || code.startsWith('§')) {
-    const char = code[1] as string;
-    // `&l`, `&o`, `&r`: stile, non colore.
-    if (!/^[0-9a-fA-F]$/.test(char)) return NEUTRAL;
-    return NAMED[LEGACY[Number.parseInt(char, 16)] as string] as string;
-  }
-  const body = code.replace(/^<\/?/, '').replace(/>$/, '');
-  const hex = /^#[0-9a-fA-F]{6}$/.exec(body);
-  if (hex !== null) return body;
-  const gradient = /^gradient:(#[0-9a-fA-F]{6})/.exec(body);
-  if (gradient !== null) return gradient[1] as string;
-  return NAMED[body.toLowerCase()] ?? NEUTRAL;
-}
-
-/**
- * Un colore troppo scuro per il fondo dell'editor si porta dietro una velatura
- * chiara.
- *
- * SENZA, `<black>` E `<dark_blue>` SAREBBERO INVISIBILI: il testo dell'editor
- * e' disegnato solo da questo strato — sotto c'e' un `<textarea>` trasparente
- * — e un tag nero su fondo quasi nero non e' un colore poco leggibile, e' un
- * pezzo di riga che sparisce. Il colore resta quello vero: cambia il dietro,
- * non il davanti.
- */
-export function codeStyle(code: string): { color: string; background?: string } {
-  const colour = codeColour(code);
-  const n = Number.parseInt(colour.slice(1), 16);
-  // Luminanza percepita, la formula corta: il verde pesa piu' del rosso, e il
-  // blu quasi niente. `#0000AA` e' scuro anche se il suo numero e' grande.
-  const light = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
-  return light < 0.32 ? { color: colour, background: 'rgba(255,255,255,.12)' } : { color: colour };
-}
-
-/** Un codice legacy, oppure un tag MiniMessage — di apertura o di chiusura. */
-const CODE = /[&§][0-9a-fk-orA-FK-OR]|<\/?[^<>\s][^<>]*>/g;
-
-/**
- * Aggiunge del testo, staccando i codici colore che ci trova dentro.
- *
- * Solo dentro le stringhe e il testo semplice: in un commento `&a` e' due
- * caratteri di prosa, e in una chiave non ci arriva mai.
+ * SOLO DENTRO LE STRINGHE E IL TESTO SEMPLICE. In un commento `<red>` sono
+ * cinque caratteri di prosa, e in una chiave non ci arriva mai: applicarlo li'
+ * vorrebbe dire colorare di rosso un commento che parla del rosso.
  */
 function pushText(out: Token[], kind: TokenKind, text: string): void {
   if (text === '') return;
@@ -134,14 +68,9 @@ function pushText(out: Token[], kind: TokenKind, text: string): void {
     out.push({ kind, text });
     return;
   }
-  let at = 0;
-  CODE.lastIndex = 0;
-  for (let m = CODE.exec(text); m !== null; m = CODE.exec(text)) {
-    if (m.index > at) out.push({ kind, text: text.slice(at, m.index) });
-    out.push({ kind: 'code', text: m[0] });
-    at = m.index + m[0].length;
+  for (const piece of renderMiniMessage(text)) {
+    out.push({ kind: piece.tag ? 'code' : kind, text: piece.text, style: piece.style });
   }
-  if (at < text.length) out.push({ kind, text: text.slice(at) });
 }
 
 /** Una stringa fra virgolette o apici, con la sua chiusura se c'e'. */

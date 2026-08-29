@@ -489,6 +489,10 @@ export const ICONS = {
   trend: 'M3 17l5-7 4 4 9-11',
   star: 'M12 3.5l2.6 5.6 6 .8-4.4 4.2 1.1 6-5.3-3-5.3 3 1.1-6-4.4-4.2 6-.8z',
   cfg: 'M4.5 7h15M4.5 12h15M4.5 17h15M8 5v4M16 10v4M11 15v4',
+  // Il foglio scritto: «Duels · Configs», che sono file YAML. Non `cfg`, che
+  // e' gia' di Modes — due voci vicine con la stessa icona si leggono come una
+  // sola, ed erano vicine sul serio da quando stanno tutt'e due in «Setup».
+  doc: 'M6.5 3h7l4.5 4.5V21h-11.5zM13.5 3v5h4.5M9.5 12.5h5M9.5 16.5h3.5',
   // Il battito: la schermata Live. Stesso tratto delle icone di sistema,
   // una riga che sale e ricade — «adesso», non «nel tempo» come `trend`.
   pulse: 'M3 12h4l2.5-6 4 12L16 12h5',

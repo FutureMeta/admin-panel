@@ -340,7 +340,7 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
                     // schiacciavano man mano che se ne aggiungevano, e con
                     // centoventi percorsi erano alte la meta' che con dieci.
                     flex: 'none',
-                    height: 28,
+                    height: 25,
                     paddingRight: 9,
                     paddingLeft: 12 + row.depth * 14,
                     border: 'none',
@@ -354,6 +354,15 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
                     textAlign: 'left',
                   }}
                 >
+                  {/* IL NOME PRIMA, LA FRECCIA DOPO: cosi' le cartelle
+                      cominciano dove cominciano i file dello stesso livello, e
+                      il rientro dice la profondita' da solo. Con la freccia
+                      davanti, ogni cartella partiva dodici pixel piu' a destra
+                      dei suoi vicini e l'allineamento raccontava una gerarchia
+                      che non c'era. */}
+                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {row.label}
+                  </span>
                   <svg
                     viewBox="0 0 24 24"
                     width="11"
@@ -371,9 +380,6 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
                   >
                     <path d="m9 18 6-6-6-6" />
                   </svg>
-                  <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {row.label}
-                  </span>
                 </button>
               ) : (
                 <button
@@ -391,7 +397,7 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
                     // Vedi la riga della cartella: senza, l'altezza di una riga
                     // dipenderebbe da quante altre righe si vedono.
                     flex: 'none',
-                    height: 28,
+                    height: 25,
                     paddingRight: 9,
                     paddingLeft: 12 + row.depth * 14,
                     border: 'none',

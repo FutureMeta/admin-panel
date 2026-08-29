@@ -44,7 +44,7 @@ const DECOR: Record<string, { icon: string; prefetch?: () => void }> = {
   '/duels/modes': { icon: ICONS.cfg },
   '/duels/maps': { icon: ICONS.grid },
   '/duels/live': { icon: ICONS.pulse },
-  '/duels/config': { icon: ICONS.cfg },
+  '/duels/config': { icon: ICONS.doc },
   '/utenti': { icon: ICONS.users },
   '/registro': { icon: ICONS.log },
 };
@@ -254,6 +254,14 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
                         aria-expanded={subOpen}
                         aria-controls={domId}
                         onClick={() => setCollapsed((prev) => toggleArea(prev, key))}
+                        // LARGO QUANTO LA BARRA, e non quanto la scritta. Le
+                        // altre voci sono figlie dirette della colonna e si
+                        // allargano da sole; questa sta dentro un contenitore
+                        // suo, e un `<button>` con larghezza automatica si
+                        // stringe sul contenuto — cliccabile solo sulla parola
+                        // «Setup», con mezza riga che sembra un bersaglio e non
+                        // lo è.
+                        style={{ width: '100%' }}
                       >
                         <Icon path={ICONS.folder} />
                         <span className="nav-label">{name}</span>

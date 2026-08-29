@@ -103,7 +103,12 @@ async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
   const url = process.env.DATABASE_URL;
   if (url === undefined) {
-    console.error('Serve DATABASE_URL. Con --apply scrive, senza dice soltanto cosa farebbe.');
+    // Nel container la variabile sta nel `.env` che legge il processo del
+    // pannello, non nell'ambiente della shell: chi arriva qui ha quasi sempre
+    // il file sotto il naso e gli manca la riga per dirlo a Node.
+    console.error('Serve DATABASE_URL, e nel container sta nel .env:');
+    console.error('  node --env-file=.env scripts/fix-config-encoding.ts');
+    console.error('\nSenza --apply dice soltanto cosa farebbe.');
     process.exit(1);
   }
 

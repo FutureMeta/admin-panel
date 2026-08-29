@@ -15,7 +15,8 @@
     {id:'duels-trends', label:'Duels · Trends'},
     {id:'duels-ratings', label:'Duels · Ratings'},
     {id:'duels-config', label:'Duels · Modes'},
-    {id:'duels-maps', label:'Duels · Maps'}
+    {id:'duels-maps', label:'Duels · Maps'},
+    {id:'duels-conf', label:'Duels · Configurazioni'}
   ];
   
   const MODES = [
@@ -55,7 +56,8 @@
       { label:'Trends', icon:I.trend, screen:'duels-trends' },
       { label:'Ratings', icon:I.star, screen:'duels-ratings' },
       { label:'Modes', icon:I.swords, screen:'duels-config' },
-      { label:'Maps', icon:I.panel, screen:'duels-maps' }
+      { label:'Maps', icon:I.panel, screen:'duels-maps' },
+      { label:'Configurazioni', icon:I.cfg, screen:'duels-conf' }
     ]},
     { area:'Amministrazione', items:[
       { label:'Utenti & Ruoli', icon:I.users, screen:'utenti' },
@@ -65,7 +67,7 @@
   const BREAD = {
     shell:'App shell', panoramica:'Panoramica network', towny:'Dettaglio modalità · Towny',
     utenti:'Utenti & Ruoli', registro:'Registro attività',
-    'duels-live':'Duels · Live', 'duels-trends':'Duels · Trends', 'duels-ratings':'Duels · Ratings', 'duels-config':'Duels · Modes', 'duels-maps':'Duels · Maps'
+    'duels-live':'Duels · Live', 'duels-trends':'Duels · Trends', 'duels-ratings':'Duels · Ratings', 'duels-config':'Duels · Modes', 'duels-maps':'Duels · Maps', 'duels-conf':'Duels · Configurazioni'
   };
   const RAMP = ['#0F212A','#16394B','#1E5670','#4C6E72','#8A7147','#C08129','#F0A63F'];
   const fmt = n => Number(n).toLocaleString('it-IT');
@@ -119,7 +121,7 @@
     sistema:'0-design-system.dc.html', login:'1-login.dc.html', invito:'2-accettazione-invito.dc.html',
     shell:'3-app-shell.dc.html', panoramica:'4-panoramica-network.dc.html', towny:'5-dettaglio-modalita.dc.html',
     utenti:'6-utenti-e-ruoli.dc.html', registro:'7-registro-attivita.dc.html', responsive:'8-responsive.dc.html',
-    'duels-live':'13-duels-live.dc.html', 'duels-trends':'9-duels-trends.dc.html', 'duels-ratings':'10-duels-ratings.dc.html', 'duels-config':'11-duels-configurazione.dc.html', 'duels-maps':'12-duels-mappe.dc.html'
+    'duels-live':'13-duels-live.dc.html', 'duels-conf':'14-duels-configurazioni.dc.html', 'duels-trends':'9-duels-trends.dc.html', 'duels-ratings':'10-duels-ratings.dc.html', 'duels-config':'11-duels-configurazione.dc.html', 'duels-maps':'12-duels-mappe.dc.html'
   };
 
   function hexField() {
@@ -1294,7 +1296,7 @@
         bg: p === ctx.state.period ? 'var(--s-overlay)' : 'transparent',
         fg: p === ctx.state.period ? 'var(--tx-primary)' : 'var(--tx-muted)'
       })),
-      showFilters: scr !== 'utenti' && scr !== 'registro' && scr !== 'duels-ratings' && scr !== 'duels-config' && scr !== 'duels-maps' && scr !== 'duels-live',
+      showFilters: scr !== 'utenti' && scr !== 'registro' && scr !== 'duels-ratings' && scr !== 'duels-config' && scr !== 'duels-maps' && scr !== 'duels-live' && scr !== 'duels-conf',
       modeTabs: MODES.map(m => ({
         name: m.name,
         go: () => ctx.setState({modeSel: m.name}),
@@ -1557,7 +1559,445 @@
     };
   }
 
+  /* ---------- Duels · Configurazioni ---------- */
+  const CF_MOD_COLOR = {
+    lobby:'#3FA3D4', game:'#F0913F', ffa:'#57B8A6', event:'#C99BE0',
+    replay:'#8FA3AD', setup:'#E0A32E', 'duel-command':'#E8822B', 'event-command':'#9DB4E8'
+  };
+  const CF_TREE = [
+    {label:'config.yml', path:'config.yml', depth:0, kind:'file'},
+    {label:'messages.yml', path:'messages.yml', depth:0, kind:'file'},
+    {label:'items.yml', path:'items.yml', depth:0, kind:'file'},
+    {label:'nametags.yml', path:'nametags.yml', depth:0, kind:'file'},
+    {label:'scoreboards.yml', path:'scoreboards.yml', depth:0, kind:'file'},
+    {label:'inventories/', depth:0, kind:'dir'},
+    {label:'event_settings.yml', path:'inventories/event_settings.yml', depth:1, kind:'file'},
+    {label:'kits.yml', path:'inventories/kits.yml', depth:1, kind:'file'},
+    {label:'spectator.yml', path:'inventories/spectator.yml', depth:1, kind:'file'},
+    {label:'event/', depth:1, kind:'dir'},
+    {label:'uhc.yml', path:'inventories/event/uhc.yml', depth:2, kind:'file'},
+    {label:'manhunt.yml', path:'inventories/event/manhunt.yml', depth:2, kind:'file'},
+    {label:'ffa/', depth:1, kind:'dir'},
+    {label:'ffa_sword.yml', path:'inventories/ffa/ffa_sword.yml', depth:2, kind:'file'},
+    {label:'ffa_axe.yml', path:'inventories/ffa/ffa_axe.yml', depth:2, kind:'file'}
+  ];
+  const CF_DOCS = [
+    {name:'Config', path:'config.yml', mods:['lobby'], ovT:['LOBBY'], ovS:[], srv:3, by:'Vally90', at:'28/08/2026 14:12'},
+    {name:'Config', path:'config.yml', mods:['game'], ovT:[], ovS:['duels_game_3'], srv:4, by:'Vally90', at:'21/08/2026 20:15'},
+    {name:'Config', path:'config.yml', mods:['ffa'], ovT:[], ovS:[], srv:1, by:'Matty', at:'18/08/2026 11:40'},
+    {name:'Config', path:'config.yml', mods:['event'], ovT:[], ovS:[], srv:2, by:'Matty', at:'17/08/2026 09:12'},
+    {name:'Config', path:'config.yml', mods:['replay'], ovT:[], ovS:[], srv:1, by:'Matty', at:'15/08/2026 08:57'},
+    {name:'Config', path:'config.yml', mods:['setup'], ovT:[], ovS:[], srv:1, by:'Matty', at:'12/08/2026 16:05'},
+    {name:'Messages', path:'messages.yml', mods:['lobby'], ovT:['LOBBY'], ovS:[], srv:3, by:'Vally90', at:'22/08/2026 10:48'},
+    {name:'Messages', path:'messages.yml', mods:['game'], ovT:[], ovS:[], srv:4, by:'Vally90', at:'20/08/2026 19:22'},
+    {name:'Messages', path:'messages.yml', mods:['ffa'], ovT:[], ovS:[], srv:1, by:'Matty', at:'16/08/2026 13:34'},
+    {name:'Items', path:'items.yml', mods:['setup'], ovT:[], ovS:[], srv:1, by:'Matty', at:'19/08/2026 12:03'},
+    {name:'Items', path:'items.yml', mods:['game'], ovT:[], ovS:[], srv:4, by:'Vally90', at:'14/08/2026 10:11'},
+    {name:'Nametags', path:'nametags.yml', mods:['lobby','game','event'], ovT:[], ovS:[], srv:9, by:'Matty', at:'27/08/2026 18:40'},
+    {name:'Scoreboards', path:'scoreboards.yml', mods:['lobby','game','ffa'], ovT:['GAME'], ovS:['duels_ffa_1'], srv:10, by:'Vally90', at:'28/08/2026 14:12'},
+    {name:'Event Settings', path:'inventories/event_settings.yml', mods:['lobby','ffa','duel-command'], ovT:['FFA'], ovS:['duels_lobby_2'], srv:7, by:'Vally90', at:'26/08/2026 11:05'},
+    {name:'Kits', path:'inventories/kits.yml', mods:['game'], ovT:[], ovS:[], srv:4, by:'Vally90', at:'23/08/2026 15:48'},
+    {name:'Kits', path:'inventories/kits.yml', mods:['setup'], ovT:[], ovS:[], srv:1, by:'Matty', at:'11/08/2026 09:03'},
+    {name:'Spectator', path:'inventories/spectator.yml', mods:['game'], ovT:[], ovS:[], srv:4, by:'Matty', at:'19/08/2026 21:14'},
+    {name:'Spectator', path:'inventories/spectator.yml', mods:['replay'], ovT:[], ovS:[], srv:1, by:'Matty', at:'13/08/2026 17:52'},
+    {name:'Uhc', path:'inventories/event/uhc.yml', mods:['event','event-command'], ovT:[], ovS:['duels_event_2'], srv:2, by:'Matty', at:'25/08/2026 09:30'},
+    {name:'Manhunt', path:'inventories/event/manhunt.yml', mods:['event'], ovT:[], ovS:[], srv:2, by:'Matty', at:'24/08/2026 08:19'},
+    {name:'Ffa Sword', path:'inventories/ffa/ffa_sword.yml', mods:['ffa'], ovT:[], ovS:[], srv:1, by:'Matty', at:'24/08/2026 16:22'},
+    {name:'Ffa Axe', path:'inventories/ffa/ffa_axe.yml', mods:['ffa'], ovT:[], ovS:[], srv:1, by:'Matty', at:'22/08/2026 14:07'}
+  ];
+  const CF_DUP = [
+    {band:'drift', path:'inventories/event_settings.yml', pct:98, mods:['lobby','ffa','duel-command'], lines:[412,388,412], open:true},
+    {band:'drift', path:'nametags.yml', pct:100, mods:['lobby','game','event'], lines:[96,96,96]},
+    {band:'drift', path:'scoreboards.yml', pct:97, mods:['lobby','game','ffa'], lines:[143,143,139]},
+    {band:'drift', path:'inventories/ffa/ffa_sword.yml', pct:96, mods:['ffa','game'], lines:[88,84]},
+    {band:'drift', path:'inventories/event/uhc.yml', pct:95, mods:['event','event-command'], lines:[210,206]},
+    {band:'decide', path:'sounds.yml', pct:87, mods:['lobby','event'], lines:[64,58]},
+    {band:'decide', path:'inventories/kits.yml', pct:71, mods:['game','setup'], lines:[132,104]},
+    {band:'decide', path:'holograms.yml', pct:52, mods:['lobby','event'], lines:[41,28]},
+    {band:'decide', path:'inventories/spectator.yml', pct:44, mods:['game','replay'], lines:[76,49]},
+    {band:'apart', path:'config.yml', pct:4, mods:['lobby','game','ffa','event','replay','setup'], lines:[512,380,240,196,88,54]},
+    {band:'apart', path:'messages.yml', pct:2, mods:['lobby','game','ffa'], lines:[310,288,151]},
+    {band:'apart', path:'items.yml', pct:0, mods:['setup','game'], lines:[96,74]}
+  ];
+  const CF_BANDS = [
+    {id:'drift', title:'Stesso file, andato alla deriva', range:'95–100% di chiavi in comune', count:'18 percorsi', action:'Unifica', hint:'Le differenze sono deriva, non intenzione: unifica e tieni le divergenze come override.', accent:'var(--ac)'},
+    {id:'decide', title:'Da decidere', range:'40–87%', count:'5 percorsi', action:'Esamina', hint:'La percentuale è un indizio, non una decisione: 87% non vuol dire unificabile. Guarda il diff.', accent:'var(--warn)'},
+    {id:'apart', title:'Solo il nome in comune', range:'0–5%', count:'3 percorsi', action:'Tieni separati', hint:'Stesso nome, file diversi. Non vanno mai unificati.', accent:'var(--tx-muted)'}
+  ];
+  const CF_DIFF3 = [
+    {k:'title', v:["'&6Eventi'", "'&6Eventi'", "'&6Eventi'"], same:true},
+    {k:'size', v:['54','54','54'], same:true},
+    {k:'items.uhc.material', v:['GOLDEN_APPLE','GOLDEN_APPLE','GOLDEN_APPLE'], same:true},
+    {k:'items.uhc.slot', v:['20','20','20'], same:true},
+    {k:'items.uhc.name', v:["'&eUHC'", "'&6UHC Meetup'", "'&eUHC'"], same:false},
+    {k:'items.uhc.glow', v:['true','—','true'], same:false},
+    {k:'items.manhunt.slot', v:['22','22','22'], same:true},
+    {k:'filler.material', v:['GRAY_STAINED_GLASS_PANE','BLACK_STAINED_GLASS_PANE','GRAY_STAINED_GLASS_PANE'], same:false},
+    {k:'sounds.volume', v:['0.6','1.0','0.6'], same:false},
+    {k:'close-button.slot', v:['49','49','49'], same:true}
+  ];
+  const CF_YAML = [
+    {n:1,  t:"title: '&6Eventi'", src:'doc'},
+    {n:2,  t:'size: 54', src:'doc'},
+    {n:3,  t:'update-interval: 20', src:'jar'},
+    {n:4,  t:'items:', src:'doc'},
+    {n:5,  t:'  uhc:', src:'doc'},
+    {n:6,  t:'    material: GOLDEN_APPLE', src:'doc'},
+    {n:7,  t:'    slot: 20', src:'doc'},
+    {n:8,  t:"    name: '&6UHC Meetup'", src:'type'},
+    {n:9,  t:'    lore:', src:'doc'},
+    {n:10, t:"      - '&7Sopravvivi fino alla fine'", src:'doc'},
+    {n:11, t:"      - '&7Ultimo in vita'", src:'type'},
+    {n:12, t:'    glow: true', src:'srv'},
+    {n:13, t:'  manhunt:', src:'doc'},
+    {n:14, t:'    material: COMPASS', src:'doc'},
+    {n:15, t:'    slot: 22', src:'doc'},
+    {n:16, t:"    name: '&cManhunt'", src:'doc'},
+    {n:17, t:'  tnt-run:', src:'doc'},
+    {n:18, t:'    material: TNT', src:'doc'},
+    {n:19, t:'    slot: 24', src:'doc'},
+    {n:20, t:'sounds:', src:'jar'},
+    {n:21, t:'  click: UI_BUTTON_CLICK', src:'jar'},
+    {n:22, t:'  volume: 1.0', src:'type'},
+    {n:23, t:'filler:', src:'doc'},
+    {n:24, t:'  material: GRAY_STAINED_GLASS_PANE', src:'doc'},
+    {n:25, t:'close-button:', src:'doc'},
+    {n:26, t:'  slot: 49', src:'doc'}
+  ];
+  const CF_SRC_META = {
+    jar:{color:'#5A7280', label:'Default del jar'},
+    doc:{color:'#DB6E19', label:'Documento'},
+    type:{color:'#3FA3D4', label:'Override di tipo'},
+    srv:{color:'#E9F1F5', label:'Override di questo server'}
+  };
+  const CF_MERGED = [
+    {t:"title: '&6Eventi'", hl:false},
+    {t:'size: 54', hl:false},
+    {t:'update-interval: 20', hl:false},
+    {t:"items.uhc.name: '&6UHC Meetup'", hl:true},
+    {t:'items.uhc.slot: 20', hl:false},
+    {t:"items.uhc.lore[1]: '&7Ultimo in vita'", hl:true},
+    {t:'items.uhc.glow: true', hl:true},
+    {t:"items.manhunt.name: '&cManhunt'", hl:false},
+    {t:'items.tnt-run.slot: 24', hl:false},
+    {t:'sounds.click: UI_BUTTON_CLICK', hl:false},
+    {t:'sounds.volume: 1.0', hl:true},
+    {t:'filler.material: GRAY_STAINED_GLASS_PANE', hl:false},
+    {t:'close-button.slot: 49', hl:false}
+  ];
+  const CF_SERVERS = [
+    {id:'duels_lobby_1', type:'LOBBY', mod:'lobby', ver:'b7f3a91', behind:0, at:'29/08/2026 09:14'},
+    {id:'duels_lobby_2', type:'LOBBY', mod:'lobby', ver:'b7f3a91', behind:0, at:'29/08/2026 09:14'},
+    {id:'duels_lobby_3', type:'LOBBY', mod:'lobby', ver:'a02e5c4', behind:1, at:'27/08/2026 22:31'},
+    {id:'duels_game_1', type:'GAME', mod:'game', ver:'b7f3a91', behind:0, at:'29/08/2026 09:14'},
+    {id:'duels_game_2', type:'GAME', mod:'game', ver:'b7f3a91', behind:0, at:'29/08/2026 09:14'},
+    {id:'duels_game_3', type:'GAME', mod:'game', ver:'9d1188f', behind:2, at:'24/08/2026 19:02'},
+    {id:'duels_game_4', type:'GAME', mod:'game', ver:'b7f3a91', behind:0, at:'29/08/2026 09:14'},
+    {id:'duels_ffa_1', type:'FFA', mod:'ffa', ver:'a02e5c4', behind:1, at:'27/08/2026 22:31'},
+    {id:'duels_event_1', type:'EVENT', mod:'event', ver:'b7f3a91', behind:0, at:'29/08/2026 09:14'},
+    {id:'duels_event_2', type:'EVENT', mod:'event', ver:'b7f3a91', behind:0, at:'29/08/2026 09:14'}
+  ];
+  const CF_BUNDLE = [
+    {path:'config.yml', doc:'Config', layer:'Documento', keys:34, sel:false},
+    {path:'messages.yml', doc:'Messages', layer:'Override LOBBY', keys:12, sel:false},
+    {path:'nametags.yml', doc:'Nametags', layer:'Documento', keys:8, sel:false},
+    {path:'scoreboards.yml', doc:'Scoreboards', layer:'Override LOBBY', keys:5, sel:false},
+    {path:'inventories/event_settings.yml', doc:'Event Settings', layer:'Override server', keys:21, sel:true},
+    {path:'inventories/kits.yml', doc:'Kits', layer:'Documento', keys:6, sel:false},
+    {path:'items.yml', doc:'Items', layer:'Default del jar', keys:0, sel:false},
+    {path:'holograms.yml', doc:'Holograms', layer:'Documento', keys:3, sel:false}
+  ];
+  const CF_DIFF2 = [
+    {l:"title: '&6Menu'", r:"title: '&6Eventi'", k:'mod'},
+    {l:'size: 54', r:'size: 54', k:'same'},
+    {l:'update-interval: 20', r:'update-interval: 20', k:'same'},
+    {l:"items.uhc.name: '&eUHC'", r:"items.uhc.name: '&6UHC Meetup'", k:'mod'},
+    {l:'—', r:'items.uhc.glow: true', k:'add'},
+    {l:'—', r:"items.uhc.lore[1]: '&7Ultimo in vita'", k:'add'},
+    {l:'items.manhunt.slot: 22', r:'items.manhunt.slot: 22', k:'same'},
+    {l:'items.legacy-uhc.slot: 30', r:'—', k:'del'},
+    {l:'sounds.volume: 0.6', r:'sounds.volume: 1.0', k:'mod'},
+    {l:'filler.material: BLACK_STAINED_GLASS_PANE', r:'filler.material: GRAY_STAINED_GLASS_PANE', k:'mod'},
+    {l:'close-button.slot: 49', r:'close-button.slot: 49', k:'same'}
+  ];
+  const CF_HISTORY = [
+    {hash:'b7f3a91', at:'29/08/2026 09:14', by:'Vally90', docs:3, cur:true},
+    {hash:'a02e5c4', at:'27/08/2026 22:31', by:'Matty', docs:1, cur:false},
+    {hash:'9d1188f', at:'24/08/2026 19:02', by:'Vally90', docs:5, cur:false},
+    {hash:'71cc430', at:'21/08/2026 20:15', by:'Vally90', docs:2, cur:false}
+  ];
+  const CF_PUBLISH = [
+    {name:'Event Settings', path:'inventories/event_settings.yml', mods:['lobby','ffa','duel-command'], srv:7, keys:'+4 chiavi, 2 modificate'},
+    {name:'Scoreboards', path:'scoreboards.yml', mods:['lobby','game','ffa'], srv:10, keys:'1 modificata'},
+    {name:'Messages', path:'messages.yml', mods:['lobby'], srv:3, keys:'+2 chiavi'}
+  ];
+
+  function cfPills(mods) {
+    return mods.map(m => ({name:m, fg:CF_MOD_COLOR[m] || 'var(--tx-secondary)',
+      bg:'color-mix(in srgb, ' + (CF_MOD_COLOR[m] || '#8FA3AD') + ' 14%, transparent)'}));
+  }
+
+  function duelsConf(ctx) {
+    const s = ctx.state;
+    const tab = s.confTab || 'docs';
+    const TABS = [
+      {id:'docs', label:'Configurazioni'}, {id:'release', label:'Rilascio'}
+    ];
+    const docState = s.confDocState || 'dati';
+    const DSTATES = [{id:'dati', label:'Con dati'}, {id:'vuoto', label:'Stato vuoto'}, {id:'skel', label:'Caricamento'}];
+    const layer = s.confLayer || 'doc';
+    const LAYERS = [
+      {id:'doc', label:'Base'}, {id:'LOBBY', label:'LOBBY'}, {id:'GAME', label:'GAME'},
+      {id:'FFA', label:'FFA'}, {id:'EVENT', label:'EVENT'}, {id:'srv', label:'duels_lobby_2'}
+    ];
+    const bad = !!s.confBadYaml;
+    const onlyShared = !!s.confShared;
+    const onlyOv = !!s.confOv;
+
+    const path = s.confPath || 'inventories/event_settings.yml';
+    const pathDocs = CF_DOCS.filter(d => d.path === path);
+    const docIdx = Math.min(s.confDocIdx || 0, Math.max(pathDocs.length - 1, 0));
+    const cur = pathDocs[docIdx] || null;
+
+    const cfSplit = s.confLinkSplit === true;
+    /* tutti i moduli legati al percorso, non alla versione aperta */
+    const pathMods = pathDocs.reduce((acc, d) => acc.concat(d.mods.filter(m => acc.indexOf(m) < 0)), []);
+    const linkMods = s.confLinkMods || pathMods;
+    const baseName = pathDocs.length ? pathDocs[0].name : 'Documento';
+    const cfVers = cfSplit
+      ? linkMods.map(m => ({label:m, name: baseName, mods:[m]}))
+      : [{label: linkMods.join(', '), name: baseName, mods: linkMods}];
+    const cfVerIdx = Math.min(s.confDocIdx || 0, Math.max(cfVers.length - 1, 0));
+    const curVer = cfVers[cfVerIdx] || null;
+
+    const docs = CF_DOCS.filter(d => (!onlyShared || d.mods.length > 1) && (!onlyOv || d.ovT.length + d.ovS.length > 0))
+      .map(d => ({
+        name:d.name, path:d.path, srv:d.srv + '', by:d.by, at:d.at,
+        shared: d.mods.length > 1,
+        sharedLabel: d.mods.length > 1 ? 'condiviso · ' + d.mods.length + ' moduli' : 'modulo singolo',
+        sharedFg: d.mods.length > 1 ? 'var(--ac-text)' : 'var(--tx-muted)',
+        bar: d.mods.length > 1 ? 'var(--ac)' : 'transparent',
+        rowBg: d.mods.length > 1 ? 'color-mix(in srgb, var(--ac) 4%, transparent)' : 'transparent',
+        pills: cfPills(d.mods),
+        ovT: d.ovT, ovS: d.ovS,
+        noOv: d.ovT.length + d.ovS.length === 0
+      }));
+
+    const bands = CF_BANDS.map(b => ({
+      ...b,
+      rows: CF_DUP.filter(r => r.band === b.id).map(r => ({
+        path:r.path, pct:r.pct + '%', w:r.pct + '%',
+        barColor: r.pct >= 95 ? 'var(--ac)' : r.pct >= 40 ? 'var(--warn)' : 'var(--tx-muted)',
+        pills: cfPills(r.mods),
+        linesLabel: r.lines.join(' · ') + ' righe',
+        action: b.action,
+        actionPrimary: b.id === 'drift',
+        expanded: !!r.open && s.confDupOpen !== false,
+        toggle: () => ctx.setState(st => ({confDupOpen: st.confDupOpen === false ? true : false}))
+      }))
+    }));
+    const diffMods = cfPills(['lobby','ffa','duel-command']);
+    const diff3 = CF_DIFF3.map(d => ({
+      k:d.k, same:d.same,
+      fg: d.same ? 'var(--tx-muted)' : 'var(--tx-primary)',
+      cells: d.v.map((v, i) => ({
+        v, bg: d.same ? 'transparent' : (i === (s.confWinner === undefined ? 0 : s.confWinner) ? 'var(--ac-soft)' : 'var(--warn-soft)')
+      }))
+    }));
+    const winner = s.confWinner === undefined ? 0 : s.confWinner;
+    const radios = ['lobby','ffa','duel-command'].map((m, i) => ({
+      label:m, sel: i === winner,
+      dot: i === winner ? 'var(--ac)' : 'transparent',
+      bd: i === winner ? 'var(--ac)' : 'var(--bd-strong)',
+      fg: i === winner ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+      go: () => ctx.setState({confWinner: i})
+    }));
+    const overflowKeys = [ '9 chiavi per ffa e 2 per duel-command', '6 chiavi per lobby e 2 per duel-command', '9 chiavi per ffa e 6 per lobby' ][winner];
+
+    const yaml = CF_YAML.map(l => ({
+      n:l.n + '', t:l.t,
+      bar: CF_SRC_META[l.src].color,
+      dim: l.src === 'jar' ? 'var(--tx-muted)' : 'var(--tx-primary)',
+      editable: l.src === 'doc'
+    }));
+    const legend = ['jar','doc','type','srv'].map(k => ({label:CF_SRC_META[k].label, color:CF_SRC_META[k].color}));
+
+    const bundleRows = CF_BUNDLE.map(r => ({
+      path:r.path, doc:r.doc, layer:r.layer, keys: r.keys ? r.keys + ' chiavi' : 'nessuna',
+      sel:r.sel,
+      bg: r.sel ? 'var(--s-elevated)' : 'transparent',
+      layerFg: r.layer === 'Default del jar' ? 'var(--tx-muted)' : r.layer.indexOf('Override server') === 0 ? 'var(--tx-primary)' : r.layer.indexOf('Override') === 0 ? 'var(--blu-viz)' : 'var(--ac-text)',
+      layerBg: r.layer === 'Default del jar' ? 'var(--s-inset)' : r.layer.indexOf('Override server') === 0 ? 'rgba(255,255,255,.08)' : r.layer.indexOf('Override') === 0 ? 'var(--blu-soft)' : 'var(--ac-soft)'
+    }));
+    const KIND = {same:{bg:'transparent', fg:'var(--tx-muted)', tag:''}, add:{bg:'var(--ok-soft)', fg:'var(--ok)', tag:'aggiunta'},
+      mod:{bg:'var(--warn-soft)', fg:'var(--warn)', tag:'modifica'}, del:{bg:'var(--err-soft)', fg:'var(--err)', tag:'rimozione'}};
+    const diff2 = CF_DIFF2.map(d => ({l:d.l, r:d.r, bg:KIND[d.k].bg, fg:KIND[d.k].fg, tag:KIND[d.k].tag}));
+
+    const relServers = CF_SERVERS.map(x => ({
+      id:x.id, type:x.type, ver:x.ver, at:x.at,
+      typeFg: CF_MOD_COLOR[x.mod] || 'var(--tx-secondary)',
+      typeBg: 'color-mix(in srgb, ' + (CF_MOD_COLOR[x.mod] || '#8FA3AD') + ' 14%, transparent)',
+      stateLabel: x.behind === 0 ? 'allineato' : 'indietro di ' + x.behind + (x.behind === 1 ? ' versione' : ' versioni'),
+      stateFg: x.behind === 0 ? 'var(--ok)' : 'var(--warn)',
+      stateBg: x.behind === 0 ? 'var(--ok-soft)' : 'var(--warn-soft)'
+    }));
+    const history = CF_HISTORY.map(h => ({
+      hash:h.hash, at:h.at, by:h.by, docs:h.docs + (h.docs === 1 ? ' documento' : ' documenti'),
+      cur:h.cur, showRestore: !h.cur,
+      hashFg: h.cur ? 'var(--ac-text)' : 'var(--tx-primary)'
+    }));
+    const pub = CF_PUBLISH.map(p => ({...p, pills: cfPills(p.mods), srvLabel: p.srv + ' server'}));
+
+    return {
+      confTabs: TABS.map(t => ({
+        label:t.label, go: () => ctx.setState({confTab:t.id}),
+        bg: t.id === tab ? 'var(--s-overlay)' : 'transparent',
+        fg: t.id === tab ? 'var(--tx-primary)' : 'var(--tx-muted)',
+        bd: t.id === tab ? 'var(--bd-strong)' : 'transparent'
+      })),
+      isCfDocs: tab === 'docs', isCfAdopt: tab === 'adopt', isCfEditor: tab === 'editor',
+      isCfPreview: tab === 'preview', isCfRelease: tab === 'release',
+      cfTree: CF_TREE.map(t => {
+        const n = t.path ? CF_DOCS.filter(d => d.path === t.path).length : 0;
+        const act = t.path === path;
+        return {
+          label:t.label, pad: (12 + t.depth * 14) + 'px', badge: n ? n + '' : '',
+          fg: act ? 'var(--ac-text)' : t.kind === 'dir' ? 'var(--tx-secondary)' : 'var(--tx-primary)',
+          bg: act ? 'var(--ac-soft)' : 'transparent',
+          weight: t.kind === 'dir' ? '600' : '400',
+          go: t.path ? () => ctx.setState({confPath: t.path, confDocIdx: 0}) : () => {}
+        };
+      }),
+      cfPath: path,
+      cfHasDoc: !!cur,
+      cfDocName: curVer ? curVer.name : (cur ? cur.name : '—'),
+      cfDocBy: cur ? cur.by : '', cfDocAt: cur ? cur.at : '',
+      cfDocSrv: cur ? cur.srv + (cur.srv === 1 ? ' server' : ' server') : '',
+      cfDocPills: cfPills(pathMods),
+      cfDocOvT: cur ? cur.ovT : [], cfDocOvS: cur ? cur.ovS : [],
+      cfDocNoOv: cur ? cur.ovT.length + cur.ovS.length === 0 : true,
+      cfShared: cur ? cur.mods.length > 1 : false,
+      cfSharedText: cur && cur.mods.length > 1
+        ? 'Legato a ' + cur.mods.length + ' moduli: ' + cur.mods.join(', ') + '. Le modifiche arrivano a tutti.'
+        : cur ? 'Legato al solo modulo ' + cur.mods[0] + '.' : '',
+      stopProp: (e) => e.stopPropagation(),
+      cfSearch: s.confSearch || '',
+      onCfSearch: (e) => ctx.setState({confSearch: e.target.value}),
+      cfNewOpen: !!s.confNew,
+      openCfNew: () => ctx.setState({confNew:true}),
+      closeCfNew: () => ctx.setState({confNew:false}),
+      cfNewDir: s.confNewDir === undefined ? 'inventories/event/' : s.confNewDir,
+      onCfNewDir: (e) => ctx.setState({confNewDir: e.target.value}),
+      cfNewName: s.confNewName === undefined ? 'crystal_royale' : s.confNewName,
+      onCfNewName: (e) => ctx.setState({confNewName: e.target.value}),
+      cfNewPath: (() => {
+        const dir = (s.confNewDir === undefined ? 'inventories/event/' : s.confNewDir).replace(/^\/+|\/+$/g, '');
+        const nm = (s.confNewName === undefined ? 'crystal_royale' : s.confNewName).replace(/\.yml$/, '') || 'nuovo_file';
+        return (dir ? dir + '/' : '') + nm + '.yml';
+      })(),
+      cfLinkOpen: !!s.confLink,
+      cfSplitOn: cfSplit,
+      openCfLink: () => ctx.setState({confLink:true}),
+      closeCfLink: () => ctx.setState({confLink:false}),
+      cfLinkMods: ['lobby','game','ffa','event','replay','setup','duel-command','event-command'].map(m => {
+        const sel = linkMods.indexOf(m) >= 0;
+        const busy = false;
+        return {
+          name:m, sel, busy,
+          note: busy ? 'già su un\'altra versione' : '',
+          bd: sel ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+          bg: sel ? 'var(--ac-soft)' : 'var(--s-inset)',
+          fg: sel ? 'var(--ac-text)' : busy ? 'var(--tx-disabled)' : 'var(--tx-secondary)',
+          dot: sel ? 'var(--ac)' : 'transparent',
+          go: () => ctx.setState(st => {
+            const base = st.confLinkMods || pathMods;
+            const next = base.indexOf(m) >= 0 ? base.filter(x => x !== m) : base.concat([m]);
+            return {confLinkMods: next};
+          })
+        };
+      }),
+      cfLinkSplit: s.confLinkSplit === true,
+      cfLinkModes: [
+        {id:'shared', label:'Una versione condivisa', desc:'Un solo documento per tutti i legami scelti. Modifichi una volta, vale per tutti.'},
+        {id:'split', label:'Una versione per legame', desc:'Un documento separato per ogni modulo. Si modificano in modo indipendente.'}
+      ].map(o => {
+        const sel = (s.confLinkSplit === true ? 'split' : 'shared') === o.id;
+        return {
+          label:o.label, desc:o.desc, sel,
+          bd: sel ? 'var(--ac)' : 'var(--bd-subtle)',
+          bg: sel ? 'var(--ac-soft)' : 'var(--s-inset)',
+          dot: sel ? 'var(--ac)' : 'transparent',
+          fg: sel ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+          go: () => ctx.setState({confLinkSplit: o.id === 'split'})
+        };
+      }),
+      cfLinkSummary: (() => {
+        const n = linkMods.length;
+        return s.confLinkSplit === true
+          ? n + (n === 1 ? ' documento' : ' documenti') + ' su questo percorso, uno per modulo.'
+          : '1 documento condiviso da ' + n + (n === 1 ? ' modulo' : ' moduli') + '.';
+      })(),
+      cfMulti: cfVers.length > 1,
+      cfVerLabel: curVer ? curVer.label : 'tutti i moduli',
+      cfVerMenuOpen: !!s.confVerMenu,
+      toggleCfVerMenu: () => ctx.setState(st => ({confVerMenu: !st.confVerMenu})),
+      cfVerRot: s.confVerMenu ? 'rotate(-90deg)' : 'rotate(90deg)',
+      cfHasDraft: true,
+      cfDraftLabel: '1 bozza non pubblicata',
+      cfLinkTitle: cfSplit ? cfVers.length + ' versioni su questo percorso' : 'Una versione condivisa',
+      cfGeneric: cfVers.length <= 1,
+      cfMultiNote: cfSplit
+        ? 'Una versione per legame: ' + cfVers.length + ' documenti separati su questo percorso.'
+        : 'Su questo percorso esistono ' + cfVers.length + ' documenti diversi: stesso nome, contenuti separati.',
+      cfPathDocs: cfVers.map((d, i) => ({
+        label: d.label, name: d.name, sel: i === cfVerIdx,
+        bg: i === cfVerIdx ? 'var(--ac-soft)' : 'transparent',
+        fg: i === cfVerIdx ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        bd: i === cfVerIdx ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+        go: () => ctx.setState({confDocIdx: i})
+      })),
+      cfDocs: docs, cfDocCount: docs.length + ' documenti · 116 percorsi su 12 moduli',
+      cfDocStates: DSTATES.map(d => ({
+        label:d.label, go: () => ctx.setState({confDocState:d.id}),
+        bg: d.id === docState ? 'var(--ac-soft)' : 'var(--s-elevated)',
+        fg: d.id === docState ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        bd: d.id === docState ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)'
+      })),
+      cfShowDocs: docState === 'dati', cfShowEmpty: docState === 'vuoto', cfShowSkel: docState === 'skel',
+      cfSkelRows: [1,2,3,4,5,6].map(i => ({w: (58 + (i % 3) * 12) + '%'})),
+      cfSharedOn: onlyShared, cfSharedBg: onlyShared ? 'var(--ac-soft)' : 'var(--s-inset)',
+      cfSharedFg: onlyShared ? 'var(--ac-text)' : 'var(--tx-secondary)',
+      cfSharedBd: onlyShared ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+      toggleCfShared: () => ctx.setState(st => ({confShared: !st.confShared})),
+      cfOvBg: onlyOv ? 'var(--ac-soft)' : 'var(--s-inset)',
+      cfOvFg: onlyOv ? 'var(--ac-text)' : 'var(--tx-secondary)',
+      cfOvBd: onlyOv ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+      toggleCfOv: () => ctx.setState(st => ({confOv: !st.confOv})),
+      cfBands: bands, cfDiffMods: diffMods, cfDiff3: diff3, cfRadios: radios, cfOverflowKeys: overflowKeys,
+      cfLayers: LAYERS.map(l => ({
+        label:l.label, go: () => ctx.setState({confLayer:l.id}),
+        bg: l.id === layer ? 'var(--s-overlay)' : 'transparent',
+        fg: l.id === layer ? 'var(--tx-primary)' : 'var(--tx-muted)',
+        bd: l.id === layer ? 'var(--bd-strong)' : 'transparent',
+        mono: l.id === 'srv'
+      })),
+      cfLayerLabel: (LAYERS.find(l => l.id === layer) || LAYERS[0]).label,
+      cfYaml: yaml, cfLegend: legend, cfMerged: CF_MERGED.map(m => ({
+        t:m.t, bg: m.hl ? 'var(--ac-soft)' : 'transparent', fg: m.hl ? 'var(--tx-primary)' : 'var(--tx-secondary)'
+      })),
+      cfBad: bad, cfEditorBd: bad ? 'var(--err)' : 'var(--bd-subtle)',
+      toggleCfBad: () => ctx.setState(st => ({confBadYaml: !st.confBadYaml})),
+      cfBadBg: bad ? 'var(--err-soft)' : 'var(--s-elevated)',
+      cfBadFg: bad ? 'var(--err)' : 'var(--tx-secondary)',
+      cfBundleRows: bundleRows, cfDiff2: diff2,
+      cfRelServers: relServers, cfHistory: history, cfPublishDocs: pub,
+      cfPublishOpen: !!s.confPublish,
+      openCfPublish: () => ctx.setState({confPublish:true}),
+      closeCfPublish: () => ctx.setState({confPublish:false})
+    };
+  }
+
   window.MetaMC = { SCREENS, MODES, I, NAV, BREAD, RAMP, HOURLY, SHARES, NOW_MODE, OTHER,
     fmt, hx, lerpHex, rampColor, linePath, areaPath, arcPath,
-    hexField, netStatus, overview, admin, duels, duelsModes, duelsMaps, duelsLive, baseVals };
+    hexField, netStatus, overview, admin, duels, duelsModes, duelsMaps, duelsLive, duelsConf, baseVals };
 })();

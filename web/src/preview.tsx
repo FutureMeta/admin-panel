@@ -52,6 +52,7 @@ const ME: Me = {
     duels_modes: 3,
     duels_maps: 3,
     duels_live: 3,
+    duels_config: 3,
     assistente: 3,
   },
   modules: [

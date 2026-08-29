@@ -17,6 +17,7 @@ import { registerAuthRoutes } from './routes/auth.ts';
 import { registerAvatarRoutes } from './routes/avatars.ts';
 import { registerDuelsRoutes } from './routes/duels.ts';
 import { registerDuelsConfigRoutes } from './routes/duels-config.ts';
+import { registerDuelsConfigFileRoutes } from './routes/duels-config-files.ts';
 import { registerDuelsLiveRoutes } from './routes/duels-live.ts';
 import { registerHealthRoutes } from './routes/health.ts';
 import { registerInviteRoutes } from './routes/invites.ts';
@@ -201,6 +202,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   await registerStatsRoutes(app, ctx);
   await registerDuelsRoutes(app, ctx);
   await registerDuelsLiveRoutes(app, ctx);
+  await registerDuelsConfigFileRoutes(app, ctx);
   registerDuelsConfigRoutes(app, ctx);
   registerAssistantRoutes(app, ctx);
   await registerStatsModeRoutes(app, ctx);

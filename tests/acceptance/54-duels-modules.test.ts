@@ -57,7 +57,7 @@ describe('il vocabolario dei moduli e` uno solo', () => {
 
   it('stanno fra `statistiche` e `server`, dove il gruppo li vuole', async () => {
     const res = await sql.query<{ key: string }>(
-      `SELECT key FROM auth.modules WHERE sort_order BETWEEN 70 AND 80 ORDER BY sort_order`,
+      `SELECT key FROM auth.modules WHERE sort_order BETWEEN 70 AND 81 ORDER BY sort_order`,
     );
     expect(res.rows.map((r) => r.key)).toEqual([
       'statistiche',
@@ -66,6 +66,7 @@ describe('il vocabolario dei moduli e` uno solo', () => {
       'duels_modes',
       'duels_maps',
       'duels_live',
+      'duels_config',
       'server',
     ]);
   });
@@ -102,6 +103,16 @@ describe('la matrice dei permessi e` quella dichiarata', () => {
     expect(await livelli('duels_feedback')).toEqual({ owner: 3, admin: 2, dev: 0, moderatore: 1 });
   });
 
+  it('`duels_config`: si scrive a 2, si manda in produzione a 3', async () => {
+    // I tre livelli sono tre decisioni diverse, e la terza si vede in gioco
+    // entro pochi secondi: 1 guarda, 2 salva una bozza, 3 PUBBLICA.
+    //
+    // `dev` a 2 e non a 3 e` la riga che spiega perche` il modulo esiste:
+    // scrivere una configurazione e mandarla su tutti i server sono due cose
+    // diverse, e appoggiarle sulla stessa chiave le renderebbe la stessa.
+    expect(await livelli('duels_config')).toEqual({ owner: 3, admin: 3, dev: 2, moderatore: 0 });
+  });
+
   it('`duels_live`: il moderatore vede chi sta giocando, e non e` un caso', async () => {
     // E` la riga che spiega perche` il modulo esiste. La schermata Live e`
     // l'unica dei duels che dica CHI sta giocando adesso, per nome, con server
@@ -126,7 +137,7 @@ describe('la matrice dei permessi e` quella dichiarata', () => {
         WHERE m.key LIKE 'duels%'`,
     );
     expect(res.rows.every((r) => r.level === 3)).toBe(true);
-    expect(res.rows).toHaveLength(5);
+    expect(res.rows).toHaveLength(6);
   });
 });
 

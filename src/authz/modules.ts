@@ -26,6 +26,11 @@ export const MODULES = [
   // mostra CHI sta giocando adesso, per nome, con server e ping: appoggiarla
   // su `duels` la regalerebbe a chiunque abbia i grafici. Vedi migration 020.
   'duels_live',
+  // I file YAML che i server scaricano all'avvio. Chiave a se' perche' il
+  // livello 3 qui vuol dire PUBBLICARE, cioe' cambiare il gioco in
+  // produzione — e non e' la stessa decisione che salvare una bozza.
+  // Vedi migration 021.
+  'duels_config',
   // L'assistente conversazionale. Un modulo a se' perche' altrimenti non si
   // puo' spegnere: le risposte passano da un fornitore esterno, e dare o non
   // dare quell'accesso e' una decisione che la matrice deve poter esprimere.

@@ -171,6 +171,18 @@ const EnvSchema = z.object({
    * pannello, quindi in assenza si usa REDIS_URL — ma con un client
    * dedicato, con i suoi timeout e senza autopipelining.
    */
+  /**
+   * Il segreto con cui i server di gioco chiedono il proprio bundle di
+   * configurazioni.
+   *
+   * Facoltativo: senza, la rotta del bundle risponde 503 e il resto del
+   * pannello gira uguale. Vive nel `credentials.yml` del plugin, che e'
+   * l'unico file che il pannello NON gestisce proprio perche' contiene i
+   * segreti — e quindi e' l'unico posto in cui questo token puo' stare senza
+   * finire dentro se stesso.
+   */
+  DUELS_CONFIG_TOKEN: z.string().min(24).optional(),
+
   GAME_REDIS_URL: z.string().min(1).optional(),
   /** Il pattern dell'insieme online, misurato dalla sonda del passo 0. */
   GAME_REDIS_PATTERN: z.string().min(1).default('metaverse:player:*'),

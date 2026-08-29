@@ -77,6 +77,13 @@ export const AUDIT_ACTIONS = {
   duelsMapUpdated: 'duels.map.update',
   duelsMapDeleted: 'duels.map.delete',
 
+  // La pubblicazione dei file di configurazione. UNA riga per pubblicazione e
+  // non una per file: cio' che si e' deciso e' «mando in produzione questo
+  // gruppo di modifiche», e spezzarla in dieci righe renderebbe illeggibile
+  // proprio il momento in cui serve leggerla. I metadati portano i percorsi e
+  // i moduli toccati.
+  duelsConfigPublished: 'duels.config.publish',
+
   // --- assistente (Svetlana) ------------------------------------------------
   //
   // UNA RIGA PER INTERAZIONE, con i tool chiamati nei metadati. Serve a

@@ -136,6 +136,20 @@ body {
   }
 }
 
+/* L'ECCEZIONE: l'editor YAML.
+ *
+ * L'anello dice «il fuoco è qui», e su un pulsante è l'unica cosa che lo dice.
+ * Su un'area di testo grande quanto il riquadro no: il cursore che lampeggia
+ * dentro il testo lo dice già, e l'anello diventa un contorno arancione
+ * attorno a mezza schermata che compare appena si clicca per scrivere.
+ *
+ * Sta qui, attaccato alla regola che spegne, e non fra gli stili in linea del
+ * componente: chi si chiederà perché quel riquadro non ha l'anello lo cercherà
+ * dove l'anello è definito. */
+.code-area:focus-visible {
+  box-shadow: none;
+}
+
 /* --- barre di scorrimento -------------------------------------------------
  *
  * Le misure sono quelle di frontend/2-accettazione-invito.dc.html, dove il

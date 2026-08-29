@@ -39,6 +39,7 @@ import {
   type TreeRow,
   titleOf,
 } from '../lib/duels-config.ts';
+import { type Edit, keyEdit } from '../lib/editor-keys.ts';
 import { canOpen } from '../lib/modules.ts';
 import { codeStyle, highlightYaml, type TokenKind } from '../lib/yaml-highlight.ts';
 
@@ -701,6 +702,24 @@ function FileHeader({
 }
 
 /**
+ * Scrive una modifica dentro la textarea.
+ *
+ * PASSA DA `execCommand` E NON DA `setState`, e non e' nostalgia: e' l'unico
+ * modo rimasto perche' Ctrl+Z continui a funzionare. Cambiando il valore da
+ * JavaScript il browser butta via la cronologia dei annullamenti, e un editor
+ * in cui Tab funziona ma «annulla» non piu' e' un cattivo affare. Se il
+ * browser dice di no si ripiega sul modo diretto, che qualcosa fa comunque.
+ */
+function apply(box: HTMLTextAreaElement, edit: Edit): void {
+  box.setSelectionRange(edit.from, edit.to);
+  const ok = document.execCommand('insertText', false, edit.insert);
+  if (!ok) {
+    box.value = box.value.slice(0, edit.from) + edit.insert + box.value.slice(edit.to);
+  }
+  box.setSelectionRange(edit.selectFrom, edit.selectTo);
+}
+
+/**
  * Le misure del testo, scritte UNA VOLTA per i due strati che devono
  * combaciare.
  *
@@ -971,7 +990,23 @@ function Editor({
             value={text}
             readOnly={readOnly}
             spellCheck={false}
+            className="code-area"
             onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (readOnly || e.ctrlKey || e.metaKey || e.altKey) return;
+              const box = e.currentTarget;
+              const edit = keyEdit({
+                text: box.value,
+                from: box.selectionStart,
+                to: box.selectionEnd,
+                key: e.key,
+                shift: e.shiftKey,
+              });
+              if (edit === null) return;
+              e.preventDefault();
+              apply(box, edit);
+              onChange(box.value);
+            }}
             onScroll={(e) => {
               if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
               // Anche in orizzontale: una riga lunga scorre di lato, e il

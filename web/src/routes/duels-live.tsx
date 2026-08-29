@@ -117,6 +117,17 @@ function dec(value: number | null, digits = 1): string {
   return value === null ? '—' : value.toFixed(digits);
 }
 
+/**
+ * Da quello che spark pubblica a una percentuale leggibile.
+ *
+ * DIECI, misurato e non dedotto: sullo stesso server Redis porta `0.34` e
+ * `spark cpu` in console scrive `3%`. Il mockup moltiplica per cento — i suoi
+ * dati finti stavano su un'altra scala — e il vecchio pannello non
+ * moltiplicava affatto, e infatti mostrava zero su ogni server senza che
+ * nessuno lo notasse. Vedi `LiveServer.cpu` in `src/duels/live.ts`.
+ */
+const CPU_TO_PERCENT = 10;
+
 /** La media del gruppo, con la virgola: e' la sola cifra che il disegno scrive cosi'. */
 function avgTpsLabel(value: number | null): string {
   return value === null ? '—' : value.toFixed(2).replace('.', ',');
@@ -883,7 +894,7 @@ function ServerGroup({
               color: 'var(--tx-muted)',
             }}
           >
-            {s.cpu === null ? '—' : `${Math.round(s.cpu)}%`}
+            {s.cpu === null ? '—' : `${Math.round(s.cpu * CPU_TO_PERCENT)}%`}
           </span>
         </div>
       ))}

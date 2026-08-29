@@ -74,18 +74,32 @@ export type LiveServer = {
   tps: number | null;
   mspt: number | null;
   /**
-   * PERCENTUALE GIA' FATTA, 0..100, come la pubblica il plugin. Non una
-   * frazione.
+   * Il valore che spark pubblica. VA MOLTIPLICATO PER DIECI per leggerlo in
+   * percentuale — non per cento, e nemmeno lasciato com'e'.
    *
-   * Il mockup la moltiplica per cento perche' i suoi dati finti erano `0.41`,
-   * ma i dati veri non sono quelli, e il vecchio pannello lo dice due volte in
-   * due punti che non si conoscono fra loro: la mostrava con
-   * `formatPercent(s.cpu)`, cioe' il numero cosi' com'e' con un `%` in fondo, e
-   * nel calcolo del punteggio scriveva `1 - min(1, v / 100)` — che con una
-   * frazione 0..1 darebbe sempre quasi 1 e non misurerebbe niente.
+   * NON E' UNA DEDUZIONE, E' UNA MISURA. Sullo stesso server, nello stesso
+   * momento: Redis porta `0.34, 0.42435, 0.3525` e `spark cpu` in console
+   * scrive `3% 4% 3%`. Tre campioni, due fonti, la stessa risposta —
+   * `0,34 × 10 = 3,4%`. Il plugin campiona `spark.cpuSystem()` sulle finestre
+   * a 10 secondi, 1 minuto e 15 minuti, e questa e' la scala con cui arriva
+   * qui.
    *
-   * Moltiplicarla qui e' il difetto piu' silenzioso possibile: un server al
-   * 4% diventa un server al 400%, e nessuno sbaglia una riga di codice.
+   * DUE MODI DI SBAGLIARLA, e ci sono cascato in tutti e due:
+   *
+   *   * per cento — il mockup lo fa, perche' i suoi dati finti erano `0.41` su
+   *     una convenzione diversa. Un server al 3% diventa al 34%;
+   *   * per uno — e' quello che faceva il VECCHIO pannello, con
+   *     `formatPercent(s.cpu)`. Su `0.34` scriveva `0%`, cioe' mostrava zero
+   *     su ogni server di ogni giorno, e nessuno se n'e' mai accorto perche'
+   *     uno zero non stona. Il suo `deriveScore` divideva per cento per la
+   *     stessa ragione, e quindi non misurava niente.
+   *
+   * La seconda e' la lezione: quel codice sembrava una prova ed era un
+   * difetto. Il numero giusto e' venuto dal confronto con la console, non da
+   * un'altra riga di codice.
+   *
+   * COME RIVERIFICARLO, se un giorno i numeri sembrano strani: `spark cpu` sul
+   * server, e `HGET duels:servers:<id> cpu` su Redis, nello stesso minuto.
    */
   cpu: number | null;
 };

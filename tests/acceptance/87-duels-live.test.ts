@@ -95,8 +95,8 @@ const NOW = new Date('2026-08-29T12:00:00Z');
 function seed() {
   return {
     sets: {
-      'duels:servers:all': ['duels_1', 'duels_2', 'duels_event_1'],
-      'duels:match:all': ['m-1', 'm-2', 'm-3'],
+      'duels:servers:all': ['duels_1', 'duels_2', 'duels_event_1', 'duels_ffa_1'],
+      'duels:match:all': ['m-1', 'm-2', 'm-3', 'm-4'],
       'duels:queue:mode:1': ['a', 'b', 'c'],
       'duels:queue:mode:2': [],
       'duels:queue:mode:9': ['z'],
@@ -146,6 +146,23 @@ function seed() {
         modeId: '1',
         mapId: '11',
         createdAt: String(NOW.getTime() - 30_000),
+      },
+      'duels:servers:duels_ffa_1': {
+        identifier: 'duels_ffa_1',
+        type: 'FFA',
+        players: '30',
+        active: 'true',
+        matches: 'm-4',
+        tps: '19.9',
+        mspt: '4.0',
+        cpu: '0.20',
+      },
+      'duels:match:m-4': {
+        identifier: 'm-4',
+        context: 'NORMAL',
+        modeId: '1',
+        mapId: '10',
+        createdAt: String(NOW.getTime() - 10_000),
       },
       'duels:match:m-3': {
         identifier: 'm-3',
@@ -308,5 +325,64 @@ describe('il roster: solo la partita chiesta', () => {
   it('una partita senza nessuno da` un elenco vuoto, non un errore', async () => {
     const { players } = await readLiveRoster(fakeRedis(seed()), 'm-inesistente');
     expect(players).toEqual([]);
+  });
+});
+
+describe('i server che non sono DUEL ne` EVENT non esistono, qui', () => {
+  it('un server FFA non compare fra i server', async () => {
+    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    expect(snap.servers.map((s) => s.id)).toEqual(['duels_1', 'duels_2', 'duels_event_1']);
+    expect(snap.servers.some((s) => s.type === 'FFA')).toBe(false);
+  });
+
+  it('e SPARISCONO anche le sue partite, o il totale non tornerebbe', async () => {
+    // E' la meta` che si dimentica. Filtrare solo l'elenco dei server lascia
+    // `m-4` fra le partite attive: comparirebbe nella griglia senza appartenere
+    // a nessuno dei riquadri sotto, e il numerone in alto conterebbe una
+    // partita che nessuna riga spiega.
+    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    expect(snap.matches.map((m) => m.id)).toEqual(['m-2', 'm-1', 'm-3']);
+    expect(snap.matches.some((m) => m.server === 'duels_ffa_1')).toBe(false);
+  });
+
+  it('e non contano nemmeno nelle partite per modalita`', async () => {
+    // `m-4` e` sulla modalita` 1, la stessa di `m-1` e `m-2`. Se sopravvivesse
+    // al filtro, «NoDebuff» direbbe tre partite invece di due — un numero
+    // sbagliato che nessuno saprebbe da dove viene.
+    const catalogue = {
+      rows: async <T>(sql: string): Promise<T[]> =>
+        (sql.includes('duels_mode')
+          ? [{ id: 1, display_name: 'NoDebuff', type: 'NORMAL' }]
+          : [{ id: 10, display_name: 'Ancient Ashes' }]) as T[],
+    };
+    const snap = await readLiveSnapshot(
+      fakeRedis(seed()),
+      catalogue as unknown as Parameters<typeof readLiveSnapshot>[1],
+      NOW,
+    );
+    expect(snap.modes.find((m) => m.name === 'NoDebuff')?.active).toBe(2);
+  });
+
+  it('una partita di cui non si sa il server resta: non e` la stessa cosa', async () => {
+    // «Su un server che non mostriamo» e «non si sa su quale server» sono due
+    // cose diverse. La prima si scarta, la seconda no: e` una partita vera che
+    // non siamo riusciti ad attribuire, e nasconderla sarebbe inventare.
+    const base = seed();
+    const orfana = {
+      ...base,
+      sets: { ...base.sets, 'duels:match:all': [...base.sets['duels:match:all'], 'm-orfana'] },
+      hashes: {
+        ...base.hashes,
+        'duels:match:m-orfana': {
+          identifier: 'm-orfana',
+          context: 'NORMAL',
+          modeId: '1',
+          mapId: '10',
+          createdAt: String(NOW.getTime() - 5_000),
+        },
+      },
+    };
+    const snap = await readLiveSnapshot(fakeRedis(orfana), null, NOW);
+    expect(snap.matches.find((m) => m.id === 'm-orfana')?.server).toBeNull();
   });
 });

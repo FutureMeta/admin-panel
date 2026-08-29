@@ -73,6 +73,14 @@ export const NAV: readonly NavEntry[] = [
     period: true,
   },
   {
+    to: '/duels/live',
+    title: 'Duels · Live',
+    label: 'Live',
+    area: 'Duels',
+    modules: ['duels_live'],
+    hint: 'cosa sta girando adesso',
+  },
+  {
     to: '/duels/trends',
     title: 'Duels · Trends',
     label: 'Trends',
@@ -105,14 +113,6 @@ export const NAV: readonly NavEntry[] = [
     area: 'Duels',
     modules: ['duels_maps'],
     hint: 'configurazione delle mappe',
-  },
-  {
-    to: '/duels/live',
-    title: 'Duels · Live',
-    label: 'Live',
-    area: 'Duels',
-    modules: ['duels_live'],
-    hint: 'cosa sta girando adesso',
   },
   {
     to: '/utenti',

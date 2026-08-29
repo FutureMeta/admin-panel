@@ -135,24 +135,49 @@ function intOf(value: string | undefined): number {
 }
 
 /**
+ * I tipi di server che questa schermata mostra. Gli altri non esistono, qui.
+ *
+ * E' un ELENCO CHIUSO e non una lista di esclusione, ed e' una decisione: il
+ * titolo del riquadro dice «Server DUEL ed EVENT», quindi cio' che non e' ne'
+ * l'uno ne' l'altro — FFA, e domani REPLAY o LOBBY — non e' materiale di
+ * questa pagina. Un elenco di esclusione avrebbe fatto ricomparire il problema
+ * al primo tipo nuovo che qualcuno introduce.
+ *
+ * IL PREZZO E' DICHIARATO: un tipo nuovo NON compare finche' non lo si scrive
+ * qui. E' il verso giusto — meglio accorgersi che manca qualcosa che vedersi
+ * arrivare in una schermata di operativita' dei server che non c'entrano — ma
+ * e' un prezzo, e va saputo.
+ */
+export const LIVE_SERVER_TYPES: readonly string[] = ['DUEL', 'EVENT'];
+
+/**
  * I server, e per ciascuno quali partite ospita.
  *
  * Il campo `matches` dell'hash e' un elenco di ID separati da virgola: e' anche
  * l'UNICO modo di sapere su quale server gira una partita — l'hash della
  * partita non lo dice. Si costruisce quindi l'indice inverso qui, una volta,
  * invece di cercarlo per ogni partita.
+ *
+ * L'INDICE SI COSTRUISCE SU TUTTI I SERVER, anche quelli che poi non si
+ * mostrano. Serve a sapere che una partita gira su un FFA — e quindi a
+ * scartarla. Costruendolo solo sui server tenuti, quella partita risulterebbe
+ * «senza server» e resterebbe in pagina: filtrata a meta', che e' peggio di
+ * non filtrata affatto.
  */
-async function readServers(redis: Redis): Promise<{ servers: LiveServer[]; owner: Map<string, string> }> {
+async function readServers(
+  redis: Redis,
+): Promise<{ servers: LiveServer[]; owner: Map<string, string>; hidden: Set<string> }> {
   const ids = await redis.smembers(LIVE_KEYS.serversAll);
-  if (ids.length === 0) return { servers: [], owner: new Map() };
+  if (ids.length === 0) return { servers: [], owner: new Map(), hidden: new Set() };
 
   const pipe = redis.pipeline();
   for (const id of ids) pipe.hgetall(LIVE_KEYS.server(id));
   const replies = await pipe.exec();
-  if (!replies) return { servers: [], owner: new Map() };
+  if (!replies) return { servers: [], owner: new Map(), hidden: new Set() };
 
   const servers: LiveServer[] = [];
   const owner = new Map<string, string>();
+  const hidden = new Set<string>();
 
   for (const index of ids.keys()) {
     const reply = replies[index];
@@ -166,9 +191,17 @@ async function readServers(redis: Redis): Promise<{ servers: LiveServer[]; owner
     const matchIds = (raw.matches ?? '').split(',').filter((s) => s.length > 0);
     for (const matchId of matchIds) owner.set(matchId, raw.identifier);
 
+    const type = raw.type ?? 'UNKNOWN';
+    if (!LIVE_SERVER_TYPES.includes(type)) {
+      // Fuori dall'elenco, ma NON dimenticato: il suo nome resta qui perche'
+      // le partite che ospita vadano scartate insieme a lui.
+      hidden.add(raw.identifier);
+      continue;
+    }
+
     servers.push({
       id: raw.identifier,
-      type: raw.type ?? 'UNKNOWN',
+      type,
       players: intOf(raw.players),
       active: raw.active === 'true',
       matches: matchIds.length,
@@ -179,13 +212,14 @@ async function readServers(redis: Redis): Promise<{ servers: LiveServer[]; owner
   }
 
   servers.sort((a, b) => a.id.localeCompare(b.id));
-  return { servers, owner };
+  return { servers, owner, hidden };
 }
 
 /** Le partite in corso, con il nome della modalita' e della mappa quando c'e'. */
 async function readMatches(
   redis: Redis,
   owner: Map<string, string>,
+  hidden: Set<string>,
   modes: Map<number, { name: string; context: string }>,
   maps: Map<number, string>,
 ): Promise<LiveMatch[]> {
@@ -204,12 +238,19 @@ async function readMatches(
     const [err, raw] = reply as [Error | null, Record<string, string> | null];
     if (err || !raw || !raw.identifier) continue;
 
+    const server = owner.get(raw.identifier) ?? null;
+    // Gira su un server che questa schermata non mostra: sparisce con lui.
+    // Lasciarla dentro farebbe contare partite che non appartengono a nessuno
+    // dei server elencati sotto, e la somma in alto non tornerebbe piu' con
+    // quella dei riquadri.
+    if (server !== null && hidden.has(server)) continue;
+
     const modeId = intOf(raw.modeId);
     const mapId = intOf(raw.mapId);
     matches.push({
       id: raw.identifier,
       context: raw.context ?? 'NORMAL',
-      server: owner.get(raw.identifier) ?? null,
+      server,
       modeId,
       mode: modes.get(modeId)?.name ?? null,
       mapId,
@@ -355,7 +396,7 @@ export async function readLiveSnapshot(
 ): Promise<LiveSnapshot> {
   // Il catalogo e Redis in parallelo: sono due macchine diverse, e aspettare
   // l'una prima di interrogare l'altra raddoppia l'attesa per niente.
-  const [catalogue, { servers, owner }, roster] = await Promise.all([
+  const [catalogue, { servers, owner, hidden }, roster] = await Promise.all([
     readCatalogue(my).catch(() => ({
       modes: new Map<number, { name: string; context: string }>(),
       maps: new Map<number, string>(),
@@ -364,7 +405,7 @@ export async function readLiveSnapshot(
     countPlayersPerMatch(redis),
   ]);
 
-  const matches = await readMatches(redis, owner, catalogue.modes, catalogue.maps);
+  const matches = await readMatches(redis, owner, hidden, catalogue.modes, catalogue.maps);
   for (const match of matches) match.players = roster.counts.get(match.id) ?? 0;
 
   const modes = await readModes(redis, matches, catalogue.modes);

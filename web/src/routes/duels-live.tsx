@@ -597,10 +597,14 @@ type SortKey = 'id' | 'players' | 'matches' | 'tps' | 'mspt' | 'cpu';
 /**
  * Salute dei server, un riquadro per tipo.
  *
- * I TIPI NON SONO SCRITTI A MANO: escono da cio' che il Redis dichiara. Un
- * elenco fisso `DUEL, EVENT` nasconderebbe un tipo nuovo il giorno in cui il
- * plugin lo introduce — e lo nasconderebbe in silenzio, che e' il modo in cui
- * un pannello smette di dire la verita' senza sbagliare una riga.
+ * QUALI TIPI ARRIVINO LO DECIDE IL SERVER, in `LIVE_SERVER_TYPES`: DUEL ed
+ * EVENT, come dice il titolo del riquadro. Il filtro sta li' e non qui perche'
+ * un FFA scartato solo a schermo continuerebbe a contare nel totale delle
+ * partite attive, e la somma in alto non tornerebbe con quella dei riquadri.
+ *
+ * Qui resta solo l'ORDINE: DUEL prima di EVENT. Un tipo che il server dovesse
+ * aggiungere domani finirebbe in coda, in ordine alfabetico, invece di
+ * scomparire.
  */
 function ServerHealth({
   servers,
@@ -617,8 +621,6 @@ function ServerHealth({
     list.push(s);
     byType.set(s.type, list);
   }
-  // DUEL prima di EVENT, il resto in ordine: è l'ordine del disegno, e i due
-  // tipi che contano restano in testa anche quando ne compare un terzo.
   const order = ['DUEL', 'EVENT'];
   const types = [...byType.keys()].sort((a, b) => {
     const ia = order.indexOf(a);

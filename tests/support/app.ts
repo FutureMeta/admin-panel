@@ -44,6 +44,12 @@ export type TestAppOptions = {
   /** SEC-40: alza la versione del pepper per riprodurre lo stato post-rotazione. */
   pepperVersion?: number;
   /**
+   * Il token con cui i server di gioco chiedono il proprio bundle di
+   * configurazioni. Senza, la rotta risponde 503 — che e' il comportamento
+   * giusto su un'installazione che non ha acceso la funzione.
+   */
+  duelsConfigToken?: string;
+  /**
    * Configura DATABASE_STATS_URL, cioe' il ruolo di sola lettura delle
    * statistiche.
    *
@@ -193,6 +199,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     SESSION_IDLE_SECONDS: String(opts.idleSeconds ?? 1800),
     LOG_LEVEL: 'fatal',
     ...(opts.statsDb ? { DATABASE_STATS_URL: db.statsUrl } : {}),
+    ...(opts.duelsConfigToken ? { DUELS_CONFIG_TOKEN: opts.duelsConfigToken } : {}),
     ...(opts.assistant
       ? { ANTHROPIC_API_KEY: 'chiave-finta-di-test', DATABASE_ASSISTANT_URL: db.assistantUrl }
       : {}),

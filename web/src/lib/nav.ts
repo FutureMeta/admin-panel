@@ -115,6 +115,14 @@ export const NAV: readonly NavEntry[] = [
     hint: 'configurazione delle mappe',
   },
   {
+    to: '/duels/config',
+    title: 'Duels · Configurazioni',
+    label: 'Configurazioni',
+    area: 'Duels',
+    modules: ['duels_config'],
+    hint: 'i file YAML dei server',
+  },
+  {
     to: '/utenti',
     title: 'Utenti & Ruoli',
     label: 'Utenti & Ruoli',

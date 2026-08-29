@@ -68,6 +68,22 @@
 
   --grid: rgba(255, 255, 255, 0.05);
 
+  /* L'editor YAML di «Duels · Configs».
+     Nessun colore nuovo: sono quelli che il pannello ha già, messi a fare un
+     mestiere diverso. Scritti come var() e non come esadecimali perché così
+     seguono il tema da soli — il giorno in cui il pannello ne avrà un secondo,
+     l'editor non sarà il riquadro rimasto indietro.
+     I colori dei codici di formattazione (<red>, &a) NON stanno qui: quelli
+     non sono una scelta di disegno, sono ciò che il giocatore vedrà, e vivono
+     in web/src/lib/yaml-highlight.ts insieme al loro significato. */
+  --yml-key: var(--blu-viz);
+  --yml-string: var(--ok);
+  --yml-number: var(--vio-viz);
+  --yml-literal: var(--warn);
+  --yml-comment: var(--tx-disabled);
+  --yml-punct: var(--tx-muted);
+  --yml-anchor: var(--ac);
+
   /* Spacing — base 4px */
   --sp1: 4px;
   --sp2: 8px;

@@ -40,6 +40,7 @@ import {
   titleOf,
 } from '../lib/duels-config.ts';
 import { canOpen } from '../lib/modules.ts';
+import { codeStyle, highlightYaml, type TokenKind } from '../lib/yaml-highlight.ts';
 
 export function DuelsConfigRoute({ me }: { me: Me }) {
   const queryClient = useQueryClient();
@@ -700,12 +701,86 @@ function FileHeader({
 }
 
 /**
+ * Le misure del testo, scritte UNA VOLTA per i due strati che devono
+ * combaciare.
+ *
+ * Duplicarle vorrebbe dire che un giorno qualcuno ne cambia una e non l'altra:
+ * mezzo pixel di interlinea, e alla ventesima riga il colore e' un rigo piu'
+ * in basso delle parole.
+ */
+const TEXT_METRICS: React.CSSProperties = {
+  padding: '0 14px',
+  fontFamily: 'var(--font-mono)',
+  fontSize: 12.5,
+  lineHeight: '22px',
+  whiteSpace: 'pre',
+  overflowWrap: 'normal',
+  tabSize: 2,
+};
+
+/** Il colore di ogni genere di pezzo. I codici hanno il loro, vedi `codeStyle`. */
+const KIND: Record<TokenKind, string> = {
+  key: 'var(--yml-key)',
+  string: 'var(--yml-string)',
+  number: 'var(--yml-number)',
+  literal: 'var(--yml-literal)',
+  comment: 'var(--yml-comment)',
+  punct: 'var(--yml-punct)',
+  anchor: 'var(--yml-anchor)',
+  code: 'inherit',
+  plain: 'var(--tx-primary)',
+};
+
+/**
+ * Il testo colorato, dietro alla textarea.
+ *
+ * TRE STRATI SOVRAPPOSTI AL PIXEL: i numeri di riga, questo, e sopra a tutti
+ * una textarea con il testo trasparente e il solo cursore visibile. Si scrive
+ * nella textarea e si legge qui — e' l'unico modo di avere il colore senza
+ * rinunciare a un campo di testo vero, con il suo annulla, il suo
+ * incolla e la sua selezione.
+ *
+ * DIPENDE DA DUE COSE, e tutt'e due sono scritte: che i pezzi di una riga
+ * rimessi insieme diano la riga (`highlightYaml`), e che qui sotto le misure
+ * — carattere, corpo, interlinea, margini — siano IDENTICHE a quelle della
+ * textarea. Sbagliarne una fa scivolare il colore rispetto al testo, e si vede
+ * subito perche' si vede doppio.
+ */
+function Highlight({ text }: { text: string }) {
+  const rows = useMemo(() => highlightYaml(text), [text]);
+  return (
+    <>
+      {rows.map((row, line) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: la riga E' la sua posizione
+        <span key={line}>
+          {row.map((token, at) =>
+            token.kind === 'code' ? (
+              // biome-ignore lint/suspicious/noArrayIndexKey: idem, il pezzo e' la sua posizione nella riga
+              <span key={at} style={codeStyle(token.text)}>
+                {token.text}
+              </span>
+            ) : (
+              // biome-ignore lint/suspicious/noArrayIndexKey: idem
+              <span key={at} style={{ color: KIND[token.kind] }}>
+                {token.text}
+              </span>
+            ),
+          )}
+          {line < rows.length - 1 ? '\n' : null}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/**
  * L'editor: numeri di riga a sinistra, testo a destra.
  *
- * IL GUTTER E LA TEXTAREA SCORRONO INSIEME, e non e' un vezzo: sono due
- * elementi diversi, e senza sincronizzarli i numeri resterebbero fermi mentre
- * il testo scorre — cioe' indicherebbero la riga sbagliata, che e' peggio di
- * non averli.
+ * IL GUTTER, IL COLORE E LA TEXTAREA SCORRONO INSIEME, e non e' un vezzo: sono
+ * tre elementi diversi, e senza sincronizzarli i numeri resterebbero fermi
+ * mentre il testo scorre — cioe' indicherebbero la riga sbagliata, che e'
+ * peggio di non averli — e il colore resterebbe indietro rispetto alle parole
+ * che colora.
  */
 function Editor({
   text,
@@ -727,6 +802,7 @@ function Editor({
   onPick: (index: number) => void;
 }) {
   const gutter = useRef<HTMLDivElement>(null);
+  const paint = useRef<HTMLPreElement>(null);
   const lines = text === '' ? 1 : text.split('\n').length;
   const split = versions.length > 1;
   const current = versions[index];
@@ -874,33 +950,58 @@ function Editor({
             <div key={n}>{n}</div>
           ))}
         </div>
-        <textarea
-          value={text}
-          readOnly={readOnly}
-          spellCheck={false}
-          onChange={(e) => onChange(e.target.value)}
-          onScroll={(e) => {
-            if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
-          }}
-          style={{
-            flex: 1,
-            minWidth: 0,
-            maxHeight: 520,
-            minHeight: 300,
-            padding: '0 14px',
-            border: 'none',
-            outline: 'none',
-            resize: 'vertical',
-            background: 'transparent',
-            color: 'var(--tx-primary)',
-            fontFamily: 'var(--font-mono)',
-            fontSize: 12.5,
-            lineHeight: '22px',
-            whiteSpace: 'pre',
-            overflowWrap: 'normal',
-            overflowX: 'auto',
-          }}
-        />
+        <div style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0 }}>
+          <pre
+            ref={paint}
+            aria-hidden="true"
+            style={{
+              // Le stesse misure della textarea, una per una. Sono la ragione
+              // per cui i due strati restano incolonnati.
+              ...TEXT_METRICS,
+              position: 'absolute',
+              inset: 0,
+              margin: 0,
+              overflow: 'hidden',
+              pointerEvents: 'none',
+            }}
+          >
+            <Highlight text={text} />
+          </pre>
+          <textarea
+            value={text}
+            readOnly={readOnly}
+            spellCheck={false}
+            onChange={(e) => onChange(e.target.value)}
+            onScroll={(e) => {
+              if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
+              // Anche in orizzontale: una riga lunga scorre di lato, e il
+              // colore deve scorrere con lei.
+              if (paint.current) {
+                paint.current.scrollTop = e.currentTarget.scrollTop;
+                paint.current.scrollLeft = e.currentTarget.scrollLeft;
+              }
+            }}
+            style={{
+              ...TEXT_METRICS,
+              position: 'relative',
+              flex: 1,
+              minWidth: 0,
+              maxHeight: 520,
+              minHeight: 300,
+              border: 'none',
+              outline: 'none',
+              resize: 'vertical',
+              background: 'transparent',
+              // IL TESTO E' TRASPARENTE: quello che si legge lo disegna lo
+              // strato sotto. Restano il cursore, che senza `caretColor`
+              // sparirebbe con il resto, e la selezione, che il browser
+              // disegna come sfondo e quindi si vede lo stesso.
+              color: 'transparent',
+              caretColor: 'var(--tx-primary)',
+              overflowX: 'auto',
+            }}
+          />
+        </div>
       </div>
     </section>
   );

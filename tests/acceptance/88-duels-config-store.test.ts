@@ -17,12 +17,15 @@
 //      resterebbero indietro all'infinito senza che niente lo dica, perche' un
 //      ETag uguale significa «non e' cambiato nulla».
 
+import { sql } from 'kysely';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import {
   CONFIG_FORBIDDEN,
   createConfigPath,
+  deleteConfigPaths,
   ForbiddenPath,
+  isConfigDir,
   isConfigPath,
   listConfigFiles,
   PathExists,
@@ -31,6 +34,7 @@ import {
   readConfigFile,
   saveConfigDraft,
   setConfigLinks,
+  UnknownPath,
 } from '#src/duels/config-store.ts';
 import { createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
@@ -417,5 +421,95 @@ describe('togliere tutti i moduli lascia il percorso apribile', () => {
     for (const module of ['lobby', 'ffa', 'game', 'event']) {
       expect((await readConfigBundle(db, module)).files.map((f) => f.path)).not.toContain(path);
     }
+  });
+});
+
+describe('cancellare un percorso, e cancellare una cartella', () => {
+  // Un ramo tutto suo, per non disturbare i percorsi delle prove qui sopra. Il
+  // secondo nome NON e` una svista: `menus_old` esiste apposta per provare che
+  // cancellare `menus` non se lo porta via.
+  const RAMO = ['menus/main.yml', 'menus/duel/arena.yml', 'menus/duel/kit.yml', 'menus_old/main.yml'];
+
+  beforeAll(async () => {
+    for (const path of RAMO) {
+      await createConfigPath(db, { path, modules: ['lobby'], author: 'matty@metamc.it' });
+    }
+  });
+
+  it('un percorso solo se ne va con tutto quello che ci sta sotto', async () => {
+    const before = await readConfigFile(db, 'menus/main.yml');
+    const versionId = before.versions[0]?.id as number;
+
+    const summary = await deleteConfigPaths(db, { path: 'menus/main.yml', folder: false });
+    expect(summary.paths).toEqual(['menus/main.yml']);
+    expect(summary.modules).toEqual(['lobby']);
+
+    await expect(readConfigFile(db, 'menus/main.yml')).rejects.toThrow(UnknownPath);
+    // Le versioni e i legami se ne vanno da soli: e` `ON DELETE CASCADE`, non
+    // codice qui dentro, ed e` questo test a dire che la cascata esiste davvero.
+    const versions = await sql<{ n: number }>`
+      SELECT count(*)::int AS n FROM stats.duels_config_version WHERE id = ${versionId}
+    `.execute(db);
+    expect(versions.rows[0]?.n).toBe(0);
+    const bindings = await sql<{ n: number }>`
+      SELECT count(*)::int AS n FROM stats.duels_config_binding WHERE version_id = ${versionId}
+    `.execute(db);
+    expect(bindings.rows[0]?.n).toBe(0);
+  });
+
+  it('una cartella si porta via i suoi file, e NON quelli che le somigliano', async () => {
+    // IL DIFETTO CHE QUESTA RIGA IMPEDISCE, ed e` irreparabile: senza la barra
+    // in fondo al prefisso, cancellare `menus` porterebbe via anche
+    // `menus_old/main.yml`, che e` un altro ramo dell'albero. Non lo direbbe
+    // nessun errore — si accorgerebbe un server, riavviando.
+    const summary = await deleteConfigPaths(db, { path: 'menus', folder: true });
+    expect(summary.paths).toEqual(['menus/duel/arena.yml', 'menus/duel/kit.yml']);
+
+    const rest = (await listConfigFiles(db)).map((f) => f.path);
+    expect(rest).toContain('menus_old/main.yml');
+    expect(rest.filter((p) => p.startsWith('menus/'))).toEqual([]);
+  });
+
+  it('una cartella che non esiste non cancella niente', async () => {
+    // `UnknownPath` e non «zero file cancellati»: chiedere di cancellare
+    // qualcosa che non c'e` e` un errore di chi chiede, e una risposta lieta
+    // nasconderebbe un percorso scritto male.
+    await expect(deleteConfigPaths(db, { path: 'menus', folder: true })).rejects.toThrow(UnknownPath);
+    await expect(deleteConfigPaths(db, { path: 'menus/main.yml', folder: false })).rejects.toThrow(
+      UnknownPath,
+    );
+  });
+
+  it('un percorso non e` una cartella, e viceversa', async () => {
+    // Cancellare `menus_old/main.yml` come cartella non trova niente: il
+    // prefisso sarebbe `menus_old/main.yml/`, che non e` nessuno.
+    await expect(deleteConfigPaths(db, { path: 'menus_old/main.yml', folder: true })).rejects.toThrow(
+      UnknownPath,
+    );
+    expect((await listConfigFiles(db)).map((f) => f.path)).toContain('menus_old/main.yml');
+  });
+});
+
+describe('una cartella e` un prefisso, e la stringa vuota non lo e`', () => {
+  it('rifiuta cio` che cancellerebbe tutto', async () => {
+    // LA STRINGA VUOTA CANCELLEREBBE L'INTERO ALBERO: il prefisso diventerebbe
+    // `/`, e ogni percorso comincia per qualcosa. Non ci si arriva cliccando —
+    // ci si arriva con una richiesta scritta a mano, ed e` l'unico errore di
+    // questa schermata che non si puo` disfare.
+    expect(isConfigDir('')).toBe(false);
+    expect(isConfigDir('/')).toBe(false);
+    expect(isConfigDir('menus/')).toBe(false);
+  });
+
+  it('e cio` che uscirebbe dalla cartella del plugin', async () => {
+    expect(isConfigDir('..')).toBe(false);
+    expect(isConfigDir('menus/../..')).toBe(false);
+    expect(isConfigDir('/etc')).toBe(false);
+    expect(isConfigDir('menus\\duel')).toBe(false);
+  });
+
+  it('accetta le cartelle vere del plugin', async () => {
+    expect(isConfigDir('inventories')).toBe(true);
+    expect(isConfigDir('inventories/event')).toBe(true);
   });
 });

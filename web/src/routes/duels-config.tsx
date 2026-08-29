@@ -18,7 +18,14 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { LinksDialog, NewFileDialog, PublishDialog, pillStyle } from '../components/duels-config-dialogs.tsx';
+import {
+  DeleteDialog,
+  LinksDialog,
+  NewFileDialog,
+  PublishDialog,
+  pillStyle,
+  RowMenu,
+} from '../components/duels-config-dialogs.tsx';
 import { PageHeader } from '../components/page.tsx';
 import type { Me } from '../lib/api.ts';
 import { api } from '../lib/api.ts';
@@ -27,7 +34,9 @@ import {
   type ConfigFile,
   type ConfigTree,
   type ConfigVersion,
+  filesUnder,
   isHidden,
+  type TreeRow,
   titleOf,
 } from '../lib/duels-config.ts';
 import { canOpen } from '../lib/modules.ts';
@@ -43,9 +52,16 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
   const [newOpen, setNewOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [content, setContent] = useState<string | null>(null);
+  // Il menu del tasto destro: la riga su cui si e' aperto e dove disegnarlo.
+  const [menu, setMenu] = useState<{ row: TreeRow; x: number; y: number } | null>(null);
+  const [toDelete, setToDelete] = useState<{ path: string; folder: boolean } | null>(null);
 
   const canWrite = canOpen(me, 'duels_config', 2);
   const canPublish = canOpen(me, 'duels_config', 3);
+  // ELIMINARE E' DI LIVELLO 3 come pubblicare, e per la stessa ragione: non
+  // esiste una bozza di una cancellazione. Il file esce dal bundle subito, e i
+  // server se ne accorgono al primo riavvio.
+  const canDelete = canPublish;
 
   const tree = useQuery({
     queryKey: ['duels-config'],
@@ -88,6 +104,34 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
     setContent(null);
   }, [selected, version?.id]);
 
+  /**
+   * Apre il menu su una riga.
+   *
+   * LE COORDINATE POSSONO ESSERE ZERO. `onContextMenu` scatta anche col tasto
+   * «menu» della tastiera e con Shift+F10, e in quel caso non c'e' nessun
+   * puntatore: il menu finirebbe nell'angolo in alto a sinistra dello schermo,
+   * lontano dalla riga di cui parla. Quando succede si prende il bordo della
+   * riga, che e' dove l'utente sta guardando.
+   */
+  const openMenu = (e: React.MouseEvent<HTMLButtonElement>, row: TreeRow): void => {
+    if (!canDelete) return;
+    e.preventDefault();
+    const fromPointer = e.clientX !== 0 || e.clientY !== 0;
+    const box = e.currentTarget.getBoundingClientRect();
+    setMenu({
+      row,
+      x: fromPointer ? e.clientX : box.left + 12,
+      y: fromPointer ? e.clientY : box.bottom,
+    });
+  };
+
+  // I file che una cancellazione porta via: uno, o tutti quelli sotto la
+  // cartella. E' lo stesso conto che fa il server, e serve a mostrarlo PRIMA.
+  const doomed = useMemo(() => {
+    if (toDelete === null) return [];
+    return toDelete.folder ? filesUnder(files, toDelete.path) : files.filter((f) => f.path === toDelete.path);
+  }, [files, toDelete]);
+
   const invalidate = async (): Promise<void> => {
     await queryClient.invalidateQueries({ queryKey: ['duels-config'] });
     await queryClient.invalidateQueries({ queryKey: ['duels-config-file'] });
@@ -107,6 +151,22 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
       api<{ files: number; modules: string[] }>('/api/duels/config/publish', { method: 'POST' }),
     onSuccess: async () => {
       setPublishOpen(false);
+      await invalidate();
+    },
+  });
+
+  const remove = useMutation({
+    mutationFn: (input: { path: string; folder: boolean }) =>
+      api<{ paths: string[]; modules: string[] }>(
+        `/api/duels/config/path?path=${encodeURIComponent(input.path)}&folder=${input.folder}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: async (result) => {
+      // La schermata a destra mostrava uno dei file cancellati: senza questo
+      // resterebbe li' con il suo editor, a modificare un percorso che non
+      // esiste piu' — e il salvataggio fallirebbe senza spiegare perche'.
+      if (selected !== null && result.paths.includes(selected)) setSelected(null);
+      setToDelete(null);
       await invalidate();
     },
   });
@@ -270,10 +330,16 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
                       return next;
                     })
                   }
+                  onContextMenu={(e) => openMenu(e, row)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 6,
+                    // NON SI RESTRINGE. In una colonna flex con un'altezza
+                    // massima, `height` e' solo un desiderio: le righe si
+                    // schiacciavano man mano che se ne aggiungevano, e con
+                    // centoventi percorsi erano alte la meta' che con dieci.
+                    flex: 'none',
                     height: 28,
                     paddingRight: 9,
                     paddingLeft: 12 + row.depth * 14,
@@ -317,10 +383,14 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
                     setSelected(row.path ?? null);
                     setVersionIndex(0);
                   }}
+                  onContextMenu={(e) => openMenu(e, row)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 8,
+                    // Vedi la riga della cartella: senza, l'altezza di una riga
+                    // dipenderebbe da quante altre righe si vedono.
+                    flex: 'none',
                     height: 28,
                     paddingRight: 9,
                     paddingLeft: 12 + row.depth * 14,
@@ -496,6 +566,36 @@ export function DuelsConfigRoute({ me }: { me: Me }) {
           onConfirm={() => publish.mutate()}
         />
       ) : null}
+
+      {menu === null ? null : (
+        <RowMenu
+          at={{ x: menu.x, y: menu.y }}
+          label={menu.row.kind === 'dir' ? `${menu.row.key}/` : (menu.row.path ?? menu.row.key)}
+          folder={menu.row.kind === 'dir'}
+          onClose={() => setMenu(null)}
+          onDelete={() => {
+            setToDelete({ path: menu.row.key, folder: menu.row.kind === 'dir' });
+            setMenu(null);
+            remove.reset();
+          }}
+        />
+      )}
+
+      {toDelete === null ? null : (
+        <DeleteDialog
+          target={toDelete}
+          files={doomed}
+          busy={remove.isPending}
+          // Non promette «non è stato cancellato niente»: la cancellazione è
+          // una transazione sola, ma un errore di rete può arrivare dopo che il
+          // server l'ha eseguita. Ricaricare dice com'è rimasta davvero.
+          error={
+            remove.error === null ? null : 'Cancellazione non riuscita. Ricarica per vedere com’è rimasta.'
+          }
+          onClose={() => setToDelete(null)}
+          onConfirm={() => remove.mutate(toDelete)}
+        />
+      )}
     </>
   );
 }

@@ -139,6 +139,23 @@ export function buildTree(files: readonly ConfigFileSummary[]): TreeRow[] {
 }
 
 /**
+ * I file dentro una cartella, a qualunque profondita'.
+ *
+ * LA BARRA IN FONDO AL PREFISSO E' TUTTO IL CONTENUTO DI QUESTA FUNZIONE.
+ * Confrontando `path.startsWith('inventories')`, la cartella `inventories`
+ * si porterebbe dietro anche `inventories_old/config.yml` — un altro ramo
+ * dell'albero, che nella finestra di conferma comparirebbe fra i file che si
+ * stanno per cancellare.
+ *
+ * Serve a dire ESATTAMENTE cosa sparisce prima di cancellarlo: il conto in
+ * fondo alla finestra e l'elenco che c'e' sopra vengono da qui.
+ */
+export function filesUnder(files: readonly ConfigFileSummary[], dir: string): ConfigFileSummary[] {
+  const prefix = `${dir}/`;
+  return files.filter((f) => f.path.startsWith(prefix));
+}
+
+/**
  * La riga e' nascosta perche' una cartella sopra di lei e' chiusa?
  *
  * Si guarda TUTTA la catena e non solo il genitore: chiudendo `inventories/`

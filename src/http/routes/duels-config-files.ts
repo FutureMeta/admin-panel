@@ -1,6 +1,6 @@
 // Le rotte di «Duels · Configs».
 //
-// DUE PUBBLICI, E NON SI SOMIGLIANO. Sei rotte parlano con il pannello e
+// DUE PUBBLICI, E NON SI SOMIGLIANO. Sette rotte parlano con il pannello e
 // vogliono una sessione; una parla con i server di gioco e vuole un token.
 // Stanno nello stesso file perche' leggono le stesse tabelle, e sono separate
 // da una riga in testa a ciascuna — la sessione non apre il bundle, e il token
@@ -11,7 +11,8 @@
 //
 //   1  guarda i file
 //   2  scrive una bozza — non tocca il gioco
-//   3  PUBBLICA, e il cambiamento arriva ai server al loro prossimo avvio
+//   3  PUBBLICA o CANCELLA, e il cambiamento arriva ai server al loro prossimo
+//      avvio
 //
 // Il salto che conta e' fra 2 e 3. Sono la stessa persona che scrive e la
 // stessa schermata che mostra, ma sono due responsabilita' diverse, e su una
@@ -26,7 +27,9 @@ import { require as requireLevel } from '#src/authz/can.ts';
 import {
   CONFIG_MODULES,
   createConfigPath,
+  deleteConfigPaths,
   ForbiddenPath,
+  isConfigDir,
   isConfigModule,
   isConfigPath,
   listConfigFiles,
@@ -101,6 +104,19 @@ const linksBody = {
       },
       split: { type: 'boolean' },
       keepVersionId: { type: 'integer' },
+    },
+  },
+} as const;
+
+const deleteQuery = {
+  querystring: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['path'],
+    properties: {
+      path: { type: 'string', minLength: 1, maxLength: 240 },
+      /** `true` = cancella tutto quello che sta sotto quella cartella. */
+      folder: { type: 'boolean', default: false },
     },
   },
 } as const;
@@ -277,6 +293,53 @@ export async function registerDuelsConfigFileRoutes(app: FastifyInstance, ctx: A
 
     return summary;
   });
+
+  app.delete(
+    '/api/duels/config/path',
+    { schema: deleteQuery, preHandler: [requireAuth(ctx)] },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      // TRE come «Pubblica», e per la stessa ragione: non esiste una bozza di
+      // una cancellazione. Il percorso esce dal bundle immediatamente, e chi
+      // ha il 2 puo' scrivere quanto vuole senza che il gioco se ne accorga.
+      requireLevel(actor, 'duels_config', 3);
+
+      const { path, folder = false } = request.query as { path: string; folder?: boolean };
+      // Le cartelle e i file si controllano con regole diverse: una cartella
+      // non finisce in `.yml`, e nessuna delle due puo' contenere `..`.
+      if (folder ? !isConfigDir(path) : !isConfigPath(path)) return badPath(reply, path);
+
+      let summary: Awaited<ReturnType<typeof deleteConfigPaths>>;
+      try {
+        summary = await deleteConfigPaths(ctx.db, { path, folder });
+      } catch (err) {
+        if (err instanceof UnknownPath) {
+          return reply.code(404).send({ error: 'percorso sconosciuto', detail: path });
+        }
+        throw err;
+      }
+
+      // Si aspetta, e un guasto non fa fallire la richiesta: la cancellazione
+      // e' gia' avvenuta. Resta una riga di errore forte — questa e' l'unica
+      // operazione della schermata che non si puo' disfare, e senza registro
+      // non resterebbe traccia di cosa c'era.
+      await writeAudit(ctx.db, {
+        action: AUDIT_ACTIONS.duelsConfigDeleted,
+        outcome: 'success',
+        actor: auditActorOf(actor),
+        request: auditContextOf(request, requestIps(request)),
+        moduleKey: 'duels_config',
+        targetType: 'duels_config',
+        targetId: null,
+        targetLabel: folder ? `${path}/ — ${summary.paths.length} file` : path,
+        meta: { percorsi: summary.paths, moduli: summary.modules },
+      }).catch((err) => {
+        ctx.logger.error({ err, paths: summary.paths }, 'cancellazione configurazioni NON registrata');
+      });
+
+      return summary;
+    },
+  );
 
   // -------------------------------------------------------------------------
   // I server di gioco. Token, nessuna sessione, sola lettura.

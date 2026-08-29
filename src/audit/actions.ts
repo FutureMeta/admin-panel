@@ -84,6 +84,12 @@ export const AUDIT_ACTIONS = {
   // i moduli toccati.
   duelsConfigPublished: 'duels.config.publish',
 
+  // La cancellazione di un percorso, o di una cartella intera. E' l'unica
+  // operazione di questa schermata che non si puo' disfare — non esiste una
+  // bozza di una cancellazione — e i metadati portano i percorsi uno per uno
+  // proprio perche' e' l'unico posto in cui restano scritti.
+  duelsConfigDeleted: 'duels.config.delete',
+
   // --- assistente (Svetlana) ------------------------------------------------
   //
   // UNA RIGA PER INTERAZIONE, con i tool chiamati nei metadati. Serve a

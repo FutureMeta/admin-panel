@@ -94,6 +94,22 @@ export function isConfigPath(value: string): boolean {
   return /^[A-Za-z0-9._/-]+$/.test(value);
 }
 
+/**
+ * Una cartella dell'albero: le stesse regole di un percorso, senza `.yml`.
+ *
+ * LA STRINGA VUOTA E' RIFIUTATA, ed e' il controllo che conta. Le cartelle non
+ * esistono nel database — sono un prefisso — e cancellare «la cartella vuota»
+ * vorrebbe dire cancellare ogni percorso che comincia per `/`, cioe' tutti.
+ * Non e' un caso che si presenti cliccando: e' un caso che si presenta con una
+ * richiesta scritta a mano, ed e' l'unica in cui l'errore e' irreparabile.
+ */
+export function isConfigDir(value: string): boolean {
+  if (value.length === 0 || value.length > 240) return false;
+  if (value.startsWith('/') || value.endsWith('/') || value.includes('\\')) return false;
+  if (value.split('/').some((part) => part === '' || part === '.' || part === '..')) return false;
+  return /^[A-Za-z0-9._/-]+$/.test(value);
+}
+
 export type ConfigVersion = {
   id: number;
   /** I moduli legati a QUESTA versione. Mai vuoto dopo un salvataggio riuscito. */
@@ -255,6 +271,59 @@ export async function createConfigPath(
         VALUES (${pathId}, ${module}, ${versionId})
       `.execute(trx);
     }
+  });
+}
+
+export type DeleteSummary = {
+  /** I percorsi cancellati, in ordine. */
+  paths: string[];
+  /** I moduli che li ricevevano: quelli che al prossimo avvio non li avranno. */
+  modules: string[];
+};
+
+/**
+ * Cancella un percorso, o tutti i percorsi sotto una cartella.
+ *
+ * CANCELLA UNA RIGA SOLA, e il resto se ne va da se': versioni, legami e
+ * cronologia hanno tutti `ON DELETE CASCADE` verso `duels_config_path`.
+ * Cancellarli a mano qui vorrebbe dire ripetere in TypeScript una regola che
+ * il database gia' applica — e le due copie divergono il giorno in cui si
+ * aggiunge una tabella.
+ *
+ * LA BARRA IN FONDO AL PREFISSO NON E' UN DETTAGLIO. Senza, cancellare
+ * `inventories` porterebbe via anche `inventories_old/config.yml`, che e' un
+ * altro ramo dell'albero: `starts_with(path, 'inventories/')` non lo tocca.
+ *
+ * NON C'E' UNA BOZZA DI UNA CANCELLAZIONE. Il percorso sparisce dal bundle
+ * subito, e i server se ne accorgono al primo riavvio: e' il motivo per cui la
+ * rotta chiede il livello 3, lo stesso di «Pubblica».
+ */
+export async function deleteConfigPaths(
+  db: Database,
+  input: { path: string; folder: boolean },
+): Promise<DeleteSummary> {
+  return db.transaction().execute(async (trx) => {
+    const found = await sql<{ id: number; path: string }>`
+      SELECT id, path
+        FROM stats.duels_config_path
+       WHERE ${input.folder ? sql`starts_with(path, ${`${input.path}/`})` : sql`path = ${input.path}`}
+       ORDER BY path
+    `.execute(trx);
+    if (found.rows.length === 0) throw new UnknownPath(input.path);
+
+    const ids = found.rows.map((r) => r.id);
+    // I moduli si leggono PRIMA: dopo la cancellazione i legami non ci sono
+    // piu', e chi legge il registro non saprebbe piu' chi ha perso cosa.
+    const modules = await sql<{ module: string }>`
+      SELECT DISTINCT module
+        FROM stats.duels_config_binding
+       WHERE path_id = ANY(${ids}::int[])
+       ORDER BY module
+    `.execute(trx);
+
+    await sql`DELETE FROM stats.duels_config_path WHERE id = ANY(${ids}::int[])`.execute(trx);
+
+    return { paths: found.rows.map((r) => r.path), modules: modules.rows.map((r) => r.module) };
   });
 }
 

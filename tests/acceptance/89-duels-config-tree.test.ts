@@ -10,7 +10,14 @@
 // sessanta file che contiene.
 
 import { describe, expect, it } from 'vitest';
-import { buildTree, type ConfigFileSummary, isHidden, moduleHue, titleOf } from '#web/lib/duels-config.ts';
+import {
+  buildTree,
+  type ConfigFileSummary,
+  filesUnder,
+  isHidden,
+  moduleHue,
+  titleOf,
+} from '#web/lib/duels-config.ts';
 
 function file(path: string, versions = 1): ConfigFileSummary {
   return { path, modules: ['lobby'], split: versions > 1, versions, hasDraft: false, by: null, at: null };
@@ -153,5 +160,42 @@ describe('le cartelle si chiudono, e si portano dietro tutto', () => {
   it('senza niente di chiuso si vede tutto', () => {
     const rows = buildTree(ALBERO);
     expect(rows.every((r) => !isHidden(r, new Set()))).toBe(true);
+  });
+});
+
+describe('cosa porta via una cartella', () => {
+  const ALBERO = [
+    file('menus/main.yml'),
+    file('menus/duel/arena.yml'),
+    file('menus/duel/kit.yml'),
+    file('menus_old/main.yml'),
+    file('config.yml'),
+  ];
+
+  it('prende tutto quello che ci sta sotto, a ogni profondita`', () => {
+    expect(filesUnder(ALBERO, 'menus').map((f) => f.path)).toEqual([
+      'menus/main.yml',
+      'menus/duel/arena.yml',
+      'menus/duel/kit.yml',
+    ]);
+    expect(filesUnder(ALBERO, 'menus/duel').map((f) => f.path)).toEqual([
+      'menus/duel/arena.yml',
+      'menus/duel/kit.yml',
+    ]);
+  });
+
+  it('e NON prende la cartella che comincia allo stesso modo', () => {
+    // IL DIFETTO CHE QUESTA RIGA IMPEDISCE. `menus_old/` comincia per `menus`,
+    // e senza la barra in fondo al prefisso comparirebbe nell'elenco dei file
+    // che si stanno per cancellare — cioe` la finestra di conferma direbbe una
+    // cosa e il server ne farebbe un'altra.
+    expect(filesUnder(ALBERO, 'menus').map((f) => f.path)).not.toContain('menus_old/main.yml');
+  });
+
+  it('una cartella che non esiste non porta via niente', () => {
+    expect(filesUnder(ALBERO, 'inventories')).toEqual([]);
+    // E nemmeno la radice: la stringa vuota qui vorrebbe dire «tutto», ed e`
+    // esattamente la cosa che non deve poter succedere per sbaglio.
+    expect(filesUnder(ALBERO, '').map((f) => f.path)).toEqual([]);
   });
 });

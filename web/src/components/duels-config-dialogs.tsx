@@ -1,12 +1,13 @@
-// Le tre finestre di «Duels · Configs»: legami, nuovo file, pubblica.
+// Le finestre di «Duels · Configs»: legami, nuovo file, pubblica, elimina — e
+// il menu del tasto destro che porta all'ultima.
 //
 // STANNO FUORI DALLA SCHERMATA perche' la schermata e' gia' lunga e perche'
-// queste tre sono l'unico punto in cui si prendono decisioni che cambiano piu'
+// queste sono l'unico punto in cui si prendono decisioni che cambiano piu'
 // di un file alla volta. Tenerle insieme rende leggibile in un posto solo
 // l'unica domanda che conta: quanti moduli tocca quello che sto per fare.
 
 import { useMutation } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api.ts';
 import { type ConfigFile, type ConfigFileSummary, moduleHue, titleOf } from '../lib/duels-config.ts';
 
@@ -158,6 +159,38 @@ function PrimaryButton({
         borderRadius: 'var(--r-sm)',
         background: disabled ? 'var(--s-elevated)' : 'var(--ac)',
         color: disabled ? 'var(--tx-disabled)' : '#160A02',
+        fontFamily: 'var(--font-ui)',
+        fontSize: 12.5,
+        fontWeight: 700,
+        cursor: disabled ? 'default' : 'pointer',
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function DangerButton({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        height: 34,
+        padding: '0 16px',
+        border: '1px solid transparent',
+        borderRadius: 'var(--r-sm)',
+        background: disabled ? 'var(--s-elevated)' : 'var(--err)',
+        color: disabled ? 'var(--tx-disabled)' : '#FFF3F3',
         fontFamily: 'var(--font-ui)',
         fontSize: 12.5,
         fontWeight: 700,
@@ -620,6 +653,266 @@ export function PublishDialog({
             {modules.length} {modules.length === 1 ? 'modulo' : 'moduli'}
           </span>
           {modules.length === 0 ? null : <> — {modules.join(', ')}</>}.
+        </span>
+      </div>
+    </Dialog>
+  );
+}
+
+/**
+ * Il menu del tasto destro su una riga dell'albero.
+ *
+ * SI APRE ANCHE DA TASTIERA. `onContextMenu` scatta pure col tasto «menu» e
+ * con Shift+F10, e in quel caso il puntatore non c'e': gli eventi arrivano con
+ * le coordinate a zero, e chi apre il menu con la tastiera se lo troverebbe
+ * nell'angolo dello schermo invece che sulla riga. Chi chiama passa allora le
+ * coordinate della riga — vedi `menuAt` nella schermata.
+ *
+ * IL PERCORSO E' SCRITTO IN TESTA, e non e' decorazione: il tasto destro NON
+ * seleziona la riga, quindi senza quella scritta il menu direbbe «Elimina»
+ * senza dire di cosa — e la riga sotto il puntatore non e' quella evidenziata.
+ */
+export function RowMenu({
+  at,
+  label,
+  folder,
+  onDelete,
+  onClose,
+}: {
+  at: { x: number; y: number };
+  label: string;
+  folder: boolean;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const box = useRef<HTMLDivElement | null>(null);
+  const first = useRef<HTMLButtonElement | null>(null);
+
+  // Il fuoco entra nel menu: e' cio' che rende Escape e Tab utili a chi non usa
+  // il mouse, ed e' l'unico modo di chiuderlo senza puntare da qualche parte.
+  useEffect(() => {
+    first.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    const onDown = (e: PointerEvent) => {
+      if (!box.current?.contains(e.target as Node)) onClose();
+    };
+    // Lo scorrimento CHIUDE invece di seguire: il menu sta in coordinate dello
+    // schermo, e la riga a cui si riferisce scivolerebbe via da sotto — il menu
+    // resterebbe fermo a parlare di un altro file.
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('scroll', onClose, true);
+    window.addEventListener('resize', onClose);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('scroll', onClose, true);
+      window.removeEventListener('resize', onClose);
+    };
+  }, [onClose]);
+
+  // Le misure servono a non uscire dallo schermo: aperto sull'ultima riga in
+  // fondo, senza questo, meta' del menu resterebbe fuori dalla finestra.
+  const width = 220;
+  const height = 78;
+  const left = Math.max(8, Math.min(at.x, window.innerWidth - width - 8));
+  const top = Math.max(8, Math.min(at.y, window.innerHeight - height - 8));
+
+  return (
+    <div
+      ref={box}
+      role="menu"
+      aria-label={label}
+      style={{
+        position: 'fixed',
+        left,
+        top,
+        zIndex: 90,
+        width,
+        padding: 4,
+        border: '1px solid var(--bd-strong)',
+        borderRadius: 'var(--r-sm)',
+        background: 'var(--s-overlay)',
+        boxShadow: 'var(--e3)',
+      }}
+    >
+      <div
+        title={label}
+        style={{
+          padding: '6px 8px 7px',
+          borderBottom: '1px solid var(--bd-subtle)',
+          fontFamily: 'var(--font-mono)',
+          fontSize: 10.5,
+          color: 'var(--tx-muted)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          // Il taglio cade all'INIZIO e non alla fine: di un percorso lungo
+          // conta il nome del file, non la cartella da cui parte.
+          direction: 'rtl',
+          textAlign: 'left',
+        }}
+      >
+        {label}
+      </div>
+      <button
+        ref={first}
+        type="button"
+        onClick={onDelete}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          width: '100%',
+          marginTop: 4,
+          height: 30,
+          padding: '0 8px',
+          border: 'none',
+          borderRadius: 'var(--r-xs)',
+          background: 'transparent',
+          color: 'var(--err)',
+          fontFamily: 'var(--font-ui)',
+          fontSize: 12.5,
+          cursor: 'pointer',
+          textAlign: 'left',
+        }}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          width="13"
+          height="13"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          aria-hidden="true"
+        >
+          <path d="M4 7h16M10 7V5h4v2M6 7l1 12h10l1-12M10 11v5M14 11v5" />
+        </svg>
+        {folder ? 'Elimina cartella' : 'Elimina file'}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * La conferma di una cancellazione.
+ *
+ * ELENCA I FILE UNO PER UNO, e non si limita a contarli. Su una cartella la
+ * domanda vera non e' «quanti» ma «quali»: `inventories/` puo' voler dire due
+ * file o sessanta, e chi preme non lo sa finche' non lo legge. Il conto dei
+ * moduli sta in fondo per la stessa ragione del dialogo di pubblicazione — e'
+ * la riga che si legge un attimo prima di premere.
+ *
+ * DOPO NON C'E' NIENTE DA DISFARE: versioni, legami e cronologia se ne vanno
+ * insieme al percorso, e le bozze non pubblicate con loro. Per questo le bozze
+ * sono contate a parte: sono lavoro di qualcuno che non e' mai arrivato in
+ * gioco, ed e' l'unica cosa che sparendo non lascia traccia da nessuna parte.
+ */
+export function DeleteDialog({
+  target,
+  files,
+  busy,
+  error,
+  onClose,
+  onConfirm,
+}: {
+  target: { path: string; folder: boolean };
+  files: readonly ConfigFileSummary[];
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const modules = [...new Set(files.flatMap((f) => f.modules))].sort();
+  const drafts = files.filter((f) => f.hasDraft).length;
+
+  return (
+    <Dialog
+      title={
+        target.folder
+          ? `Eliminare ${files.length} file da ${target.path}/?`
+          : `Eliminare ${titleOf(target.path)}?`
+      }
+      sub="I server smettono di riceverlo al loro prossimo avvio. Non si torna indietro."
+      width={620}
+      onClose={onClose}
+      footer={
+        <>
+          <GhostButton label="Annulla" onClick={onClose} />
+          <DangerButton
+            label={busy ? 'Elimino…' : 'Elimina'}
+            disabled={busy || files.length === 0}
+            onClick={onConfirm}
+          />
+        </>
+      }
+    >
+      <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+        {files.map((f) => (
+          <div
+            key={f.path}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              flexWrap: 'wrap',
+              padding: '10px 20px',
+              borderBottom: '1px solid var(--bd-subtle)',
+            }}
+          >
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5 }}>{f.path}</span>
+            {f.hasDraft ? (
+              <span style={{ fontSize: 11, color: 'var(--warn)' }}>bozza non pubblicata</span>
+            ) : null}
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {f.modules.map((m) => (
+                <span key={m} style={pillStyle(m, true)}>
+                  {m}
+                </span>
+              ))}
+            </span>
+          </div>
+        ))}
+      </div>
+      {error === null ? null : (
+        <div style={{ padding: '12px 20px', fontSize: 12.5, color: 'var(--err)' }}>{error}</div>
+      )}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14,
+          padding: '16px 20px',
+          background: 'var(--err-soft)',
+          borderTop: '1px solid rgba(219,52,52,.35)',
+        }}
+      >
+        <span style={{ fontSize: 13, color: 'var(--tx-primary)' }}>
+          {modules.length === 0 ? (
+            <>Nessun modulo riceve questi file: in gioco non cambia niente.</>
+          ) : (
+            <>
+              Toccati{' '}
+              <span style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 700 }}>
+                {modules.length} {modules.length === 1 ? 'modulo' : 'moduli'}
+              </span>{' '}
+              — {modules.join(', ')}.
+            </>
+          )}
+          {drafts > 0 ? (
+            <>
+              {' '}
+              {drafts === 1
+                ? 'Una bozza non pubblicata sparisce con il file.'
+                : `${drafts} bozze non pubblicate spariscono con i file.`}
+            </>
+          ) : null}
         </span>
       </div>
     </Dialog>

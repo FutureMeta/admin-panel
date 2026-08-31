@@ -17,7 +17,7 @@
 // prima di chiedere conferma.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DeleteDialog,
   LinksDialog,
@@ -831,6 +831,13 @@ function Highlight({ text, tags }: { text: string; tags: boolean }) {
           {line < rows.length - 1 ? '\n' : null}
         </span>
       ))}
+      {/* UN CARATTERE A LARGHEZZA ZERO, in fondo a tutto.
+          Un file che finisce con un a capo ha un'ultima riga vuota: la
+          textarea le da' la sua altezza, un `<pre>` no — una riga senza niente
+          dentro non fa riga. Lo strato del colore restava alto ventidue pixel
+          in meno del testo, e siccome e' lui a dettare la misura, l'ultima riga
+          non si poteva cliccare. Questo la riempie senza occupare una colonna. */}
+      {'​'}
     </>
   );
 }
@@ -863,9 +870,6 @@ function Editor({
   onToggleMenu: () => void;
   onPick: (index: number) => void;
 }) {
-  const gutter = useRef<HTMLDivElement>(null);
-  const mirror = useRef<HTMLPreElement>(null);
-  const box = useRef<HTMLTextAreaElement>(null);
   // I tag si possono spegnere per leggere il messaggio come uscira` in gioco.
   const [tags, setTags] = useState(true);
   const lines = text === '' ? 1 : text.split('\n').length;
@@ -1031,22 +1035,45 @@ function Editor({
           </span>
         ) : null}
       </div>
-      <div style={{ display: 'flex', alignItems: 'stretch', padding: '10px 0', minHeight: 320 }}>
+      {/* UNO SOLO SCORRE, ed e' questo. Prima erano tre — numeri di riga,
+          colore e textarea — ognuno con la sua barra, tenuti in riga a mano
+          copiando `scrollTop` a ogni evento. Non potevano restare allineati:
+          la textarea, con la sua barra orizzontale in fondo, e' alta quindici
+          pixel MENO dello strato del colore, quindi arrivava a uno scorrimento
+          massimo piu' grande. In fondo al file i due strati si sfalsavano —
+          il cursore su una riga e le parole su un'altra — e le ultime righe
+          finivano disegnate sopra la barra, dove si vedono ma non si cliccano.
+          Ora il colore sta nel flusso e detta la misura, la textarea gli sta
+          sopra grande uguale, e a scorrere e' il riquadro che li contiene. */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          padding: '10px 0',
+          minHeight: 320,
+          maxHeight: 520,
+          overflow: 'auto',
+          resize: 'vertical',
+        }}
+      >
         <div
-          ref={gutter}
           aria-hidden="true"
           style={{
+            // Appiccicati a sinistra: scorrono su e giu' col testo e restano
+            // fermi quando una riga lunga lo porta di lato.
+            position: 'sticky',
+            left: 0,
+            zIndex: 1,
             width: 44,
             flex: 'none',
             paddingRight: 10,
             textAlign: 'right',
+            background: 'var(--s-surface)',
             fontFamily: 'var(--font-mono)',
             fontSize: 11.5,
             lineHeight: '22px',
             color: 'var(--tx-disabled)',
             fontVariantNumeric: 'tabular-nums',
-            overflow: 'hidden',
-            maxHeight: 520,
           }}
         >
           {/* I numeri di riga: la posizione E' l'identita', qui — la riga 12
@@ -1055,34 +1082,33 @@ function Editor({
             <div key={n}>{n}</div>
           ))}
         </div>
-        <div style={{ position: 'relative', display: 'flex', flex: 1, minWidth: 0 }}>
+        <div
+          style={{
+            position: 'relative',
+            // Larga quanto la riga piu' lunga, cosi' e' il riquadro a scorrere
+            // di lato e il cursore resta sempre dentro la textarea.
+            flex: '1 0 auto',
+            minWidth: 'max-content',
+            // Il minimo di prima: su un file corto si clicca anche sotto
+            // l'ultima riga, e il cursore va in fondo invece che da nessuna
+            // parte.
+            minHeight: 300,
+          }}
+        >
           <pre
-            ref={mirror}
             aria-hidden={tags}
-            onScroll={(e) => {
-              // Serve SOLO senza i tag, quando e' questo strato a scorrere
-              // perche' la textarea sotto e' nascosta. Da qui i numeri di riga
-              // e la textarea seguono, cosi' riaccendendo i tag ci si ritrova
-              // dove si era rimasti invece che in cima al file.
-              if (tags) return;
-              if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
-              if (box.current) box.current.scrollTop = e.currentTarget.scrollTop;
-            }}
             style={{
-              // Le stesse misure della textarea, una per una. Sono la ragione
-              // per cui i due strati restano incolonnati.
+              // Nel FLUSSO: e' questo strato a dire quanto e' alto e largo il
+              // testo, e la textarea qui sotto si stende su di lui. Erano
+              // sovrapposti e indipendenti, ed e' li' che nasceva lo sfasamento.
               ...TEXT_METRICS,
-              position: 'absolute',
-              inset: 0,
               margin: 0,
-              overflow: tags ? 'hidden' : 'auto',
               pointerEvents: tags ? 'none' : 'auto',
             }}
           >
             <Highlight text={text} tags={tags} />
           </pre>
           <textarea
-            ref={box}
             value={text}
             readOnly={readOnly}
             spellCheck={false}
@@ -1103,25 +1129,17 @@ function Editor({
               apply(area, edit);
               onChange(area.value);
             }}
-            onScroll={(e) => {
-              if (gutter.current) gutter.current.scrollTop = e.currentTarget.scrollTop;
-              // Anche in orizzontale: una riga lunga scorre di lato, e il
-              // colore deve scorrere con lei.
-              if (mirror.current) {
-                mirror.current.scrollTop = e.currentTarget.scrollTop;
-                mirror.current.scrollLeft = e.currentTarget.scrollLeft;
-              }
-            }}
             style={{
               ...TEXT_METRICS,
-              position: 'relative',
-              flex: 1,
-              minWidth: 0,
-              maxHeight: 520,
-              minHeight: 300,
+              // Esattamente sopra al colore, e della sua stessa misura: non ha
+              // una barra sua — non le serve, e' grande quanto tutto il testo —
+              // quindi non c'e' piu' niente da tenere in riga.
+              position: 'absolute',
+              inset: 0,
+              overflow: 'hidden',
               border: 'none',
               outline: 'none',
-              resize: 'vertical',
+              resize: 'none',
               background: 'transparent',
               // IL TESTO E' TRASPARENTE: quello che si legge lo disegna lo
               // strato sotto. Restano il cursore, che senza `caretColor`
@@ -1129,16 +1147,10 @@ function Editor({
               // disegna come sfondo e quindi si vede lo stesso.
               color: 'transparent',
               caretColor: 'var(--tx-primary)',
-              overflowX: 'auto',
-              // SENZA I TAG NON SI SCRIVE, e la textarea si nasconde invece di
-              // sparire: `visibility` la toglie dalla vista e dal fuoco ma le
-              // lascia il suo spazio, che e' quello che tiene in piedi
-              // l'altezza del riquadro — e con essa la posizione del testo
-              // sopra. Un `display: none` farebbe collassare tutto.
-              //
-              // E' un'anteprima, non una modalita' di modifica: il testo che
-              // si vede li' non e' piu' incolonnato con quello vero, perche' i
-              // tag tolti erano larghi.
+              // SENZA I TAG NON SI SCRIVE: `visibility` la toglie dalla vista
+              // e dal fuoco. E' un'anteprima, non una modalita' di modifica —
+              // il testo che si vede non e' piu' incolonnato con quello vero,
+              // perche' i tag tolti erano larghi.
               ...(tags ? {} : { visibility: 'hidden' as const }),
             }}
           />

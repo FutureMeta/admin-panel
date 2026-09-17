@@ -225,7 +225,9 @@ export function LangOverviewPage(_props: { me: Me }) {
             <div>
               <div style={{ ...ROW, padding: '11px 18px' }}>
                 <Eyebrow>Bundle</Eyebrow>
-                <span style={{ textAlign: 'right' }}>
+                {/* Un flex e non un `text-align`: cosi' la scritta e' un blocco come le
+                    altre due, e non un inline che siede piu' in basso sulla riga. */}
+                <span style={{ display: 'flex', justifyContent: 'flex-end' }}>
                   <Eyebrow>Chiavi</Eyebrow>
                 </span>
                 <Eyebrow>Completamento</Eyebrow>
@@ -373,6 +375,7 @@ const ROW: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'minmax(180px,1.6fr) 74px minmax(160px,1fr) 108px',
   gap: '12px 18px',
+  alignItems: 'center',
   borderBottom: '1px solid var(--bd-subtle)',
 };
 

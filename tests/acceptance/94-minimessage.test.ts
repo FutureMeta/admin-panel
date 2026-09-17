@@ -213,8 +213,29 @@ describe('i tag che non vestono niente', () => {
     expect(pezzi.at(-1)).toEqual(['b', '#FF5555']);
   });
 
-  it('un tag sconosciuto non fa niente, invece di rompere', () => {
-    expect(colours('<red>a<domani>b').at(-1)?.[1]).toBe('#FF5555');
+  it('un nome che MiniMessage non ha e` un segnaposto: testo, col colore attorno', () => {
+    // `<white><world></white>`: in gioco `<world>` diventa il nome del mondo,
+    // in bianco. Qui e` testo bianco, non un tag grigio — e la sua chiusura,
+    // se qualcuno la scrive, e` testo pure lei.
+    expect(colours('<white><world></white> <red>a<domani>b')).toEqual([
+      ['<world>', '#FFFFFF'],
+      [' ', undefined],
+      ['a<domani>b', '#FF5555'],
+    ]);
+    expect(colours('<red>a</world>b')).toEqual([['a</world>b', '#FF5555']]);
+  });
+
+  it('e dentro una sfumatura conta come le sue lettere', () => {
+    // I due estremi cadono sul primo e sull'ultimo carattere VISIBILE, e
+    // `<player>` lo e`: sette lettere di sfumatura, non zero.
+    const pezzi = colours('<gradient:#000000:#FFFFFF>a<player></gradient>');
+    expect(pezzi[0]).toEqual(['a', '#000000']);
+    expect(pezzi.at(-1)).toEqual(['>', '#FFFFFF']);
+  });
+
+  it('`<!bold>` e `<!b>` spengono il grassetto', () => {
+    expect(styleOf('<bold>a<!bold>b', 'b')).toEqual({ bold: false });
+    expect(styleOf('<b>a<!b>c', 'c')).toEqual({ bold: false });
   });
 
   it('e il tag stesso non ha un colore suo', () => {

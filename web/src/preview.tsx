@@ -349,7 +349,7 @@ const LANG_VALUES: Record<string, Record<string, string>> = {
   },
   'event.countdown': {
     en: '<gray>%host% starts the event in <white>%time%',
-    it: '<gray>L’evento inizia tra <white>%time%',
+    it: '<gray>L’evento di <white><player></white> su <white><world></white> inizia tra <white>%time%',
   },
   'event.full': { en: '<red>The event is full.', it: '<red>L’evento è pieno.' },
   'event.cancelled': { en: '<red>The event was cancelled.' },

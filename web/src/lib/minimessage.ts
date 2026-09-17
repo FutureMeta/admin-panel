@@ -167,7 +167,7 @@ export function paint(colour: string): { color: string; background?: string } {
  * li' in poi colorerebbe la riga con il colore del suggerimento — che in gioco
  * si vede solo passandoci sopra il mouse.
  */
-export const TAG = /<\/?[a-zA-Z#][^<>'"]*(?:(?:'[^']*'|"[^"]*")[^<>'"]*)*>|[&§][0-9a-fk-orA-FK-OR]/g;
+export const TAG = /<\/?[a-zA-Z#!][^<>'"]*(?:(?:'[^']*'|"[^"]*")[^<>'"]*)*>|[&§][0-9a-fk-orA-FK-OR]/g;
 
 type Tag = { close: boolean; name: string; args: string[] };
 
@@ -199,6 +199,57 @@ function parseTag(raw: string): Tag | null {
 
   const first = (args.shift() ?? '').toLowerCase();
   return { close, name: ALIAS[first] ?? first, args };
+}
+
+/**
+ * I tag di MiniMessage che non vestono niente ma esistono: click, hover, e
+ * cosi' via. Servono a UNA cosa: distinguere un tag da un segnaposto.
+ */
+const PLAIN_TAGS = new Set([
+  'click',
+  'hover',
+  'insertion',
+  'key',
+  'lang',
+  'tr',
+  'translatable',
+  'translatable_fallback',
+  'newline',
+  'br',
+  'font',
+  'rainbow',
+  'transition',
+  'selector',
+  'sel',
+  'score',
+  'nbt',
+  'data',
+  'shadow',
+  'sprite',
+  'head',
+  'pride',
+  'object',
+]);
+
+/**
+ * E' un tag di MiniMessage, o e' un segnaposto?
+ *
+ * `<white><world></white>`: `world` non e' un tag, e' una parola che il plugin
+ * sostituisce — e in gioco esce bianca. Qui si tratta come testo, con lo
+ * stile che c'e' in quel punto, invece che come un tag grigio. Il pannello
+ * non ha la lista dei segnaposto, ma ha quella dei tag: basta quella.
+ */
+function isTag(name: string): boolean {
+  const word = name.startsWith('!') ? name.slice(1) : name;
+  const bare = ALIAS[word] ?? word;
+  return (
+    bare === 'reset' ||
+    bare === 'color' ||
+    bare === 'gradient' ||
+    colourOf(bare) !== null ||
+    (DECORATIONS as readonly string[]).includes(bare) ||
+    PLAIN_TAGS.has(bare)
+  );
 }
 
 /** I colori di una sfumatura. I numeri fra gli argomenti sono la fase: si saltano. */
@@ -246,7 +297,11 @@ function gradientLength(source: string, from: number): number {
     count += m.index - at;
     at = m.index + m[0].length;
     const parsed = parseTag(m[0]);
-    if (parsed === null) continue;
+    if (parsed === null || !isTag(parsed.name)) {
+      // Un segnaposto si vede: conta come le sue lettere.
+      if (!m[0].startsWith('&') && !m[0].startsWith('§')) count += m[0].length;
+      continue;
+    }
     if (parsed.name === 'gradient') {
       if (!parsed.close) depth += 1;
       else if (depth === 0) return count;
@@ -326,6 +381,12 @@ export function renderMiniMessage(source: string): Piece[] {
     at = m.index + m[0].length;
 
     const raw = m[0];
+    const parsed = raw.startsWith('<') ? parseTag(raw) : null;
+    if (raw.startsWith('<') && (parsed === null || !isTag(parsed.name))) {
+      // Non e' un tag: e' un segnaposto, e si veste come il testo attorno.
+      emit(raw);
+      continue;
+    }
     // IL TAG NON HA UN COLORE SUO, e chi lo disegna gli da' un grigio uguale
     // per tutti (`--yml-tag`). Il colore ce l'ha il testo che il tag veste —
     // quello che il giocatore vedra' — e due colori nella stessa riga, uno per
@@ -353,8 +414,6 @@ export function renderMiniMessage(source: string): Piece[] {
       }
       continue;
     }
-
-    const parsed = parseTag(raw);
     if (parsed === null) continue;
 
     if (parsed.close) {
@@ -397,15 +456,17 @@ export function renderMiniMessage(source: string): Piece[] {
       continue;
     }
 
-    if ((DECORATIONS as readonly string[]).includes(parsed.name)) {
-      // `<bold:false>` esiste e spegne invece di accendere.
-      const on = parsed.args[0] !== 'false';
-      stack.push({ id: parsed.name, style: { ...top(), [parsed.name as Decoration]: on } });
+    const negated = parsed.name.startsWith('!');
+    const word = negated ? parsed.name.slice(1) : parsed.name;
+    const decoration = ALIAS[word] ?? word;
+    if ((DECORATIONS as readonly string[]).includes(decoration)) {
+      // `<bold:false>` e `<!bold>` esistono e spengono invece di accendere.
+      const on = !negated && parsed.args[0] !== 'false';
+      stack.push({ id: decoration, style: { ...top(), [decoration as Decoration]: on } });
       continue;
     }
 
-    // Tutto il resto — click, hover, sprite, shadow, segnaposto — non veste
-    // niente. Entra comunque nella pila, perche' la sua chiusura deve trovare
+    // Tutto il resto — click, hover, sprite, shadow — non veste niente. Entra comunque nella pila, perche' la sua chiusura deve trovare
     // qualcosa da chiudere invece di andare a chiudere un colore.
     stack.push({ id: parsed.name, style: { ...top() } });
   }

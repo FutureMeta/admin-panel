@@ -92,11 +92,19 @@ describe('il sorgente disegnato', () => {
     expect(spans[2]).toMatchObject({ text: '%time%', style: { background: 'var(--blu-soft)' } });
   });
 
-  it('un tag che il pannello non conosce e` un tag come gli altri: lo risolve il plugin', () => {
-    const spans = lineSpans('<gray>Ciao <player>, sei su <server>', 12);
-    expect(spans.map((s) => s.text)).toEqual(['<gray>', 'Ciao ', '<player>', ', sei su ', '<server>']);
-    for (const s of spans.filter((s) => s.text.startsWith('<'))) expect(s.style.color).toBe('var(--yml-tag)');
-    // Senza i tag resta il messaggio come lo vede il giocatore.
-    expect(lineSpans('<gray>Ciao <player>', 12, false).map((s) => s.text)).toEqual(['Ciao ']);
+  it('un segnaposto <cosi> e` testo: prende il colore attorno, e resta anche senza i tag', () => {
+    const spans = lineSpans('<white><world></white> <gray>Ciao <player>', 12);
+    expect(spans.map((s) => s.text)).toEqual([
+      '<white>',
+      '<world>',
+      '</white>',
+      ' ',
+      '<gray>',
+      'Ciao <player>',
+    ]);
+    expect(spans[1]?.style).toMatchObject({ color: '#FFFFFF' });
+    expect(spans[1]?.style.color).not.toBe('var(--yml-tag)');
+    // Senza i tag resta il messaggio come lo vede il giocatore: il segnaposto c'e`.
+    expect(lineSpans('<gray>Ciao <player>', 12, false).map((s) => s.text)).toEqual(['Ciao <player>']);
   });
 });

@@ -26,7 +26,6 @@ import {
   invalidateLang,
   MiniField,
   overviewQuery,
-  PropagationHint,
   putValue,
   RetryBanner,
 } from '../components/lang-bits.tsx';
@@ -34,7 +33,6 @@ import { PageHeader } from '../components/page.tsx';
 import { ICONS, Icon, SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
 import { keyTree, languageName, missingPlaceholders, prefixesOf, REFERENCE } from '../lib/lang.ts';
-import { validateMiniMessage } from '../lib/minimessage.ts';
 import { canOpen } from '../lib/modules.ts';
 import { INPUT, SEARCH } from './lang-overview.tsx';
 
@@ -111,12 +109,11 @@ export function LangKeysPage({ me }: { me: Me }) {
   const cards = languages.map((l) => {
     const value = textOf(l.code);
     const had = (row?.values[l.code] ?? '') !== '';
-    const issues = value === '' ? [] : validateMiniMessage(value);
     const missing = l.code === REFERENCE || value === '' ? [] : missingPlaceholders(reference, value);
     const emptied = had && value.trim() === '';
-    return { ...l, value, issues, missing, emptied, dirty: dirtyCodes.includes(l.code) };
+    return { ...l, value, missing, emptied, dirty: dirtyCodes.includes(l.code) };
   });
-  const blocked = cards.some((c) => c.dirty && (c.issues.length > 0 || c.emptied));
+  const blocked = cards.some((c) => c.dirty && c.emptied);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -141,7 +138,6 @@ export function LangKeysPage({ me }: { me: Me }) {
       <PageHeader
         title={ns}
         sub={`${keys.length} chiavi · en riferimento · le chiavi nascono dai plugin, qui si traducono`}
-        action={<PropagationHint />}
       />
 
       {bundle.isError ? (
@@ -317,15 +313,9 @@ export function LangKeysPage({ me }: { me: Me }) {
                 <MiniField
                   value={c.value}
                   readOnly={!canWrite || current === null}
-                  tone={c.issues.length > 0 || c.emptied ? 'err' : c.missing.length > 0 ? 'warn' : 'neutral'}
+                  tone={c.emptied ? 'err' : c.missing.length > 0 ? 'warn' : 'neutral'}
                   onChange={(next) => setDrafts((prev) => ({ ...prev, [c.code]: next }))}
                 />
-                {c.issues.length > 0 ? (
-                  <FieldNotice tone="err">
-                    MiniMessage non valido: {c.issues[0]?.reason}. Il server scarterebbe questo testo, il
-                    salvataggio è bloccato.
-                  </FieldNotice>
-                ) : null}
                 {c.emptied ? (
                   <FieldNotice tone="err">
                     Un testo vuoto non si salva: per un messaggio senza contenuto scrivi{' '}

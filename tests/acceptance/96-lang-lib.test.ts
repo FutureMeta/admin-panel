@@ -1,69 +1,14 @@
-// Le funzioni pure di «Lingue»: la convalida MiniMessage, i segnaposto,
-// l'albero delle chiavi, il sorgente disegnato.
+// Le funzioni pure di «Lingue»: i segnaposto, l'albero delle chiavi, il
+// sorgente disegnato.
 //
-// LA CONVALIDA E' LA COSA CHE CONTA DI PIU', e in due versi opposti. Troppo
-// severa, e lo staff non riesce a salvare una frase normale — `<gray>starts
-// in <white>%time%` NON chiude niente ed e' la forma di quasi ogni testo.
-// Troppo lasca, e un `<gradient:#…` senza `>` arriva in gioco e il giocatore
-// vede un messaggio sparito. Le prove qui sotto fissano i due bordi.
+// NIENTE CONVALIDA DEL MINIMESSAGE, ed e' voluto: `<player>`, `<server>` e i
+// tag che ogni bundle si inventa li risolve il plugin, e il pannello non ha
+// la lista. Un controllo qui rifiuterebbe testi giusti.
 
 import { describe, expect, it } from 'vitest';
 import { keyTree, missingPlaceholders, prefixesOf } from '#web/lib/lang.ts';
 import { lineSpans } from '#web/lib/mini-spans.ts';
-import { placeholdersOf, validateMiniMessage } from '#web/lib/minimessage.ts';
-
-describe('cosa il gioco accetta', () => {
-  it('i testi veri passano, colori aperti e mai chiusi compresi', () => {
-    const REAL = [
-      '<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient> <gray>starts in <white>%time%</white>',
-      '<gray>Get ready, <white>%player%',
-      "<#FCA800>%host%</#FCA800> <gray>has opened an event. <click:run_command:'/event join'><hover:show_text:'Click to join'><yellow><underlined>Join now</underlined></yellow></hover></click>",
-      '<gray>Mode: <white>%mode%\n<gray>Map: <white>%map%',
-      '<white>Italiano',
-      '<reset>',
-      'testo senza tag, con a < b in mezzo',
-      '<!bold>non piu` grassetto',
-      '<!b>nemmeno cosi`',
-      '<shadow:black><sprite:gui:icon/link> icona',
-    ];
-    for (const text of REAL) expect(validateMiniMessage(text), text).toEqual([]);
-  });
-});
-
-describe('cosa il gioco scarterebbe', () => {
-  it('un tag mai terminato: il `>` non arriva', () => {
-    // IL CASO DEL MOCKUP, ed e` il piu` insidioso: si legge benissimo, e in
-    // gioco sparisce tutto il messaggio.
-    const issues = validateMiniMessage('<gradient:#8A8A8A:#CCCCCC Volver al menu anterior');
-    expect(issues).toHaveLength(1);
-    expect(issues[0]?.at).toBe(0);
-    expect(issues[0]?.reason).toMatch(/non chiuso/);
-  });
-
-  it('e si ferma a fine riga: la riga dopo si controlla lo stesso', () => {
-    const issues = validateMiniMessage('<gradient:#8A8A8A rotto\n<gery>anche questo');
-    expect(issues.map((i) => i.reason)).toEqual([
-      expect.stringMatching(/non chiuso/),
-      'tag sconosciuto: <gery>',
-    ]);
-  });
-
-  it('un nome che non conosce', () => {
-    expect(validateMiniMessage('<gery>ciao')[0]?.reason).toBe('tag sconosciuto: <gery>');
-  });
-
-  it('una chiusura senza apertura', () => {
-    expect(validateMiniMessage('ciao</bold>')[0]?.reason).toBe('chiusura senza apertura');
-    // Ma chiudere un colore con un altro nome va bene: e` MiniMessage.
-    expect(validateMiniMessage('<red>a</white>b')).toEqual([]);
-  });
-
-  it('una sfumatura con un colore solo, o con un colore scritto male', () => {
-    expect(validateMiniMessage('<gradient:#FF0000>x')[0]?.reason).toMatch(/due colori/);
-    expect(validateMiniMessage('<gradient:#FF0000:rosso>x')[0]?.reason).toMatch(/due colori/);
-    expect(validateMiniMessage('<color:rosso>x')[0]?.reason).toBe('colore sconosciuto');
-  });
-});
+import { placeholdersOf } from '#web/lib/minimessage.ts';
 
 describe('i segnaposto', () => {
   it('si contano una volta, nell`ordine in cui compaiono', () => {
@@ -123,9 +68,7 @@ describe('l`albero delle chiavi', () => {
 
 describe('il sorgente disegnato', () => {
   it('rimettendo insieme i pezzi si riottiene la riga, anche rotta', () => {
-    // E` l'invariante dell'editor, e qui vale per un'altra ragione: gli
-    // errori arrivano come posizioni e i pezzi come stringhe, e combaciano
-    // solo se nessun carattere si perde per strada.
+    // E` l'invariante dell'editor: nessun carattere si perde per strada.
     const LINES = [
       '<gray>Mode: <white>%mode%',
       '<gradient:#8A8A8A:#CCCCCC Volver al menu',
@@ -149,12 +92,11 @@ describe('il sorgente disegnato', () => {
     expect(spans[2]).toMatchObject({ text: '%time%', style: { background: 'var(--blu-soft)' } });
   });
 
-  it('un tag rotto e` rosso dove sta, e senza i tag resta comunque visibile', () => {
-    const bad = lineSpans('a <gery>b', 12).find((s) => s.text === '<gery>');
-    expect(bad?.style.color).toBe('var(--err)');
-    // Con i tag spenti si vede il messaggio come in gioco, MA un tag rotto
-    // si mostra lo stesso: in gioco non sparirebbe lui, sparirebbe tutto.
-    const rendered = lineSpans('<red>a <gery>b', 12, false).map((s) => s.text);
-    expect(rendered).toEqual(['a ', '<gery>', 'b']);
+  it('un tag che il pannello non conosce e` un tag come gli altri: lo risolve il plugin', () => {
+    const spans = lineSpans('<gray>Ciao <player>, sei su <server>', 12);
+    expect(spans.map((s) => s.text)).toEqual(['<gray>', 'Ciao ', '<player>', ', sei su ', '<server>']);
+    for (const s of spans.filter((s) => s.text.startsWith('<'))) expect(s.style.color).toBe('var(--yml-tag)');
+    // Senza i tag resta il messaggio come lo vede il giocatore.
+    expect(lineSpans('<gray>Ciao <player>', 12, false).map((s) => s.text)).toEqual(['Ciao ']);
   });
 });

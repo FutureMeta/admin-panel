@@ -9,7 +9,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLanguage,
-  isPending,
   LanguageExists,
   listLanguages,
   moveLanguage,
@@ -202,14 +201,5 @@ describe('le lingue', () => {
     expect(my.state.languages.map((l) => l.position).sort()).toEqual([0, 1, 2]);
 
     await expect(moveLanguage(my, 'xx', 'up')).rejects.toBeInstanceOf(UnknownLanguage);
-  });
-});
-
-describe('in arrivo', () => {
-  it('niente da un pezzo: non in attesa; appena scritto: in attesa', async () => {
-    const my = withDuels();
-    expect(await isPending(my)).toBe(false);
-    await setValue(my, { ns: 'duels.uhc', key: 'event.full', code: 'it', value: 'x', author });
-    expect(await isPending(my)).toBe(true);
   });
 });

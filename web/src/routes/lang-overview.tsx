@@ -16,13 +16,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useMemo, useState } from 'react';
-import {
-  CompletionBar,
-  Eyebrow,
-  overviewQuery,
-  PropagationHint,
-  RetryBanner,
-} from '../components/lang-bits.tsx';
+import { CompletionBar, Eyebrow, overviewQuery, RetryBanner } from '../components/lang-bits.tsx';
 import { PageHeader } from '../components/page.tsx';
 import { ICONS, Icon, SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
@@ -61,11 +55,7 @@ export function LangOverviewPage(_props: { me: Me }) {
 
   return (
     <>
-      <PageHeader
-        title="Lingue · Bundle"
-        sub="I testi che i giocatori vedono in gioco"
-        action={<PropagationHint />}
-      />
+      <PageHeader title="Lingue · Bundle" sub="I testi che i giocatori vedono in gioco" />
 
       {overview.isError ? (
         <RetryBanner

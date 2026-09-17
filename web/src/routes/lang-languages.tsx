@@ -16,7 +16,6 @@ import {
   Eyebrow,
   invalidateLang,
   overviewQuery,
-  PropagationHint,
   RetryBanner,
 } from '../components/lang-bits.tsx';
 import { MiniSource } from '../components/mini-text.tsx';
@@ -25,7 +24,6 @@ import { SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
 import { api } from '../lib/api.ts';
 import { type Language, pctOf, REFERENCE } from '../lib/lang.ts';
-import { validateMiniMessage } from '../lib/minimessage.ts';
 import { canOpen } from '../lib/modules.ts';
 import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
 
@@ -54,7 +52,7 @@ export function LangLanguagesPage({ me }: { me: Me }) {
 
   return (
     <>
-      <PageHeader title="Elenco lingue" sub="Quali lingue vedono i giocatori" action={<PropagationHint />} />
+      <PageHeader title="Elenco lingue" sub="Quali lingue vedono i giocatori" />
 
       {overview.isError ? (
         <RetryBanner
@@ -240,8 +238,7 @@ function AddLanguageDialog({ onClose, onCreated }: { onClose: () => void; onCrea
   const [error, setError] = useState<string | null>(null);
 
   const codeOk = /^[a-z]{2}$/.test(code);
-  const issues = display.trim() === '' ? [] : validateMiniMessage(display);
-  const ready = codeOk && display.trim() !== '' && issues.length === 0;
+  const ready = codeOk && display.trim() !== '';
 
   const create = useMutation({
     mutationFn: () => api<Language>('/api/lang/language', { method: 'POST', body: { code, display } }),
@@ -360,14 +357,8 @@ function AddLanguageDialog({ onClose, onCreated }: { onClose: () => void; onCrea
               placeholder="es. <white>Français"
               style={FIELD}
             />
-            <div style={HINT}>
-              {issues.length > 0 ? (
-                <span style={{ color: 'var(--err)' }}>MiniMessage non valido: {issues[0]?.reason}</span>
-              ) : (
-                'MiniMessage: è il nome che i giocatori vedono nel menu.'
-              )}
-            </div>
-            {display.trim() !== '' && issues.length === 0 ? (
+            <div style={HINT}>MiniMessage: è il nome che i giocatori vedono nel menu.</div>
+            {display.trim() !== '' ? (
               <div
                 style={{
                   marginTop: 8,

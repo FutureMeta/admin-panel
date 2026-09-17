@@ -154,14 +154,6 @@ export function fakeMetaverseMysql(initial: LangState = seededState()): FakeMeta
           affectedRows: 0,
         };
       }
-      if (q.includes('GREATEST(')) {
-        const latest = Math.max(
-          0,
-          ...state.messages.map((r) => r.updated_at),
-          ...state.languages.map((l) => l.updated_at),
-        );
-        return { rows: [{ latest }], affectedRows: 0 };
-      }
     }
 
     if (q.startsWith('INSERT INTO metaverse_message')) {

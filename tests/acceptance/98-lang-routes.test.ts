@@ -81,7 +81,6 @@ describe('leggere e` di livello 1', () => {
         { code: 'it', display: '<white>Italiano', position: 1, active: true },
       ],
       bundles: [{ ns: 'duels.uhc', owner: 'duels', bundle: 'uhc', keys: 2, done: { en: 2, it: 1 } }],
-      pending: false,
     });
   });
 
@@ -147,10 +146,6 @@ describe('modificare un testo e` di livello 2', () => {
       before: null,
       after: body.value,
     });
-
-    // E la panoramica lo dice: e' in arrivo.
-    const overview = await t.app.inject({ method: 'GET', url: '/api/lang', headers: capo.cookieOnly() });
-    expect(overview.json().pending).toBe(true);
   });
 
   it('un testo vuoto e` rifiutato, e il rifiuto suggerisce <reset>', async () => {
@@ -164,18 +159,17 @@ describe('modificare un testo e` di livello 2', () => {
     expect(res.json().detail).toContain('<reset>');
   });
 
-  it('un MiniMessage rotto e` rifiutato con i problemi, e non entra', async () => {
+  it('i tag che il pannello non conosce passano: li risolve il plugin', async () => {
     const res = await t.app.inject({
       method: 'PUT',
       url: '/api/lang/value',
       headers: capo.headers(),
-      payload: { ...body, value: '<gray>ciao <bold' },
+      payload: { ...body, value: '<gray>Ciao <player>, sei su <server' },
     });
-    expect(res.statusCode).toBe(400);
-    expect(res.json().issues.length).toBeGreaterThan(0);
-    expect(my.state.messages.some((r) => r.locale === 'it' && r.message_key === 'event.countdown')).toBe(
-      false,
-    );
+    expect(res.statusCode).toBe(200);
+    expect(
+      my.state.messages.find((r) => r.locale === 'it' && r.message_key === 'event.countdown')?.custom,
+    ).toBe('<gray>Ciao <player>, sei su <server');
   });
 
   it('una chiave o una lingua che non esistono sono 404', async () => {
@@ -231,10 +225,9 @@ describe('gestire le lingue e` di livello 3', () => {
     expect(again.statusCode).toBe(409);
   });
 
-  it('il codice sono due lettere minuscole, e il nome un MiniMessage valido', async () => {
+  it('il codice sono due lettere minuscole, e il nome non e` vuoto', async () => {
     for (const payload of [
       { code: 'ES', display: 'Español' },
-      { code: 'es', display: '<nope>Español' },
       { code: 'es', display: ' ' },
     ]) {
       const res = await t.app.inject({

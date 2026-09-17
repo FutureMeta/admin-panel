@@ -1,11 +1,11 @@
 // I pezzi che le quattro schermate di «Lingue» si passano.
 //
 // STANNO QUI E NON IN OGNUNA perche' sono le cose che devono restare uguali
-// dappertutto: come si modifica un testo, come si dice che una modifica non e'
-// ancora in gioco, come si legge un completamento. Quattro copie divergono al
+// dappertutto: come si modifica un testo, come si legge un completamento, da
+// dove si leggono e si scrivono i dati. Quattro copie divergono al
 // terzo ritocco.
 
-import { type QueryClient, useQuery } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api.ts';
 import { type BundleKeys, heat, type Overview } from '../lib/lang.ts';
@@ -26,51 +26,6 @@ export const putValue = (body: { ns: string; key: string; code: string; value: s
 export async function invalidateLang(queryClient: QueryClient, ns?: string): Promise<void> {
   if (ns !== undefined) await queryClient.invalidateQueries({ queryKey: ['lang-keys', ns] });
   await queryClient.invalidateQueries({ queryKey: ['lang'] });
-}
-
-/**
- * L'indicatore di propagazione. Un punto che pulsa e una riga: «arriva in
- * gioco entro un minuto». Sparisce passato il giro di rilettura dei server.
- *
- * SI RICONTROLLA DA SOLO, ogni quindici secondi ma SOLO finche' c'e' qualcosa
- * in attesa: a riposo non chiede niente. E' cio' che permette di metterlo in
- * ogni schermata senza che ogni schermata paghi una richiesta.
- */
-export function PropagationHint() {
-  const overview = useQuery({
-    ...overviewQuery,
-    refetchInterval: (query) => (query.state.data?.pending === true ? 15_000 : false),
-  });
-  if (overview.data?.pending !== true) return null;
-  return (
-    <span
-      role="status"
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 8,
-        height: 28,
-        padding: '0 11px',
-        border: '1px solid rgba(224,163,46,.4)',
-        borderRadius: 'var(--r-full)',
-        background: 'var(--warn-soft)',
-        fontSize: 11.5,
-        color: 'var(--tx-primary)',
-        whiteSpace: 'nowrap',
-      }}
-    >
-      <span
-        style={{
-          width: 7,
-          height: 7,
-          borderRadius: 'var(--r-full)',
-          background: 'var(--warn)',
-          animation: 'mmPulse 1.6s ease-in-out infinite',
-        }}
-      />
-      In arrivo in gioco · i server rileggono ogni minuto
-    </span>
-  );
 }
 
 /** La barra di completamento con la percentuale accanto. */

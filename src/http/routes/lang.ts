@@ -12,11 +12,10 @@
 //   2  li modifica — e arrivano in gioco entro un minuto, senza bozza
 //   3  gestisce le lingue: ne crea, le accende per i giocatori, le riordina
 //
-// LA CONVALIDA E' LA STESSA DEL BROWSER. `validateMiniMessage` gira mentre si
-// scrive e di nuovo qui: la prima per dire «non si puo' salvare» prima di
-// premere, la seconda perche' un client non e' un controllo. Un testo che il
-// gioco scarterebbe non entra nel database — arrivarci e scoprirlo in chat e'
-// esattamente cio' che il pannello sostituisce.
+// IL MINIMESSAGE NON SI CONTROLLA. I tag li risolve il plugin — `<player>`,
+// `<server>` e quelli che ogni bundle si inventa — e il pannello non ha la
+// lista: un controllo qui rifiuterebbe testi giusti. L'unico «no» e' il testo
+// vuoto, che ha un rimedio preciso: `<reset>`.
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
@@ -36,7 +35,6 @@ import {
   UnknownLanguage,
   updateLanguage,
 } from '#src/lang/store.ts';
-import { validateMiniMessage } from '#web/lib/minimessage.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
@@ -96,24 +94,12 @@ const languagePatch = {
   },
 } as const;
 
-/**
- * Il testo e' scrivibile? Vuoto e MiniMessage rotto sono le due risposte «no»,
- * e si spiegano in modo diverso: la prima ha un rimedio preciso — `<reset>` —
- * la seconda indica dove.
- */
+/** Il testo e' scrivibile? Vuoto no, e il rifiuto dice cosa scrivere al suo posto. */
 function refuse(reply: FastifyReply, value: string): FastifyReply | null {
   if (value.trim() === '') {
     return reply.code(400).send({
       error: 'testo vuoto',
       detail: 'un testo vuoto non si salva: per un messaggio senza contenuto scrivi <reset>',
-    });
-  }
-  const issues = validateMiniMessage(value);
-  if (issues.length > 0) {
-    return reply.code(400).send({
-      error: 'MiniMessage non valido',
-      detail: 'il server scarterebbe questo testo',
-      issues,
     });
   }
   return null;

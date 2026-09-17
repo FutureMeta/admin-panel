@@ -25,7 +25,6 @@ import {
   FieldNotice,
   invalidateLang,
   overviewQuery,
-  PropagationHint,
   putValue,
   RetryBanner,
 } from '../components/lang-bits.tsx';
@@ -34,7 +33,7 @@ import { PageHeader } from '../components/page.tsx';
 import { SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
 import { heat, pctOf, REFERENCE } from '../lib/lang.ts';
-import { placeholdersOf, validateMiniMessage } from '../lib/minimessage.ts';
+import { placeholdersOf } from '../lib/minimessage.ts';
 import { canOpen } from '../lib/modules.ts';
 import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
 
@@ -67,8 +66,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const reference = item?.values[REFERENCE] ?? '';
   const wanted = placeholdersOf(reference);
   const have = new Set(placeholdersOf(draft));
-  const issues = draft.trim() === '' ? [] : validateMiniMessage(draft);
-  const blocked = draft.trim() === '' || issues.length > 0;
+  const blocked = draft.trim() === '';
 
   const done = keys.length - todo.length;
   const pct = pctOf(done, keys.length);
@@ -89,11 +87,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
 
   return (
     <>
-      <PageHeader
-        title="Traduzione"
-        sub="Solo le chiavi non tradotte, una dopo l’altra"
-        action={<PropagationHint />}
-      />
+      <PageHeader title="Traduzione" sub="Solo le chiavi non tradotte, una dopo l’altra" />
 
       {bundle.isError ? (
         <RetryBanner
@@ -327,7 +321,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
                     width: '100%',
                     boxSizing: 'border-box',
                     padding: '10px 12px',
-                    border: `1px solid ${issues.length > 0 ? 'var(--err)' : 'var(--bd-strong)'}`,
+                    border: '1px solid var(--bd-strong)',
                     borderRadius: 'var(--r-sm)',
                     background: 'var(--s-inset)',
                     color: 'var(--tx-primary)',
@@ -342,12 +336,6 @@ export function LangTranslatePage({ me }: { me: Me }) {
                   <div style={{ marginTop: 10, padding: '9px 12px', borderLeft: '2px solid var(--ac)' }}>
                     <MiniSource text={draft} />
                   </div>
-                ) : null}
-                {issues.length > 0 ? (
-                  <FieldNotice tone="err">
-                    MiniMessage non valido: {issues[0]?.reason}. Il server scarterebbe questo testo, il
-                    salvataggio è bloccato.
-                  </FieldNotice>
                 ) : null}
                 {saveError === null ? null : <FieldNotice tone="err">{saveError}</FieldNotice>}
                 {wanted.length > 0 ? (

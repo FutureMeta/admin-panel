@@ -46,25 +46,10 @@ export type BundleSummary = {
   done: Record<string, number>;
 };
 
-export type Overview = {
-  languages: Language[];
-  bundles: BundleSummary[];
-  /**
-   * C'e' una modifica che i server potrebbero non aver ancora letto.
-   *
-   * I server rileggono ogni `lang-poll-seconds` (60 di default) guardando
-   * l'impronta: una scrittura piu' recente di quell'intervallo puo' non
-   * essere ancora arrivata. E' l'unica cosa che il database sa dire — non chi
-   * ha letto — ed e' abbastanza per essere onesti su «entro un minuto».
-   */
-  pending: boolean;
-};
+export type Overview = { languages: Language[]; bundles: BundleSummary[] };
 
 export type KeyValues = { key: string; values: Record<string, string> };
 export type BundleKeys = { ns: string; keys: KeyValues[] };
-
-/** Il ritmo con cui i server rileggono: `lang-poll-seconds` in Metaverse. */
-export const POLL_MS = 60_000;
 
 export class UnknownBundle extends Error {
   constructor(ns: string) {
@@ -154,7 +139,6 @@ export async function readOverview(db: DuelsMysql): Promise<Overview> {
       if (parsed === null) return [];
       return [{ ns: b.namespace, ...parsed, keys: Number(b.n), done: byNs.get(b.namespace) ?? {} }];
     }),
-    pending: await isPending(db),
   };
 }
 
@@ -307,16 +291,4 @@ export async function moveLanguage(db: DuelsMysql, code: string, direction: 'up'
       [i, now, other.locale],
     );
   });
-}
-
-/** L'ultima scrittura e' piu' recente di un giro dei server? */
-export async function isPending(db: DuelsMysql): Promise<boolean> {
-  const rows = await db.rows<{ latest: number | string | null }>(
-    `SELECT GREATEST(
-       (SELECT COALESCE(MAX(updated_at), 0) FROM metaverse_message),
-       (SELECT COALESCE(MAX(updated_at), 0) FROM metaverse_language)
-     ) AS latest`,
-  );
-  const latest = Number(rows[0]?.latest ?? 0);
-  return latest > 0 && Date.now() - latest < POLL_MS;
 }

@@ -18,7 +18,7 @@ export type BundleSummary = {
   done: Record<string, number>;
 };
 
-export type Overview = { languages: Language[]; bundles: BundleSummary[]; pending: boolean };
+export type Overview = { languages: Language[]; bundles: BundleSummary[] };
 
 export type KeyValues = { key: string; values: Record<string, string> };
 export type BundleKeys = { ns: string; keys: KeyValues[] };

@@ -372,7 +372,6 @@ queryClient.setQueryData(['lang'], {
     },
     { ns: 'metaverse.party', owner: 'metaverse', bundle: 'party', keys: 27, done: { en: 27, it: 27, es: 3 } },
   ],
-  pending: true,
 });
 queryClient.setQueryData(['lang-keys', 'duels.uhc'], {
   ns: 'duels.uhc',

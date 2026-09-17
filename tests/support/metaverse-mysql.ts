@@ -111,12 +111,12 @@ export function fakeMetaverseMysql(initial: LangState = seededState()): FakeMeta
           affectedRows: 0,
         };
       }
-      if (q.includes('COUNT(DISTINCT message_key) AS keys FROM metaverse_message GROUP BY namespace')) {
+      if (q.includes('COUNT(DISTINCT message_key) AS n FROM metaverse_message GROUP BY namespace')) {
         const byNs = new Map<string, Set<string>>();
         for (const r of state.messages)
           byNs.set(r.namespace, (byNs.get(r.namespace) ?? new Set()).add(r.message_key));
         return {
-          rows: [...byNs.entries()].sort().map(([namespace, keys]) => ({ namespace, keys: keys.size })),
+          rows: [...byNs.entries()].sort().map(([namespace, keys]) => ({ namespace, n: keys.size })),
           affectedRows: 0,
         };
       }

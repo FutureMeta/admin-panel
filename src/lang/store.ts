@@ -129,8 +129,8 @@ export async function readOverview(db: DuelsMysql): Promise<Overview> {
   // Una chiave esiste nel bundle se ESISTE UNA RIGA per lei, in qualunque
   // lingua: il jar la pubblica per le lingue che ha, e la prima traduzione
   // ne aggiunge un'altra.
-  const bundles = await db.rows<{ namespace: string; keys: number }>(
-    'SELECT namespace, COUNT(DISTINCT message_key) AS keys FROM metaverse_message GROUP BY namespace ORDER BY namespace',
+  const bundles = await db.rows<{ namespace: string; n: number }>(
+    'SELECT namespace, COUNT(DISTINCT message_key) AS n FROM metaverse_message GROUP BY namespace ORDER BY namespace',
   );
   // Tradotta = ha un testo che il gioco userebbe: `custom`, o `shipped` se
   // non c'e' un `custom`. Una riga con tutt'e due a NULL e' un residuo, e non
@@ -152,7 +152,7 @@ export async function readOverview(db: DuelsMysql): Promise<Overview> {
       // Un nome che non e' `owner.bundle` non e' un bundle: il pannello non
       // lo mostra invece di mostrarlo storto.
       if (parsed === null) return [];
-      return [{ ns: b.namespace, ...parsed, keys: Number(b.keys), done: byNs.get(b.namespace) ?? {} }];
+      return [{ ns: b.namespace, ...parsed, keys: Number(b.n), done: byNs.get(b.namespace) ?? {} }];
     }),
     pending: await isPending(db),
   };

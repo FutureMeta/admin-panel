@@ -78,6 +78,14 @@ export type AppContext = {
    */
   duelsMysql: DuelsMysql | null;
   /**
+   * Il database di Metaverse, per i testi che i giocatori vedono in gioco.
+   *
+   * `null` senza `METAVERSE_MYSQL_URL`: le rotte delle Lingue rispondono 503
+   * e il resto del pannello non cambia. Stessa forma di `duelsMysql`, altro
+   * database: i due plugin non condividono lo schema.
+   */
+  metaverseMysql: DuelsMysql | null;
+  /**
    * Il Redis di GIOCO, per la schermata Live. Client dedicato, e non quello
    * del pannello.
    *
@@ -357,6 +365,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
   // nostra, e due serie per lo stesso database sarebbero il doppio del peso
   // per la stessa cosa.
   const duelsMysql = env.DUELS_MYSQL_URL ? createDuelsMysql(env.DUELS_MYSQL_URL) : null;
+  const metaverseMysql = env.METAVERSE_MYSQL_URL ? createDuelsMysql(env.METAVERSE_MYSQL_URL) : null;
 
   // I PRIVILEGI DI SCRITTURA SI GUARDANO ALL'AVVIO, non al primo salvataggio.
   //
@@ -429,6 +438,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     statsDb,
     duels,
     duelsMysql,
+    metaverseMysql,
     gameRedis,
     statsCache,
     cacheRedis,
@@ -454,6 +464,7 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
       await duelsIngest?.stop().catch(() => undefined);
       // Chi crea chiude: il job lo ha ricevuto, quindi non lo chiude lui.
       await duelsMysql?.close().catch(() => undefined);
+      await metaverseMysql?.close().catch(() => undefined);
       context.statsWarm?.stop();
       await assistant?.close().catch(() => undefined);
       await statsDb?.destroy().catch(() => undefined);

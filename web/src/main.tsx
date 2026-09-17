@@ -36,6 +36,10 @@ import { DuelsModesRoute as DuelsModesPage } from './routes/duels-modes.tsx';
 import { DuelsRatingsRoute as DuelsRatingsPage } from './routes/duels-ratings.tsx';
 import { DuelsTrendsRoute as DuelsTrendsPage } from './routes/duels-trends.tsx';
 import { InvitesPage } from './routes/invites.tsx';
+import { LangKeysPage } from './routes/lang-keys.tsx';
+import { LangLanguagesPage } from './routes/lang-languages.tsx';
+import { LangOverviewPage } from './routes/lang-overview.tsx';
+import { LangTranslatePage } from './routes/lang-translate.tsx';
 import { LoginPage } from './routes/login.tsx';
 import { ModeDetailPage } from './routes/mode-detail.tsx';
 import { ModeEntryPage } from './routes/mode-entry.tsx';
@@ -282,6 +286,36 @@ function DuelsConfigRoute() {
   return <DuelsConfigPage me={me.data} />;
 }
 
+// Le quattro schermate di «Lingue» stanno sullo stesso modulo: chi lo ha
+// legge, e il livello decide il resto dentro la schermata.
+function LangOverviewRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
+  return <LangOverviewPage me={me.data} />;
+}
+
+function LangKeysRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
+  return <LangKeysPage me={me.data} />;
+}
+
+function LangTranslateRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
+  return <LangTranslatePage me={me.data} />;
+}
+
+function LangLanguagesRoute() {
+  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+  if (!me.data) return <SkeletonRows rows={6} />;
+  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
+  return <LangLanguagesPage me={me.data} />;
+}
+
 function AuditRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -387,6 +421,28 @@ const duelsConfigRoute = createRoute({
   path: '/duels/config',
   component: DuelsConfigRoute,
 });
+const langOverviewRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/lingue',
+  component: LangOverviewRoute,
+});
+const langLanguagesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/lingue/elenco',
+  component: LangLanguagesRoute,
+});
+// `/b/` in mezzo: cosi' un bundle che si chiamasse `elenco` non collide con la
+// voce sopra, ne' oggi ne' il giorno in cui qualcuno lo crea.
+const langKeysRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/lingue/b/$ns',
+  component: LangKeysRoute,
+});
+const langTranslateRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/lingue/b/$ns/traduci/$code',
+  component: LangTranslateRoute,
+});
 const auditRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: '/registro',
@@ -410,6 +466,10 @@ const routeTree = rootRoute.addChildren([
     duelsMapsRoute,
     duelsLiveRoute,
     duelsConfigRoute,
+    langOverviewRoute,
+    langLanguagesRoute,
+    langKeysRoute,
+    langTranslateRoute,
     auditRoute,
   ]),
 ]);

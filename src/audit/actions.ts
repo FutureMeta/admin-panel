@@ -90,6 +90,17 @@ export const AUDIT_ACTIONS = {
   // proprio perche' e' l'unico posto in cui restano scritti.
   duelsConfigDeleted: 'duels.config.delete',
 
+  // --- lingue -----------------------------------------------------------------
+  //
+  // UNA RIGA PER TESTO SALVATO, con il testo di prima e quello di dopo nei
+  // metadati: e' l'unico storico che questi valori hanno, e «chi ha scritto
+  // quella frase in chat» e' la domanda che arriva un mese dopo. Le lingue
+  // sono poche righe e cambiano di rado, ma accenderne una la mostra a tutti
+  // i giocatori: va scritto chi l'ha fatto.
+  langValueSet: 'lang.value.set',
+  langLanguageCreated: 'lang.language.create',
+  langLanguageChanged: 'lang.language.change',
+
   // --- assistente (Svetlana) ------------------------------------------------
   //
   // UNA RIGA PER INTERAZIONE, con i tool chiamati nei metadati. Serve a

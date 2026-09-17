@@ -35,6 +35,8 @@ export const SCREENS: readonly Screen[] = [
   { path: '/duels/maps', title: 'Duels · Maps' },
   { path: '/duels/live', title: 'Duels · Live' },
   { path: '/duels/config', title: 'Duels · Configs' },
+  { path: '/lingue', title: 'Lingue · Bundle' },
+  { path: '/lingue/elenco', title: 'Lingue · Elenco' },
   { path: '/utenti', title: 'Utenti & Ruoli' },
   { path: '/registro', title: 'Registro attività' },
 ];

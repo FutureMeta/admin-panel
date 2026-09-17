@@ -131,6 +131,25 @@ export const NAV: readonly NavEntry[] = [
     modules: ['duels_config'],
     hint: 'i file YAML dei server',
   },
+  // Le due voci della sezione. Chiavi e traduzione non sono voci: ci si
+  // arriva da un bundle, e una voce che porta a «quale bundle?» sarebbe una
+  // domanda in piu' invece di una scorciatoia.
+  {
+    to: '/lingue',
+    title: 'Lingue · Bundle',
+    label: 'Bundle',
+    area: 'Lingue',
+    modules: ['lingue'],
+    hint: 'i testi che i giocatori vedono in gioco',
+  },
+  {
+    to: '/lingue/elenco',
+    title: 'Lingue · Elenco',
+    label: 'Elenco',
+    area: 'Lingue',
+    modules: ['lingue'],
+    hint: 'quali lingue vedono i giocatori',
+  },
   {
     to: '/utenti',
     title: 'Utenti & Ruoli',

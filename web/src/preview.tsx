@@ -30,6 +30,10 @@ import { AcceptPage } from './routes/accept.tsx';
 import './app.css';
 import { AuditPage_ } from './routes/audit.tsx';
 import { InvitesPage } from './routes/invites.tsx';
+import { LangKeysPage } from './routes/lang-keys.tsx';
+import { LangLanguagesPage } from './routes/lang-languages.tsx';
+import { LangOverviewPage } from './routes/lang-overview.tsx';
+import { LangTranslatePage } from './routes/lang-translate.tsx';
 import { RolesPage, UsersPage } from './routes/users.tsx';
 
 const screen = new URLSearchParams(window.location.search).get('screen') ?? 'utenti';
@@ -54,6 +58,7 @@ const ME: Me = {
     duels_live: 3,
     duels_config: 3,
     assistente: 3,
+    lingue: 3,
   },
   modules: [
     'utenti',
@@ -69,6 +74,7 @@ const ME: Me = {
     'duels_modes',
     'duels_maps',
     'assistente',
+    'lingue',
   ],
   aal: 2,
   authenticatedAt: new Date().toISOString(),
@@ -310,6 +316,69 @@ queryClient.setQueryData(['audit-actions'], {
 // La chiave porta anche il cursore: `undefined` e' la prima pagina.
 queryClient.setQueryData(['audit', { actor: '', module: '', action: '', outcome: '' }, undefined], AUDIT);
 
+// Le Lingue, con i dati del mockup: due bundle, tre lingue, una chiave rotta
+// in es e una con un segnaposto in meno in it. Sono i casi che le schermate
+// devono mostrare, e senza dati veri non si vedono.
+const LANG_VALUES: Record<string, Record<string, string>> = {
+  'match.starting-title': {
+    en: '<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient> <gray>starts in <white>%time%',
+    it: '<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient> <gray>inizia tra <white>%time%',
+  },
+  'match.starting-subtitle': {
+    en: '<gray>Get ready, <white>%player%',
+    it: '<gray>Preparati, <white>%player%',
+  },
+  'match.ended': { en: '<green>Match ended. <gray>Winner: <white>%player%' },
+  'inventory.settings.title': {
+    en: '<dark_gray>Settings',
+    it: '<dark_gray>Impostazioni',
+    es: '<dark_gray>Ajustes',
+  },
+  'inventory.settings.back.name': { en: '<red><bold>Back', it: '<red><bold>Indietro' },
+  'inventory.settings.back.lore': {
+    en: '<gray>Return to the previous menu',
+    it: '<gray>Torna al menu precedente',
+    es: '<gradient:#8A8A8A:#CCCCCC Volver al menú anterior',
+  },
+  'scoreboard.default.lines': {
+    en: '<gray>Mode: <white>%mode%\n<gray>Map: <white>%map%\n<gray>Players: <white>%players%',
+    it: '<gray>Modalità: <white>%mode%\n<gray>Mappa: <white>%map%\n<gray>Giocatori: <white>%players%',
+  },
+  'event.join.broadcast': {
+    en: "<#FCA800>%host%</#FCA800> <gray>has opened an event. <click:run_command:'/event join'><hover:show_text:'Click to join'><yellow><underlined>Join now</underlined></yellow></hover></click>",
+  },
+  'event.countdown': {
+    en: '<gray>%host% starts the event in <white>%time%',
+    it: '<gray>L’evento inizia tra <white>%time%',
+  },
+  'event.full': { en: '<red>The event is full.', it: '<red>L’evento è pieno.' },
+  'event.cancelled': { en: '<red>The event was cancelled.' },
+};
+const count = (code: string) => Object.values(LANG_VALUES).filter((v) => v[code] !== undefined).length;
+queryClient.setQueryData(['lang'], {
+  languages: [
+    { code: 'en', display: '<white>English', position: 1, active: true },
+    { code: 'it', display: '<green>Italiano', position: 2, active: true },
+    { code: 'es', display: '<yellow>Español', position: 3, active: false },
+  ],
+  bundles: [
+    { ns: 'duels.lobby', owner: 'duels', bundle: 'lobby', keys: 110, done: { en: 110, it: 106, es: 13 } },
+    {
+      ns: 'duels.uhc',
+      owner: 'duels',
+      bundle: 'uhc',
+      keys: 11,
+      done: { en: 11, it: count('it'), es: count('es') },
+    },
+    { ns: 'metaverse.party', owner: 'metaverse', bundle: 'party', keys: 27, done: { en: 27, it: 27, es: 3 } },
+  ],
+  pending: true,
+});
+queryClient.setQueryData(['lang-keys', 'duels.uhc'], {
+  ns: 'duels.uhc',
+  keys: Object.entries(LANG_VALUES).map(([key, values]) => ({ key, values })),
+});
+
 function Preview() {
   // Lo stesso guscio di `main.tsx`, non uno simile: se l'anteprima impagina in
   // modo diverso dall'app non serve a trovare i difetti dell'app.
@@ -319,7 +388,13 @@ function Preview() {
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0 }}>
         <Topbar
           me={ME}
-          breadcrumb={screen === 'registro' ? 'Registro attività' : 'Utenti & Ruoli'}
+          breadcrumb={
+            screen === 'registro'
+              ? 'Registro attività'
+              : screen.startsWith('lingue')
+                ? 'Lingue'
+                : 'Utenti & Ruoli'
+          }
           onLogout={() => {}}
           feedDisconnected={false}
           // L'anteprima mostra solo Utenti e Registro, che il periodo non lo
@@ -329,6 +404,14 @@ function Preview() {
         <main className="app-main">
           {screen === 'registro' ? (
             <AuditPage_ />
+          ) : screen === 'lingue' ? (
+            <LangOverviewPage me={ME} />
+          ) : screen === 'lingue-chiavi' ? (
+            <LangKeysPage me={ME} />
+          ) : screen === 'lingue-traduci' ? (
+            <LangTranslatePage me={ME} />
+          ) : screen === 'lingue-elenco' ? (
+            <LangLanguagesPage me={ME} />
           ) : (
             <>
               <UsersPage me={ME} />
@@ -352,10 +435,45 @@ const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', com
 const acceptRoute = createRoute({ getParentRoute: () => rootRoute, path: '/accept', component: AcceptPage });
 const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: '/utenti', component: Preview });
 const auditRoute = createRoute({ getParentRoute: () => rootRoute, path: '/registro', component: Preview });
+// Le schermate delle Lingue leggono i parametri dalla rotta: gli stessi
+// percorsi dell'app, o `useParams` non li troverebbe.
+const shellLike = createRoute({ getParentRoute: () => rootRoute, id: 'shell', component: Outlet });
+const langOverview = createRoute({ getParentRoute: () => shellLike, path: '/lingue', component: Preview });
+const langLanguages = createRoute({
+  getParentRoute: () => shellLike,
+  path: '/lingue/elenco',
+  component: Preview,
+});
+const langKeys = createRoute({ getParentRoute: () => shellLike, path: '/lingue/b/$ns', component: Preview });
+const langTranslate = createRoute({
+  getParentRoute: () => shellLike,
+  path: '/lingue/b/$ns/traduci/$code',
+  component: Preview,
+});
 const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, usersRoute, auditRoute, acceptRoute]),
+  routeTree: rootRoute.addChildren([
+    indexRoute,
+    usersRoute,
+    auditRoute,
+    acceptRoute,
+    shellLike.addChildren([langOverview, langLanguages, langKeys, langTranslate]),
+  ]),
   history: createMemoryHistory({
-    initialEntries: [screen === 'registro' ? '/registro' : screen === 'invito' ? '/accept' : '/utenti'],
+    initialEntries: [
+      screen === 'registro'
+        ? '/registro'
+        : screen === 'invito'
+          ? '/accept'
+          : screen === 'lingue'
+            ? '/lingue'
+            : screen === 'lingue-chiavi'
+              ? '/lingue/b/duels.uhc'
+              : screen === 'lingue-traduci'
+                ? '/lingue/b/duels.uhc/traduci/es'
+                : screen === 'lingue-elenco'
+                  ? '/lingue/elenco'
+                  : '/utenti',
+    ],
   }),
 });
 

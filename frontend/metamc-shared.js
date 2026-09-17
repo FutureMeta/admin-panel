@@ -16,7 +16,12 @@
     {id:'duels-ratings', label:'Duels · Ratings'},
     {id:'duels-config', label:'Duels · Modes'},
     {id:'duels-maps', label:'Duels · Maps'},
-    {id:'duels-conf', label:'Duels · Configurazioni'}
+    {id:'duels-conf', label:'Duels · Configurazioni'},
+    {id:'lang-overview', label:'Lingue · Bundle'},
+    {id:'lang-keys', label:'Lingue · Chiavi'},
+    {id:'lang-editor', label:'Lingue · Editor chiave'},
+    {id:'lang-translate', label:'Lingue · Traduzione'},
+    {id:'lang-settings', label:'Lingue · Elenco'}
   ];
   
   const MODES = [
@@ -59,6 +64,10 @@
       { label:'Maps', icon:I.panel, screen:'duels-maps' },
       { label:'Configurazioni', icon:I.cfg, screen:'duels-conf' }
     ]},
+    { area:'Lingue', items:[
+      { label:'Bundle', icon:I.globe || I.grid, screen:'lang-overview' },
+      { label:'Elenco', icon:I.cfg, screen:'lang-settings' }
+    ]},
     { area:'Amministrazione', items:[
       { label:'Utenti & Ruoli', icon:I.users, screen:'utenti' },
       { label:'Registro attività', icon:I.log, screen:'registro' }
@@ -67,7 +76,8 @@
   const BREAD = {
     shell:'App shell', panoramica:'Panoramica network', towny:'Dettaglio modalità · Towny',
     utenti:'Utenti & Ruoli', registro:'Registro attività',
-    'duels-live':'Duels · Live', 'duels-trends':'Duels · Trends', 'duels-ratings':'Duels · Ratings', 'duels-config':'Duels · Modes', 'duels-maps':'Duels · Maps', 'duels-conf':'Duels · Configurazioni'
+    'duels-live':'Duels · Live', 'duels-trends':'Duels · Trends', 'duels-ratings':'Duels · Ratings', 'duels-config':'Duels · Modes', 'duels-maps':'Duels · Maps', 'duels-conf':'Duels · Configurazioni',
+    'lang-overview':'Lingue · Bundle', 'lang-keys':'Lingue · duels.uhc', 'lang-editor':'Lingue · match.starting-title', 'lang-translate':'Lingue · Traduzione', 'lang-settings':'Lingue · Elenco'
   };
   const RAMP = ['#0F212A','#16394B','#1E5670','#4C6E72','#8A7147','#C08129','#F0A63F'];
   const fmt = n => Number(n).toLocaleString('it-IT');
@@ -121,7 +131,10 @@
     sistema:'0-design-system.dc.html', login:'1-login.dc.html', invito:'2-accettazione-invito.dc.html',
     shell:'3-app-shell.dc.html', panoramica:'4-panoramica-network.dc.html', towny:'5-dettaglio-modalita.dc.html',
     utenti:'6-utenti-e-ruoli.dc.html', registro:'7-registro-attivita.dc.html', responsive:'8-responsive.dc.html',
-    'duels-live':'13-duels-live.dc.html', 'duels-conf':'14-duels-configurazioni.dc.html', 'duels-trends':'9-duels-trends.dc.html', 'duels-ratings':'10-duels-ratings.dc.html', 'duels-config':'11-duels-configurazione.dc.html', 'duels-maps':'12-duels-mappe.dc.html'
+    'duels-live':'13-duels-live.dc.html', 'duels-conf':'14-duels-configurazioni.dc.html',
+    'lang-overview':'15-lingue-panoramica.dc.html', 'lang-keys':'15-lingue-esplora.dc.html',
+    'lang-editor':'15-lingue-editor.dc.html', 'lang-translate':'15-lingue-traduzione.dc.html', 'lang-translate':'15-lingue-traduzione.dc.html',
+    'lang-settings':'15-lingue-impostazioni.dc.html', 'duels-trends':'9-duels-trends.dc.html', 'duels-ratings':'10-duels-ratings.dc.html', 'duels-config':'11-duels-configurazione.dc.html', 'duels-maps':'12-duels-mappe.dc.html'
   };
 
   function hexField() {
@@ -1296,7 +1309,7 @@
         bg: p === ctx.state.period ? 'var(--s-overlay)' : 'transparent',
         fg: p === ctx.state.period ? 'var(--tx-primary)' : 'var(--tx-muted)'
       })),
-      showFilters: scr !== 'utenti' && scr !== 'registro' && scr !== 'duels-ratings' && scr !== 'duels-config' && scr !== 'duels-maps' && scr !== 'duels-live' && scr !== 'duels-conf',
+      showFilters: scr !== 'utenti' && scr !== 'registro' && scr !== 'duels-ratings' && scr !== 'duels-config' && scr !== 'duels-maps' && scr !== 'duels-live' && scr !== 'duels-conf' && scr.indexOf('lang-') !== 0,
       modeTabs: MODES.map(m => ({
         name: m.name,
         go: () => ctx.setState({modeSel: m.name}),
@@ -1997,7 +2010,598 @@
     };
   }
 
+  /* ---------- Lingue (piattaforma di traduzione) ---------- */
+  const MM_NAMED = {black:'#101010', dark_blue:'#3A4FB8', dark_green:'#2F9E44', dark_aqua:'#2A9D9D',
+    dark_red:'#B02B2B', dark_purple:'#9B4FC4', gold:'#E8A427', gray:'#9AA7AE', dark_gray:'#6C7A82',
+    blue:'#6B8BFF', green:'#5ED17A', aqua:'#63D6E0', red:'#F06A6A', light_purple:'#E77BD6',
+    yellow:'#EBD45C', white:'#EEF3F6'};
+  const MM_PH = {'%player%':'Steve', '%time%':'30s', '%host%':'Vally90', '%mode%':'UHC',
+    '%map%':'Highlands', '%players%':'14/24', '%event%':'Crystal Royale'};
+  const TAG_C = 'var(--tx-muted)';
+
+  const mcShadow = (c) => {
+    if (typeof c !== 'string' || c.charAt(0) !== '#' || c.length !== 7) return 'rgba(0,0,0,.72)';
+    const n = parseInt(c.slice(1), 16);
+    const r = Math.round(((n >> 16) & 255) * 0.247), g = Math.round(((n >> 8) & 255) * 0.247), b = Math.round((n & 255) * 0.247);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+  };
+
+  function mmLines(src, mode) {
+    const stack = [];
+    const out = [];
+    const errs = [];
+    (src || '').split('\n').forEach((raw, li) => {
+      const toks = [];
+      const re = /<[^<>]*>/g;
+      let pos = 0, m;
+      const cur = () => {
+        let c = 'var(--tx-secondary)', g = null, b = false, u = false, inter = false, hov = '';
+        stack.forEach(s => {
+          if (s.k === 'color') { c = s.v; g = null; }
+          if (s.k === 'gradient') { g = s; }
+          if (s.k === 'bold') b = true;
+          if (s.k === 'underlined') u = true;
+          if (s.k === 'inter') { inter = true; if (s.t) hov = s.t; }
+        });
+        return {c, g, b, u, inter, hov};
+      };
+      const pushText = (txt) => {
+        if (!txt) return;
+        const st = cur();
+        txt.split(/(%[a-z_]+%)/).forEach(part => {
+          if (!part) return;
+          const isPh = /^%[a-z_]+%$/.test(part);
+          if (isPh) {
+            toks.push({t: mode === 'render' ? (MM_PH[part] || part) : part, kind:'ph',
+              c:'var(--tx-primary)', w: st.b ? '700' : '600',
+              bg:'var(--blu-soft)', td:'none', pad:'0 3px', title: mode === 'render' ? part : ''});
+            return;
+          }
+          if (st.g) {
+            const n = part.length;
+            for (let i = 0; i < n; i++) {
+              toks.push({t: part[i], kind:'text',
+                c: lerpHex(st.g.a, st.g.b, n < 2 ? 0 : i / (n - 1)),
+                w: st.b ? '700' : '400', bg:'transparent',
+                td: st.u || st.inter ? 'underline' : 'none', pad:'0', title: st.hov});
+            }
+          } else {
+            toks.push({t: part, kind:'text', c: st.c, w: st.b ? '700' : '400', bg:'transparent',
+              td: st.u || st.inter ? 'underline' : 'none', pad:'0', title: st.hov});
+          }
+        });
+      };
+      while ((m = re.exec(raw))) {
+        pushText(raw.slice(pos, m.index));
+        pos = m.index + m[0].length;
+        const body = m[0].slice(1, -1);
+        const closing = body.charAt(0) === '/';
+        const name = (closing ? body.slice(1) : body).split(':')[0].toLowerCase();
+        let bad = false;
+        if (closing) {
+          let i = -1;
+          for (let j = stack.length - 1; j >= 0; j--) if (stack[j].name === name) { i = j; break; }
+          if (i < 0) bad = true; else stack.splice(i, 1);
+        } else if (name === 'reset') {
+          stack.length = 0;
+        } else if (name === 'gradient') {
+          const parts = body.split(':').slice(1);
+          const ok = parts.length >= 2 && parts.every(p => /^#[0-9a-f]{6}$/i.test(p));
+          if (!ok) bad = true;
+          else stack.push({k:'gradient', name:'gradient', a:parts[0], b:parts[parts.length - 1]});
+        } else if (MM_NAMED[name]) {
+          stack.push({k:'color', name:name, v:MM_NAMED[name]});
+        } else if (/^#[0-9a-f]{6}$/i.test(name)) {
+          stack.push({k:'color', name:name, v:name});
+        } else if (name === 'bold' || name === 'b') {
+          stack.push({k:'bold', name:name});
+        } else if (name === 'underlined' || name === 'italic' || name === 'obfuscated') {
+          stack.push({k:'underlined', name:name});
+        } else if (name === 'hover' || name === 'click') {
+          const q = body.match(/'([^']*)'/);
+          stack.push({k:'inter', name:name, t: name === 'hover' ? (q ? q[1] : '') : ''});
+        } else {
+          bad = true;
+        }
+        if (bad) errs.push(body);
+        if (mode !== 'render') {
+          toks.push({t: m[0], kind: bad ? 'err' : 'tag',
+            c: bad ? 'var(--err)' : TAG_C, w:'400',
+            bg: bad ? 'var(--err-soft)' : 'transparent',
+            td: bad ? 'underline' : 'none', pad: bad ? '0 2px' : '0', title: bad ? 'tag non valido' : ''});
+        }
+      }
+      pushText(raw.slice(pos));
+      const norm = (toks.length ? toks : [{t:' ', kind:'text', c:'var(--tx-muted)', w:'400', bg:'transparent', td:'none', pad:'0', title:''}]).map(k => ({
+        ...k,
+        sc: mcShadow(k.c),
+        bgimg: k.grad || 'none',
+        clip: k.grad ? 'text' : 'border-box',
+        c: k.grad ? 'transparent' : k.c,
+        ws: k.grad ? 'nowrap' : 'pre-wrap'
+      }));
+      out.push({toks: norm});
+    });
+    return {lines: out, errs: errs, open: stack.filter(s => s.k === 'gradient' || s.k === 'inter').map(s => s.name)};
+  }
+  const mmSrc = (s) => mmLines(s, 'src').lines;
+  const mmRen = (s) => mmLines(s, 'render').lines;
+  const mmBad = (s) => mmLines(s, 'src').errs.length > 0;
+  const phOf = (s) => ((s || '').match(/%[a-z_]+%/g) || []);
+
+  const LG_CODES = ['en','it','es','fr','de','pt','pl'];
+  const LG_BUNDLES = [
+    {ns:'duels.lobby', owner:'duels', keys:110, pct:{en:100, it:96, es:12, fr:74, de:61, pt:9, pl:0}, iss:0},
+    {ns:'duels.game', owner:'duels', keys:96, pct:{en:100, it:88, es:11, fr:70, de:55, pt:7, pl:0}, iss:1},
+    {ns:'duels.uhc', owner:'duels', keys:41, pct:{en:100, it:78, es:15, fr:66, de:44, pt:12, pl:0}, iss:2},
+    {ns:'duels.crystal-royale', owner:'duels', keys:38, pct:{en:100, it:71, es:8, fr:52, de:37, pt:0, pl:0}, iss:0},
+    {ns:'duels.event', owner:'duels', keys:52, pct:{en:100, it:94, es:13, fr:81, de:63, pt:11, pl:5}, iss:1},
+    {ns:'metaverse.party', owner:'metaverse', keys:27, pct:{en:100, it:100, es:11, fr:89, de:74, pt:15, pl:0}, iss:0},
+    {ns:'metaverse.core', owner:'metaverse', keys:64, pct:{en:100, it:89, es:9, fr:77, de:58, pt:8, pl:3}, iss:0}
+  ];
+
+  const LG_LANGS = [
+    {code:'en', disp:'<white>English', icon:'PAPER', active:true, ref:true, done:100},
+    {code:'it', disp:'<green>Italiano', icon:'BOOK', active:true, ref:false, done:91},
+    {code:'es', disp:'<yellow>Espa\u00f1ol', icon:'WRITABLE_BOOK', active:false, ref:false, done:11}
+  ];
+  const LG_TREE = [
+    {label:'match', depth:0, n:9},
+    {label:'starting-title', depth:1, n:1, leaf:true},
+    {label:'starting-subtitle', depth:1, n:1, leaf:true},
+    {label:'inventory', depth:0, n:16},
+    {label:'settings', depth:1, n:7, active:true},
+    {label:'back', depth:2, n:2, leaf:true},
+    {label:'scoreboard', depth:0, n:6},
+    {label:'default', depth:1, n:4, leaf:true},
+    {label:'event', depth:0, n:10},
+    {label:'join', depth:1, n:3, leaf:true},
+    {label:'countdown', depth:1, n:2, leaf:true}
+  ];
+  const LG_KEYS = [
+    {k:'match.starting-title', en:'<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient> <gray>starts in <white>%time%', it:'ov', es:'miss'},
+    {k:'match.starting-subtitle', en:'<gray>Get ready, <white>%player%', it:'tr', es:'miss'},
+    {k:'match.ended', en:'<green>Match ended. <gray>Winner: <white>%player%', it:'tr', es:'miss'},
+    {k:'inventory.settings.title', en:'<dark_gray>Settings', it:'tr', es:'tr'},
+    {k:'inventory.settings.back.name', en:'<red><bold>Back', it:'ov', es:'miss'},
+    {k:'inventory.settings.back.lore', en:'<gray>Return to the previous menu', it:'tr', es:'bad'},
+    {k:'inventory.settings.sounds.name', en:'<yellow>Sounds', it:'miss', es:'miss'},
+    {k:'scoreboard.default.title', en:'<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient>', it:'tr', es:'miss'},
+    {k:'scoreboard.default.lines', en:'<gray>Mode: <white>%mode%\n<gray>Map: <white>%map%\n<gray>Players: <white>%players%\n<gray>Time: <white>%time%', it:'ov', es:'miss'},
+    {k:'event.join.broadcast', en:"<#FCA800>%host%</#FCA800> <gray>has opened an event. <click:run_command:'/event join'><hover:show_text:'Click to join'><yellow><underlined>Join now</underlined></yellow></hover></click>", it:'ov', es:'miss'},
+    {k:'event.join.self', en:'<green>You joined the event.', it:'tr', es:'tr'},
+    {k:'event.countdown', en:'<gray>%host% starts the event in <white>%time%', it:'ph', es:'miss'},
+    {k:'event.full', en:'<red>The event is full.', it:'tr', es:'miss'},
+    {k:'event.cancelled', en:'<red>The event was cancelled.', it:'miss', es:'miss'}
+  ];
+  const LG_VALUES = {
+    'match.starting-title': {it:'<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient> <gray>inizia tra <white>%time%', es:''},
+    'match.starting-subtitle': {it:'<gray>Preparati, <white>%player%', es:''},
+    'match.ended': {it:'<green>Partita finita. <gray>Vincitore: <white>%player%', es:''},
+    'inventory.settings.title': {it:'<dark_gray>Impostazioni', es:'<dark_gray>Ajustes'},
+    'inventory.settings.back.name': {it:'<red><bold>Indietro', es:''},
+    'inventory.settings.back.lore': {it:'<gray>Torna al menu precedente', es:'<gradient:#8A8A8A:#CCCCCC Volver al men\u00fa anterior'},
+    'inventory.settings.sounds.name': {it:'', es:''},
+    'scoreboard.default.title': {it:'<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient>', es:''},
+    'scoreboard.default.lines': {it:'<gray>Modalit\u00e0: <white>%mode%\n<gray>Mappa: <white>%map%\n<gray>Giocatori: <white>%players%\n<gray>Tempo: <white>%time%', es:''},
+    'event.join.broadcast': {it:"<#FCA800>%host%</#FCA800> <gray>ha aperto un evento. <click:run_command:'/event join'><hover:show_text:'Clicca per entrare'><yellow><underlined>Entra ora</underlined></yellow></hover></click>", es:''},
+    'event.join.self': {it:'<green>Sei entrato nell\u2019evento.', es:'<green>Te has unido al evento.'},
+    'event.countdown': {it:'<gray>L\u2019evento inizia tra <white>%time%', es:''},
+    'event.full': {it:'<red>L\u2019evento \u00e8 pieno.', es:''},
+    'event.cancelled': {it:'', es:''}
+  };
+  const LG_STATE = {
+    tr:{label:'tradotta', fg:'var(--ok)', bg:'var(--ok-soft)'},
+    ov:{label:'tradotta', fg:'var(--ok)', bg:'var(--ok-soft)'},
+    miss:{label:'mancante', fg:'var(--tx-muted)', bg:'var(--s-inset)'},
+    ph:{label:'placeholder', fg:'var(--warn)', bg:'var(--warn-soft)'},
+    bad:{label:'non valido', fg:'var(--err)', bg:'var(--err-soft)'}
+  };
+  const LG_HISTORY = [
+    {v:'v3', at:'12/09/2026 14:32', by:'Vally90', what:'valore modificato', cur:true},
+    {v:'v2', at:'09/09/2026 18:05', by:'Psicosi', what:'valore modificato', cur:false},
+    {v:'v1', at:'02/09/2026 11:20', by:'Vally90', what:'valore modificato', cur:false}
+  ];
+  const LG_EDIT = {
+    key:'match.starting-title', bundle:'duels.uhc', path:'match \u203a starting-title',
+    langs:[
+      {code:'en', name:'English', ref:true,
+        value:'<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient> <gray>starts in <white>%time%'},
+      {code:'it', name:'Italiano', ref:false,
+        value:'<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient> <gray>inizia tra <white>%time%'},
+      {code:'es', name:'Espa\u00f1ol', ref:false, off:true, value:''}
+    ]
+  };
+  const LG_TR = [
+    {k:'event.countdown', en:'<gray>%host% starts the event in <white>%time%', it:'<gray>L\u2019evento inizia tra <white>%time%'},
+    {k:'event.full', en:'<red>The event is full.', it:'<red>L\u2019evento \u00e8 pieno.'},
+    {k:'event.cancelled', en:'<red>The event was cancelled.', it:''}
+  ];
+
+  function lang(ctx) {
+    const s = ctx.state;
+    const owner = s.lgOwner || 'Tutti';
+    const onlyIssues = !!s.lgIssues;
+    const empty = !!s.lgEmpty;
+    const skel = !!s.lgSkel;
+    const err = !!s.lgErr;
+
+    const bar = (pct, c) => ({w: pct + '%', c: c});
+    const focus = s.lgFocus || 'it';
+    const heat = (p) => p >= 95 ? 'var(--ok)' : p >= 70 ? 'var(--warn)' : p > 0 ? 'var(--err)' : 'var(--s-inset)';
+    const totalKeys = LG_BUNDLES.reduce((m,x) => m + x.keys, 0);
+
+    /* elenco lingue: crescono in verticale, non in larghezza */
+    const langPick = LG_CODES.map(cd => {
+      const done = LG_BUNDLES.reduce((m,x) => m + Math.round(x.keys * (x.pct[cd] || 0) / 100), 0);
+      const pct = Math.round(done / totalKeys * 100);
+      const meta = LG_LANGS.filter(l => l.code === cd)[0];
+      return {
+        code: cd, name: meta ? meta.code.toUpperCase() : cd.toUpperCase(),
+        sel: cd === focus,
+        ref: cd === 'en',
+        pct: pct + '%', w: pct + '%', c: heat(pct),
+        todo: pct >= 100 ? 'completa' : fmt(totalKeys - done) + ' chiavi da fare',
+        bg: cd === focus ? 'var(--ac-soft)' : 'transparent',
+        bd: cd === focus ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+        fg: cd === focus ? 'var(--ac-text)' : 'var(--tx-primary)',
+        go: () => ctx.setState({lgFocus: cd})
+      };
+    });
+
+    const groups = ['duels','metaverse'].filter(o => owner === 'Tutti' || owner === o).map(o => ({
+      owner:o, label:o,
+      count: LG_BUNDLES.filter(x => x.owner === o).length + ' bundle',
+      rows: LG_BUNDLES.filter(x => x.owner === o && (!onlyIssues || x.iss > 0)).map(x => {
+        const p = x.pct[focus] || 0;
+        const done = Math.round(x.keys * p / 100);
+        return {
+          ns:x.ns, keys:x.keys + '',
+          doneLabel: fmt(done) + ' / ' + x.keys,
+          missLabel: p >= 100 ? '\u2014' : fmt(x.keys - done) + ' da fare',
+          pct: p + '%', w: p + '%', c: heat(p),
+          full: p >= 100, notFull: p < 100,
+          trHref:'15-lingue-traduzione.dc.html',
+          iss:x.iss, hasIss: x.iss > 0,
+          issLabel: x.iss + (x.iss === 1 ? ' problema' : ' problemi'),
+          href:'15-lingue-esplora.dc.html'
+        };
+      })
+    })).filter(g => g.rows.length);
+    const totKeys = LG_BUNDLES.reduce((a,b) => a + b.keys, 0);
+    const totOv = LG_BUNDLES.reduce((a,b) => a + b.ov, 0);
+    const totIss = LG_BUNDLES.reduce((a,b) => a + b.iss, 0);
+    const kpis = [
+      {label:'Bundle', value: LG_BUNDLES.length + '', unit:'registrati dai plugin', color:'var(--tx-primary)'},
+      {label:'Chiavi', value: fmt(totKeys), unit:'in inglese', color:'var(--tx-primary)'},
+      {label:'Lingue', value: LG_CODES.length + '', unit:'en \u00e8 il fallback', color:'var(--tx-primary)'},
+      {label:'Problemi aperti', value: totIss + '', unit:'da risolvere', color: totIss ? 'var(--warn)' : 'var(--ok)'}
+    ];
+
+    /* --- esplora chiavi --- */
+    const filters = [
+      {id:'miss', label:'Non tradotte'},
+      {id:'ph', label:'Placeholder'}, {id:'bad', label:'MiniMessage non valido'}
+    ];
+    const act = s.lgFilter || null;
+    const selKey = s.lgKey || 'match.starting-title';
+    const openSet = s.lgOpen || (function () {
+      const o = {}; const seg = selKey.split('.');
+      for (let i = 1; i < seg.length; i++) o[seg.slice(0, i).join('.')] = true;
+      return o;
+    })();
+    const nodes = [];
+    (function build(prefix, keys, depth) {
+      const groups = [];
+      keys.forEach(k => {
+        const rest = k.k.slice(prefix ? prefix.length + 1 : 0);
+        const head = rest.split('.')[0];
+        const isLeaf = rest.indexOf('.') < 0;
+        let g = groups.filter(x => x.head === head)[0];
+        if (!g) { g = {head: head, leaf: isLeaf, items: []}; groups.push(g); }
+        g.items.push(k);
+        if (!isLeaf) g.leaf = false;
+      });
+      groups.forEach(g => {
+        const full = prefix ? prefix + '.' + g.head : g.head;
+        if (g.leaf) {
+          nodes.push({kind:'key', label:g.head, full:full, depth:depth});
+        } else {
+          const open = !!openSet[full];
+          nodes.push({kind:'dir', label:g.head, full:full, depth:depth, open:open, n:g.items.length});
+          if (open) build(full, g.items, depth + 1);
+        }
+      });
+    })('', LG_KEYS, 0);
+    const treeRows = nodes.map(n => ({
+      label: n.label, isDir: n.kind === 'dir', isKey: n.kind === 'key',
+      n: n.kind === 'dir' ? n.n + '' : '',
+      pad: (11 + n.depth * 15) + 'px',
+      sel: n.full === selKey,
+      bg: n.full === selKey ? 'var(--ac-soft)' : 'transparent',
+      bd: n.full === selKey ? 'var(--ac)' : 'transparent',
+      fg: n.full === selKey ? 'var(--ac-text)' : n.kind === 'dir' ? 'var(--tx-primary)' : 'var(--tx-secondary)',
+      weight: n.kind === 'dir' ? '600' : '400',
+      rot: n.open ? 'rotate(90deg)' : 'rotate(0deg)',
+      go: n.kind === 'dir'
+        ? () => { const nx = {}; Object.keys(openSet).forEach(k => nx[k] = openSet[k]); nx[n.full] = !openSet[n.full]; ctx.setState({lgOpen: nx}); }
+        : () => ctx.setState({lgKey: n.full})
+    }));
+    const keyRows = LG_KEYS.filter(r => !act || r.it === act || r.es === act).map(r => ({
+      k:r.k,
+      sel: r.k === selKey,
+      bg: r.k === selKey ? 'var(--ac-soft)' : 'transparent',
+      bd: r.k === selKey ? 'var(--ac)' : 'transparent',
+      fg: r.k === selKey ? 'var(--ac-text)' : 'var(--tx-primary)',
+      go: () => ctx.setState({lgKey: r.k}),
+      render: mmRen(r.en.split('\n')[0]),
+      multi: r.en.indexOf('\n') >= 0,
+      multiLabel: r.en.split('\n').length + ' righe',
+      chips: [
+        {code:'it', ...LG_STATE[r.it]},
+        {code:'es', ...LG_STATE[r.es]}
+      ],
+      href:'15-lingue-editor.dc.html'
+    }));
+
+    /* --- preview di gioco --- */
+    const mcLang = s.mcLang || 'it';
+    const mcRaw = mcLang === 'en' ? null : ((LG_VALUES[selKey] || {})[mcLang] || '');
+    const mcKeyRow = LG_KEYS.filter(r => r.k === selKey)[0] || LG_KEYS[0];
+    const mcFallback = mcLang !== 'en' && !mcRaw;
+    const mcText = mcFallback || mcLang === 'en' ? mcKeyRow.en : mcRaw;
+    const mcLines = mmRen(mcText);
+    const mcIsLines = /\.lines$/.test(selKey);
+    const mcIsLore = /lore$/.test(selKey);
+
+    /* --- editor chiave: valori della chiave selezionata --- */
+    const krow = LG_KEYS.filter(r => r.k === selKey)[0] || LG_KEYS[0];
+    const kvals = LG_VALUES[krow.k] || {it:'', es:''};
+    const enPh = phOf(krow.en);
+    const cols = [
+      {code:'en', name:'English', value: krow.en},
+      {code:'it', name:'Italiano', value: kvals.it || ''},
+      {code:'es', name:'Espa\u00f1ol', off:true, value: kvals.es || ''}
+    ].map(l => {
+      const has = !!l.value;
+      const miss = has ? enPh.filter(p => l.value.indexOf(p) < 0) : [];
+      const broken = has && mmBad(l.value);
+      return {
+        code:l.code, name:l.name, off:!!l.off,
+        has: has, empty: !has,
+        valueLines: has ? mmSrc(l.value) : [],
+        renderLines: has ? mmRen(l.value) : [],
+        phMiss: miss, phOk: miss.length === 0, phBad: miss.length > 0,
+        phLabel: miss.length ? 'manca ' + miss.join(', ') + ' rispetto a en' : '',
+        broken: broken,
+        bd: broken ? 'var(--err)' : miss.length ? 'var(--warn)' : 'var(--bd-strong)'
+      };
+    });
+    const warns = [
+      {kind:'ok', title:'MiniMessage valido', body:'Tutti i tag sono chiusi e gli attributi sono leggibili.', fg:'var(--ok)', bg:'var(--ok-soft)'},
+      {kind:'ok', title:'Placeholder allineati', body:'it contiene %time%, come l\u2019inglese.', fg:'var(--ok)', bg:'var(--ok-soft)'},
+      {kind:'info', title:'es non \u00e8 tradotta', body:'Manca il valore per es: in gioco i giocatori vedono l\u2019inglese. Non \u00e8 un errore, \u00e8 uno stato.', fg:'var(--blu-viz)', bg:'var(--blu-soft)'}
+    ];
+
+    /* --- modalità traduzione --- */
+    const trBundle = s.lgTrBundle || 'duels.uhc';
+    const trLang = s.lgTrLang || 'it';
+    const trStarted = s.lgTrStarted !== false;
+    const trTodo = LG_KEYS.filter(r => !((LG_VALUES[r.k] || {})[trLang]));
+    const trIdx = Math.min(s.lgTrIdx || 0, Math.max(0, trTodo.length - 1));
+    const trItem = trTodo[trIdx] || LG_KEYS[0];
+    const trDraft = s.lgTrDraft !== undefined ? s.lgTrDraft : '';
+    const trSrcPh = phOf(trItem.en), trDstPh = phOf(trDraft);
+    const bundleMeta = LG_BUNDLES.filter(x => x.ns === trBundle)[0] || LG_BUNDLES[2];
+    const trTotal = LG_KEYS.length;
+    const trMiss = trTodo.length;
+    const trDone = trTotal - trMiss;
+    const trPct = Math.round(trDone / trTotal * 100);
+    const trRefs = LG_CODES.filter(cd => cd !== trLang).map(cd => {
+      const v = cd === 'en' ? trItem.en : ((LG_VALUES[trItem.k] || {})[cd] || '');
+      return {code:cd, has: !!v, missing: !v, lines: v ? mmSrc(v) : [], renderLines: v ? mmRen(v) : [],
+        fg: cd === 'en' ? 'var(--blu-viz)' : 'var(--tx-secondary)',
+        bg: cd === 'en' ? 'var(--blu-soft)' : 'var(--s-inset)'};
+    });
+    /* --- lingue e propagazione --- */
+    const langRows = LG_LANGS.map((l, i) => ({
+      code:l.code, icon:l.icon, pos:(i + 1) + '',
+      dispSrc: mmSrc(l.disp), dispRen: mmRen(l.disp),
+      active:l.active,
+      stateLabel: l.active ? 'attiva' : 'disattivata',
+      stateFg: l.active ? 'var(--ok)' : 'var(--tx-muted)',
+      stateBg: l.active ? 'var(--ok-soft)' : 'var(--s-inset)',
+      knobX: l.active ? '15px' : '2px',
+      trackBg: l.active ? 'var(--ac)' : 'var(--s-inset)',
+      trackBd: l.active ? 'var(--ac)' : 'var(--bd-strong)',
+      knobBg: l.active ? '#160A02' : 'var(--tx-muted)',
+      done: l.done + '%', doneW: l.done + '%',
+      doneC: l.done >= 90 ? 'var(--ok)' : l.done >= 70 ? 'var(--warn)' : 'var(--err)',
+      ref: !!l.ref
+    }));
+
+    return {
+      lgKpis: kpis, lgGroups: groups,
+      lgCodes: LG_CODES,
+      lgFocus: focus,
+      lgFocusUpper: focus.toUpperCase(),
+      lgLangPick: langPick,
+      lgFocusChips: LG_CODES.map(cd => ({
+        code:cd, go: () => ctx.setState({lgFocus: cd}),
+        bg: cd === focus ? 'var(--ac-soft)' : 'var(--s-inset)',
+        fg: cd === focus ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        bd: cd === focus ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)'
+      })),
+      lgScale: [
+        {label:'0%', bg:'var(--s-inset)'},
+        {label:'10\u201339%', bg:'var(--err)'},
+        {label:'40\u201369%', bg:'var(--warn)'},
+        {label:'70\u201394%', bg:'color-mix(in srgb, var(--ok) 62%, var(--warn))'},
+        {label:'95\u2013100%', bg:'var(--ok)'}
+      ],
+      lgOwnerLabel: owner,
+      lgOwnerOpts: ['Tutti','duels','metaverse'].map(o => ({
+        label:o, fg: o === owner ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        go: () => ctx.setState({lgOwner:o, lgOwnerMenu:false})
+      })),
+      lgOwnerMenuOpen: !!s.lgOwnerMenu,
+      toggleLgOwnerMenu: () => ctx.setState(st => ({lgOwnerMenu: !st.lgOwnerMenu})),
+      lgIssuesOn: onlyIssues,
+      lgIssuesBg: onlyIssues ? 'var(--warn-soft)' : 'var(--s-inset)',
+      lgIssuesFg: onlyIssues ? 'var(--warn)' : 'var(--tx-secondary)',
+      lgIssuesBd: onlyIssues ? 'rgba(224,163,46,.45)' : 'var(--bd-subtle)',
+      toggleLgIssues: () => ctx.setState(st => ({lgIssues: !st.lgIssues})),
+      lgEmpty: empty,
+      toggleLgEmpty: () => ctx.setState(st => ({lgEmpty: !st.lgEmpty})),
+      lgEmptyBg: empty ? 'var(--ac-soft)' : 'var(--s-elevated)',
+      lgEmptyFg: empty ? 'var(--ac-text)' : 'var(--tx-secondary)',
+      lgEmptyBd: empty ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+
+      lgTree: LG_TREE.map(t => ({
+        label:t.label, n:t.n + '', pad:(12 + t.depth * 14) + 'px',
+        fg: t.active ? 'var(--ac-text)' : t.leaf ? 'var(--tx-secondary)' : 'var(--tx-primary)',
+        bg: t.active ? 'var(--ac-soft)' : 'transparent',
+        weight: t.leaf ? '400' : '600'
+      })),
+      lgKeyRows: keyRows,
+      lgSelKey: selKey,
+      mcLangOpts: LG_CODES.slice(0, 3).map(cd => ({
+        code: cd, go: () => ctx.setState({mcLang: cd}),
+        bg: mcLang === cd ? 'var(--ac-soft)' : 'var(--s-inset)',
+        fg: mcLang === cd ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        bd: mcLang === cd ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)'
+      })),
+      mcLang: mcLang,
+      mcFallback: mcFallback,
+      mcLines: mcLines,
+      mcIsLines: mcIsLines, mcIsTitleKey: !mcIsLines,
+      mcScoreTitle: mcIsLines ? mmRen('<gradient:#FF4A4A:#FF2121><bold>UHC</bold></gradient>') : mcLines,
+      mcScoreBody: mcIsLines ? mcLines : mmRen('<gray>Modalit\u00e0: <white>%mode%\n<gray>Mappa: <white>%map%\n<gray>Giocatori: <white>%players%\n<gray>Tempo: <white>%time%'),
+      mcLoreName: mcIsLore ? mmRen('<red><bold>Indietro') : mcLines,
+      mcLoreBody: mcIsLore ? mcLines : mmRen('<gray>Torna al menu precedente'),
+      mcCtxOpts: [
+        {id:'chat', label:'Chat'}, {id:'title', label:'Titolo'}, {id:'subtitle', label:'Sottotitolo'},
+        {id:'actionbar', label:'Action bar'}, {id:'bossbar', label:'Boss bar'},
+        {id:'scoreboard', label:'Scoreboard'}, {id:'gui', label:'Titolo GUI'}, {id:'lore', label:'Lore oggetto'}
+      ].map(o => ({
+        label:o.label, go: () => ctx.setState({mcCtx:o.id}),
+        bg: (s.mcCtx || 'chat') === o.id ? 'var(--ac-soft)' : 'var(--s-inset)',
+        fg: (s.mcCtx || 'chat') === o.id ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        bd: (s.mcCtx || 'chat') === o.id ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)'
+      })),
+      mcIsChat: (s.mcCtx || 'chat') === 'chat',
+      mcIsTitle: (s.mcCtx || 'chat') === 'title',
+      mcIsSub: (s.mcCtx || 'chat') === 'subtitle',
+      mcIsAction: (s.mcCtx || 'chat') === 'actionbar',
+      mcIsBoss: (s.mcCtx || 'chat') === 'bossbar',
+      mcIsScore: (s.mcCtx || 'chat') === 'scoreboard',
+      mcIsGui: (s.mcCtx || 'chat') === 'gui',
+      mcIsLore: (s.mcCtx || 'chat') === 'lore',
+      mcSlots: [1,2,3,4,5,6,7,8,9].map(i => ({i:i})),
+      mcGuiSlots: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27].map(i => ({i:i})),
+      mcChatBefore: [
+        {lines: mmRen('<gray>[<white>Vally90<gray>] <white>ci vediamo in arena')},
+        {lines: mmRen('<yellow>Psicosi <gray>si \u00e8 connesso')}
+      ],
+      mcScoreLines: mmRen('<gray>Modalit\u00e0: <white>UHC\n<gray>Mappa: <white>Highlands\n<gray>Giocatori: <white>14/24\n<gray>Tempo: <white>30s').map(l => ({toks:l.toks})),
+      mcItemName: mmRen('<red><bold>Indietro'),
+      mcItemLore: mmRen('<gray>Torna al menu precedente\n<dark_gray>Clic destro per chiudere').map(l => ({toks:l.toks})),
+      lgTreeRows: treeRows,
+      lgTreeCount: nodes.filter(n => n.kind === 'key').length + ' chiavi visibili \u00b7 41 nel bundle',
+      lgKeyCount: keyRows.length + ' di 41 chiavi \u00b7 duels.uhc',
+      lgFilters: filters.map(f => ({
+        label:f.label, go: () => ctx.setState(st => ({lgFilter: st.lgFilter === f.id ? null : f.id})),
+        bg: act === f.id ? 'var(--ac-soft)' : 'var(--s-inset)',
+        fg: act === f.id ? 'var(--ac-text)' : 'var(--tx-secondary)',
+        bd: act === f.id ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)'
+      })),
+      lgSearch: s.lgSearch || '',
+      onLgSearch: (e) => ctx.setState({lgSearch: e.target.value}),
+      lgSkel: skel,
+      toggleLgSkel: () => ctx.setState(st => ({lgSkel: !st.lgSkel})),
+      lgSkelBg: skel ? 'var(--ac-soft)' : 'var(--s-elevated)',
+      lgSkelFg: skel ? 'var(--ac-text)' : 'var(--tx-secondary)',
+      lgSkelBd: skel ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+      lgSkelRows: [1,2,3,4,5,6,7,8].map(i => ({w:(48 + (i % 4) * 11) + '%'})),
+      lgErr: err,
+      toggleLgErr: () => ctx.setState(st => ({lgErr: !st.lgErr})),
+      lgErrBg: err ? 'var(--err-soft)' : 'var(--s-elevated)',
+      lgErrFg: err ? 'var(--err)' : 'var(--tx-secondary)',
+      lgErrBd: err ? 'rgba(219,52,52,.45)' : 'var(--bd-subtle)',
+
+      lgEditKey: LG_EDIT.key, lgEditBundle: LG_EDIT.bundle, lgEditPath: LG_EDIT.path,
+      lgCols: cols, lgWarns: warns, lgHistory: LG_HISTORY,
+      lgEnPh: enPh,
+
+      lgTrSetup: !trStarted, lgTrRun: trStarted,
+      lgTrStart: () => ctx.setState({lgTrStarted: true, lgTrIdx: 0, lgTrDraft: undefined}),
+      lgTrBack: () => ctx.setState({lgTrStarted: false}),
+      lgTrBundleLabel: trBundle, lgTrLangLabel: trLang, lgTrLangUpper: trLang.toUpperCase(),
+      lgTrGroups: ['duels','metaverse'].map(o => ({
+        label:o, count: LG_BUNDLES.filter(x => x.owner === o).length + ' bundle',
+        rows: LG_BUNDLES.filter(x => x.owner === o).map(x => {
+          const p = x.pct[trLang] || 0;
+          return {
+            ns:x.ns, keys:x.keys + '',
+            pct:p + '%', w:p + '%',
+            c: p >= 95 ? 'var(--ok)' : p >= 70 ? 'var(--warn)' : 'var(--err)',
+            sel: x.ns === trBundle,
+            bg: x.ns === trBundle ? 'var(--ac-soft)' : 'transparent',
+            bd: x.ns === trBundle ? 'var(--ac)' : 'transparent',
+            fg: x.ns === trBundle ? 'var(--ac-text)' : 'var(--tx-primary)',
+            go: () => ctx.setState({lgTrBundle: x.ns})
+          };
+        })
+      })),
+      lgTrBundleOpts: LG_BUNDLES.map(x => ({
+        ns:x.ns, keys:x.keys + ' chiavi', sel: x.ns === trBundle,
+        bg: x.ns === trBundle ? 'var(--ac-soft)' : 'transparent',
+        bd: x.ns === trBundle ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+        fg: x.ns === trBundle ? 'var(--ac-text)' : 'var(--tx-primary)',
+        pct: (x.pct[trLang] || 0) + '%',
+        go: () => ctx.setState({lgTrBundle: x.ns})
+      })),
+      lgTrLangOpts: LG_CODES.filter(cd => cd !== 'en').map(cd => ({
+        code:cd, sel: cd === trLang,
+        bg: cd === trLang ? 'var(--ac-soft)' : 'transparent',
+        bd: cd === trLang ? 'rgba(219,110,25,.45)' : 'var(--bd-subtle)',
+        fg: cd === trLang ? 'var(--ac-text)' : 'var(--tx-primary)',
+        pct: (bundleMeta.pct[cd] || 0) + '%',
+        go: () => ctx.setState({lgTrLang: cd, lgTrIdx: 0, lgTrDraft: undefined})
+      })),
+      lgTrPct: trPct + '%', lgTrPctW: trPct + '%',
+      lgTrPctC: trPct >= 95 ? 'var(--ok)' : trPct >= 70 ? 'var(--warn)' : 'var(--err)',
+      lgTrDoneLabel: trDone + ' / ' + trTotal + ' chiavi tradotte',
+      lgTrMissLabel: trMiss + (trMiss === 1 ? ' da fare' : ' da fare'),
+      lgTrHasPh: trSrcPh.length > 0,
+      lgTrKey: trItem.k,
+      lgTrPos: (trIdx + 1) + ' / ' + trTodo.length + ' non tradotte',
+      lgTrSrcLines: mmSrc(trItem.en), lgTrSrcRender: mmRen(trItem.en),
+      lgTrRefs: trRefs,
+      lgTrDraft: trDraft,
+      onLgTrDraft: (e) => ctx.setState({lgTrDraft: e.target.value}),
+      lgTrDraftLines: mmSrc(trDraft), lgTrDraftRender: mmRen(trDraft),
+      lgTrEmpty: !trDraft,
+      lgTrPh: trSrcPh.map(p => ({
+        name:p, ok: trDstPh.indexOf(p) >= 0,
+        fg: trDstPh.indexOf(p) >= 0 ? 'var(--ok)' : 'var(--err)',
+        bg: trDstPh.indexOf(p) >= 0 ? 'var(--ok-soft)' : 'var(--err-soft)',
+        mark: trDstPh.indexOf(p) >= 0 ? 'presente' : 'manca'
+      })),
+      lgTrDirty: !!trDraft,
+      lgTrPrev: () => ctx.setState({lgTrIdx: Math.max(0, trIdx - 1), lgTrDraft: undefined}),
+      lgTrNext: () => ctx.setState({lgTrIdx: Math.min(trTodo.length - 1, trIdx + 1), lgTrDraft: undefined}),
+
+      lgLangs: langRows,
+      lgAddOpen: !!s.lgAdd,
+      openLgAdd: () => ctx.setState({lgAdd: true}),
+      closeLgAdd: () => ctx.setState({lgAdd: false}),
+      lgPropPending: !!s.lgProp,
+      toggleLgProp: () => ctx.setState(st => ({lgProp: !st.lgProp}))
+    };
+  }
+
   window.MetaMC = { SCREENS, MODES, I, NAV, BREAD, RAMP, HOURLY, SHARES, NOW_MODE, OTHER,
     fmt, hx, lerpHex, rampColor, linePath, areaPath, arcPath,
-    hexField, netStatus, overview, admin, duels, duelsModes, duelsMaps, duelsLive, duelsConf, baseVals };
+    hexField, netStatus, overview, admin, duels, duelsModes, duelsMaps, duelsLive, duelsConf, lang, mmSrc, mmRen, baseVals };
 })();

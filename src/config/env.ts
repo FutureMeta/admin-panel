@@ -182,6 +182,16 @@ const EnvSchema = z.object({
    * finire dentro se stesso.
    */
   DUELS_CONFIG_TOKEN: z.string().min(24).optional(),
+  /**
+   * Il MariaDB di Metaverse (database `metamc`), per la sezione Lingue.
+   *
+   * E' un database diverso da quello dei duels e ha bisogno della sua
+   * connessione. L'utente vuole SELECT, INSERT e UPDATE su due tabelle sole,
+   * `metaverse_message` e `metaverse_language` — mai DELETE: il pannello non
+   * cancella una chiave ne' una lingua, e un privilegio che non serve e' un
+   * privilegio che un giorno qualcuno usa per sbaglio.
+   */
+  METAVERSE_MYSQL_URL: z.string().min(1).optional(),
 
   GAME_REDIS_URL: z.string().min(1).optional(),
   /** Il pattern dell'insieme online, misurato dalla sonda del passo 0. */

@@ -22,6 +22,7 @@ import { registerDuelsLiveRoutes } from './routes/duels-live.ts';
 import { registerHealthRoutes } from './routes/health.ts';
 import { registerInviteRoutes } from './routes/invites.ts';
 import { registerOnboardingRoutes } from './routes/invites-onboarding.ts';
+import { registerLangRoutes } from './routes/lang.ts';
 import { registerRoleRoutes } from './routes/roles.ts';
 import { registerStatsRoutes } from './routes/stats.ts';
 import { registerStatsModeRoutes } from './routes/stats-modes.ts';
@@ -203,6 +204,7 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   await registerDuelsRoutes(app, ctx);
   await registerDuelsLiveRoutes(app, ctx);
   await registerDuelsConfigFileRoutes(app, ctx);
+  await registerLangRoutes(app, ctx);
   registerDuelsConfigRoutes(app, ctx);
   registerAssistantRoutes(app, ctx);
   await registerStatsModeRoutes(app, ctx);

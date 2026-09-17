@@ -45,6 +45,10 @@ const DECOR: Record<string, { icon: string; prefetch?: () => void }> = {
   '/duels/maps': { icon: ICONS.grid },
   '/duels/live': { icon: ICONS.pulse },
   '/duels/config': { icon: ICONS.doc },
+  // Il mappamondo per i bundle, i cursori per l'elenco: due voci vicine, due
+  // segni diversi.
+  '/lingue': { icon: ICONS.globe },
+  '/lingue/elenco': { icon: ICONS.cfg },
   '/utenti': { icon: ICONS.users },
   '/registro': { icon: ICONS.log },
 };

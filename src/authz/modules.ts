@@ -37,6 +37,11 @@ export const MODULES = [
   // Non allarga niente — ogni tool ricontrolla i moduli che la persona ha
   // gia'. Vedi migration 019.
   'assistente',
+  // I testi che i giocatori vedono in gioco, per lingua. Area a se': non
+  // sono dei duels — li parla ogni plugin che parla Metaverse — e il
+  // livello 3 accende una lingua per tutti i giocatori, che non e' la stessa
+  // decisione che correggere una frase. Vedi migration 022.
+  'lingue',
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number];

@@ -42,6 +42,7 @@ export const MODULE_KEYS = [
   'duels_live',
   'duels_config',
   'assistente',
+  'lingue',
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -78,6 +79,7 @@ export const MODULE_AREAS: Record<string, string> = {
   // schermata di dati, e' una capacita' del pannello che si accende o si
   // spegne per persona.
   assistente: 'Sistema',
+  lingue: 'Lingue',
 };
 
 export function areaOfModule(key: string): string {

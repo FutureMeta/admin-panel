@@ -9,6 +9,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { api } from '../lib/api.ts';
 import { type BundleKeys, heat, type Overview } from '../lib/lang.ts';
+import { renderMiniMessage } from '../lib/minimessage.ts';
 import { MiniSource } from './mini-text.tsx';
 
 /** La panoramica: lingue, bundle, «in arrivo». UNA chiave, cosi' ogni schermata legge la stessa cache. */
@@ -166,7 +167,7 @@ export function MiniField({
       type="button"
       disabled={readOnly}
       onClick={() => setEditing(true)}
-      title={readOnly ? undefined : 'Clicca per modificare'}
+      title={readOnly ? undefined : 'Clicca per modificare: compaiono i tag'}
       style={{
         width: '100%',
         textAlign: 'left',
@@ -179,7 +180,11 @@ export function MiniField({
         color: 'inherit',
       }}
     >
-      <MiniSource text={value} />
+      {/* A riposo si legge il messaggio come in gioco, senza i tag: quelli
+          compaiono nel campo appena si clicca. Un valore fatto SOLO di tag —
+          `<reset>` — senza di loro sarebbe una riga vuota, e allora si mostra
+          com'e'. */}
+      <MiniSource text={value} tags={renderMiniMessage(value).every((p) => p.tag)} />
     </button>
   );
 }

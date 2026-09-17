@@ -476,8 +476,7 @@ export function renderMiniMessage(source: string): Piece[] {
 }
 
 // ---------------------------------------------------------------------------
-// I segnaposto e la convalida: servono alle Lingue, dove un testo sbagliato
-// non si vede in un'anteprima — lo vede un giocatore.
+// I segnaposto: servono alle Lingue, che li disegnano staccati dal testo.
 // ---------------------------------------------------------------------------
 
 /**
@@ -486,10 +485,3 @@ export function renderMiniMessage(source: string): Piece[] {
  * parte e si disegna in un altro modo.
  */
 export const PLACEHOLDER = /%[a-z0-9_]+%/gi;
-
-/** I segnaposto di un testo, una volta ciascuno, nell'ordine in cui compaiono. */
-export function placeholdersOf(text: string): string[] {
-  const seen = new Set<string>();
-  for (const m of text.matchAll(PLACEHOLDER)) seen.add(m[0].toLowerCase());
-  return [...seen];
-}

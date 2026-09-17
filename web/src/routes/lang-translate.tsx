@@ -33,7 +33,6 @@ import { PageHeader } from '../components/page.tsx';
 import { SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
 import { heat, pctOf, REFERENCE } from '../lib/lang.ts';
-import { placeholdersOf } from '../lib/minimessage.ts';
 import { canOpen } from '../lib/modules.ts';
 import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
 
@@ -64,8 +63,6 @@ export function LangTranslatePage({ me }: { me: Me }) {
   }, [item?.key]);
 
   const reference = item?.values[REFERENCE] ?? '';
-  const wanted = placeholdersOf(reference);
-  const have = new Set(placeholdersOf(draft));
   const blocked = draft.trim() === '';
 
   const done = keys.length - todo.length;
@@ -334,41 +331,10 @@ export function LangTranslatePage({ me }: { me: Me }) {
                 />
                 {draft !== '' ? (
                   <div style={{ marginTop: 10, padding: '9px 12px', borderLeft: '2px solid var(--ac)' }}>
-                    <MiniSource text={draft} />
+                    <MiniSource text={draft} tags={false} />
                   </div>
                 ) : null}
                 {saveError === null ? null : <FieldNotice tone="err">{saveError}</FieldNotice>}
-                {wanted.length > 0 ? (
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ marginBottom: 8 }}>
-                      <Eyebrow>Placeholder da mantenere</Eyebrow>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                      {wanted.map((p) => {
-                        const ok = have.has(p);
-                        return (
-                          <span
-                            key={p}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 7,
-                              padding: '3px 9px',
-                              borderRadius: 'var(--r-full)',
-                              background: ok ? 'var(--ok-soft)' : 'var(--err-soft)',
-                              color: ok ? 'var(--ok)' : 'var(--err)',
-                              fontSize: 11,
-                              fontWeight: 600,
-                            }}
-                          >
-                            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{p}</span>
-                            {ok ? 'presente' : 'manca'}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </section>
           </>

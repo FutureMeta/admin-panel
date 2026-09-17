@@ -5,8 +5,6 @@
 // React. Sono le due sole logiche vere della sezione: tutto il resto e' dato
 // che arriva dal server e si disegna.
 
-import { placeholdersOf } from './minimessage.ts';
-
 export type Language = { code: string; display: string; position: number; active: boolean };
 
 export type BundleSummary = {
@@ -108,19 +106,6 @@ export function keyTree(keys: readonly string[], open: ReadonlySet<string>): Tre
 export function prefixesOf(key: string): string[] {
   const parts = key.split('.');
   return parts.slice(0, -1).map((_, i) => parts.slice(0, i + 1).join('.'));
-}
-
-/**
- * I segnaposto dell'inglese che mancano in una traduzione.
- *
- * SOLO IN UN VERSO. Una traduzione che ne ha uno in piu' non e' un errore
- * — al massimo il gioco lascia `%cosi%` scritto — mentre una che ne ha uno in
- * meno perde un'informazione che l'inglese dava. E' un avviso, non un blocco:
- * il gioco applica il testo comunque.
- */
-export function missingPlaceholders(reference: string, value: string): string[] {
-  const have = new Set(placeholdersOf(value));
-  return placeholdersOf(reference).filter((p) => !have.has(p));
 }
 
 /** Il nome di una lingua, da mostrare accanto al codice. */

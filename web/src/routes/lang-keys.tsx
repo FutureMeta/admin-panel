@@ -32,7 +32,7 @@ import {
 import { PageHeader } from '../components/page.tsx';
 import { ICONS, Icon, SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
-import { keyTree, languageName, missingPlaceholders, prefixesOf, REFERENCE } from '../lib/lang.ts';
+import { keyTree, languageName, prefixesOf } from '../lib/lang.ts';
 import { canOpen } from '../lib/modules.ts';
 import { INPUT, SEARCH } from './lang-overview.tsx';
 
@@ -104,14 +104,12 @@ export function LangKeysPage({ me }: { me: Me }) {
   );
 
   const textOf = (code: string): string => drafts[code] ?? row?.values[code] ?? '';
-  const reference = textOf(REFERENCE);
 
   const cards = languages.map((l) => {
     const value = textOf(l.code);
     const had = (row?.values[l.code] ?? '') !== '';
-    const missing = l.code === REFERENCE || value === '' ? [] : missingPlaceholders(reference, value);
     const emptied = had && value.trim() === '';
-    return { ...l, value, missing, emptied, dirty: dirtyCodes.includes(l.code) };
+    return { ...l, value, emptied, dirty: dirtyCodes.includes(l.code) };
   });
   const blocked = cards.some((c) => c.dirty && c.emptied);
 
@@ -313,18 +311,13 @@ export function LangKeysPage({ me }: { me: Me }) {
                 <MiniField
                   value={c.value}
                   readOnly={!canWrite || current === null}
-                  tone={c.emptied ? 'err' : c.missing.length > 0 ? 'warn' : 'neutral'}
+                  tone={c.emptied ? 'err' : 'neutral'}
                   onChange={(next) => setDrafts((prev) => ({ ...prev, [c.code]: next }))}
                 />
                 {c.emptied ? (
                   <FieldNotice tone="err">
                     Un testo vuoto non si salva: per un messaggio senza contenuto scrivi{' '}
                     <code>&lt;reset&gt;</code>.
-                  </FieldNotice>
-                ) : null}
-                {c.missing.length > 0 ? (
-                  <FieldNotice tone="warn">
-                    Placeholder: manca {c.missing.join(', ')} rispetto a en
                   </FieldNotice>
                 ) : null}
               </div>

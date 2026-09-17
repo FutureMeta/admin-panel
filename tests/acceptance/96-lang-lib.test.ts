@@ -1,29 +1,12 @@
-// Le funzioni pure di «Lingue»: i segnaposto, l'albero delle chiavi, il
-// sorgente disegnato.
+// Le funzioni pure di «Lingue»: l'albero delle chiavi, il sorgente disegnato.
 //
 // NIENTE CONVALIDA DEL MINIMESSAGE, ed e' voluto: `<player>`, `<server>` e i
 // tag che ogni bundle si inventa li risolve il plugin, e il pannello non ha
 // la lista. Un controllo qui rifiuterebbe testi giusti.
 
 import { describe, expect, it } from 'vitest';
-import { keyTree, missingPlaceholders, prefixesOf } from '#web/lib/lang.ts';
+import { keyTree, prefixesOf } from '#web/lib/lang.ts';
 import { lineSpans } from '#web/lib/mini-spans.ts';
-import { placeholdersOf } from '#web/lib/minimessage.ts';
-
-describe('i segnaposto', () => {
-  it('si contano una volta, nell`ordine in cui compaiono', () => {
-    expect(placeholdersOf('<gray>%host% starts in <white>%time% (%host%)')).toEqual(['%host%', '%time%']);
-  });
-
-  it('e quelli che mancano si cercano in un verso solo', () => {
-    // Uno in piu` nella traduzione non e` un errore; uno in meno perde
-    // un'informazione che l'inglese dava.
-    expect(missingPlaceholders('<gray>%host% in <white>%time%', '<gray>tra <white>%time%')).toEqual([
-      '%host%',
-    ]);
-    expect(missingPlaceholders('<gray>%time%', '<gray>%time% %extra%')).toEqual([]);
-  });
-});
 
 describe('l`albero delle chiavi', () => {
   const KEYS = [

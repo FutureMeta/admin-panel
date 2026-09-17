@@ -148,4 +148,16 @@ describe('chi decide se una voce e` quella corrente decide anche la categoria', 
     expect(isActive('/duels/trends?range=7d', '/duels/trends')).toBe(true);
     expect(chainOf(GROUPS, '/dettaglio-modalita/bedwars')).toEqual(['Analisi']);
   });
+
+  it('fra due voci una sotto l`altra si accende solo la piu` precisa', async () => {
+    // `/lingue` e `/lingue/elenco`: su Elenco si accendeva anche Bundle,
+    // perche' un prefisso e' un prefisso. Vince la voce piu' lunga, e un
+    // segmento che somiglia — `/lingue-x` — non e' sotto `/lingue`.
+    const all = ['/lingue', '/lingue/elenco'];
+    expect(isActive('/lingue/elenco', '/lingue/elenco', all)).toBe(true);
+    expect(isActive('/lingue/elenco', '/lingue', all)).toBe(false);
+    expect(isActive('/lingue/b/duels.uhc', '/lingue', all)).toBe(true);
+    expect(isActive('/lingue', '/lingue', all)).toBe(true);
+    expect(isActive('/lingue-x', '/lingue', all)).toBe(false);
+  });
 });

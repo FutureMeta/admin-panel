@@ -79,13 +79,21 @@ function subGroups(items: readonly NavEntry[]): Array<[string, NavEntry[]]> {
 }
 
 /** Una voce della barra. Identica ai due livelli: cambia solo il rientro. */
-function NavLink({ item, pathname }: { item: NavEntry; pathname: string }) {
+function NavLink({
+  item,
+  pathname,
+  siblings,
+}: {
+  item: NavEntry;
+  pathname: string;
+  siblings: readonly string[];
+}) {
   const decor = DECOR[item.to];
   return (
     <Link
       to={item.to}
       className="nav-item"
-      data-active={isActive(pathname, item.to)}
+      data-active={isActive(pathname, item.to, siblings)}
       onMouseEnter={decor?.prefetch}
       onFocus={decor?.prefetch}
     >
@@ -115,6 +123,8 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
     }
     return [...map.entries()];
   }, [me]);
+  /** Tutte le voci: per accendere solo la piu' precisa (vedi `isActive`). */
+  const routes = useMemo(() => groups.flatMap(([, items]) => items.map((i) => i.to)), [groups]);
 
   // Il ricordo si legge UNA VOLTA, all'apertura: leggerlo a ogni disegno
   // significherebbe che una scheda aperta accanto sovrascrive quello che si
@@ -236,7 +246,7 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
                 {items
                   .filter((item) => item.group === undefined)
                   .map((item) => (
-                    <NavLink key={item.to} item={item} pathname={pathname} />
+                    <NavLink key={item.to} item={item} pathname={pathname} siblings={routes} />
                   ))}
                 {/* I SOTTOGRUPPI, dopo le voci sciolte. La chiave del ricordo e'
                     `Area/Gruppo`: usa lo stesso insieme e lo stesso
@@ -292,7 +302,7 @@ export function Sidebar({ me, onOpenPalette }: { me: Me; onOpenPalette: () => vo
                           }}
                         >
                           {sub.map((item) => (
-                            <NavLink key={item.to} item={item} pathname={pathname} />
+                            <NavLink key={item.to} item={item} pathname={pathname} siblings={routes} />
                           ))}
                         </div>
                       ) : null}

@@ -17,6 +17,11 @@ export const COLLAPSED_KEY = 'metamc.sidebar.collapsed';
 /**
  * Una voce e' quella corrente?
  *
+ * VINCE LA PIU' LUNGA. `/lingue` e `/lingue/elenco` sono due voci, e la
+ * seconda sta sotto la prima: su `/lingue/elenco` si accende solo lei, o la
+ * barra direbbe «sei qui» in due posti. Per saperlo serve conoscere le altre
+ * voci: sono `siblings`.
+ *
  * ESISTE PER ESSERE USATA DA DUE POSTI. La barra la usa per evidenziare la
  * voce, e `areaOf` per sapere quale categoria contiene la pagina aperta. Se
  * le due risposte divergessero si otterrebbe una categoria chiusa che
@@ -24,8 +29,12 @@ export const COLLAPSED_KEY = 'metamc.sidebar.collapsed';
  * peggio di nessuna evidenziazione perche' sembra che la barra abbia perso il
  * segno.
  */
-export function isActive(pathname: string, to: string): boolean {
-  return pathname.startsWith(to);
+const under = (pathname: string, to: string): boolean =>
+  pathname === to || pathname.startsWith(`${to}/`) || pathname.startsWith(`${to}?`);
+
+export function isActive(pathname: string, to: string, siblings: readonly string[] = []): boolean {
+  if (!under(pathname, to)) return false;
+  return !siblings.some((s) => s.length > to.length && under(pathname, s));
 }
 
 /** Una voce della barra, per quel poco che serve a queste funzioni. */
@@ -44,8 +53,9 @@ type Item = { to: string; group?: string | undefined };
  * Nell'ordine dal fuori al dentro, che e' anche l'ordine in cui vanno aperte.
  */
 export function chainOf(groups: Array<[string, Item[]]>, pathname: string): string[] {
+  const all = groups.flatMap(([, items]) => items.map((x) => x.to));
   for (const [area, items] of groups) {
-    const item = items.find((x) => isActive(pathname, x.to));
+    const item = items.find((x) => isActive(pathname, x.to, all));
     if (item === undefined) continue;
     return item.group === undefined ? [area] : [area, `${area}/${item.group}`];
   }

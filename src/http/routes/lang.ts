@@ -1,6 +1,6 @@
 // Le rotte di «Lingue».
 //
-// CINQUE ROTTE, TUTTE DEL PANNELLO. Non ce n'e' una per i server di gioco,
+// SEI ROTTE, TUTTE DEL PANNELLO. Non ce n'e' una per i server di gioco,
 // e non e' una mancanza: i server parlano col database di Metaverse, non con
 // noi. Ci scrivono i testi del jar all'avvio e ne rileggono l'impronta ogni
 // minuto. Il pannello scrive nello stesso posto, e loro se ne accorgono da
@@ -16,18 +16,26 @@
 // `<server>` e quelli che ogni bundle si inventa — e il pannello non ha la
 // lista: un controllo qui rifiuterebbe testi giusti. L'unico «no» e' il testo
 // vuoto, che ha un rimedio preciso: `<reset>`.
+//
+// L'AI PROPONE, NON SALVA. «Genera con l'AI» restituisce un testo che finisce
+// nel campo come bozza; lo salva una persona con la PUT di sempre. Usa la
+// chiave e il tetto di spesa dell'assistente: un portafoglio solo.
 
+import { Anthropic } from '@anthropic-ai/sdk';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
+import { costUsdOn, type TokenUsage } from '#src/assistant/config.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import type { DuelsMysql } from '#src/duels/mysql.ts';
+import { AiTranslationFailed, TRANSLATE_MODEL, translateWithAi } from '#src/lang/ai.ts';
 import {
   createLanguage,
   LanguageExists,
   moveLanguage,
   readBundleKeys,
+  readKey,
   readOverview,
   setValue,
   UnknownBundle,
@@ -35,6 +43,7 @@ import {
   UnknownLanguage,
   updateLanguage,
 } from '#src/lang/store.ts';
+import { REFERENCE } from '#web/lib/lang.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
@@ -60,6 +69,19 @@ const valueBody = {
       key: { type: 'string', minLength: 1, maxLength: 255 },
       code: { type: 'string', minLength: 2, maxLength: 16 },
       value: { type: 'string', maxLength: MAX_VALUE },
+    },
+  },
+} as const;
+
+const translateBody = {
+  body: {
+    type: 'object',
+    additionalProperties: false,
+    required: ['ns', 'key', 'code'],
+    properties: {
+      ns: { type: 'string', minLength: 3, maxLength: 64 },
+      key: { type: 'string', minLength: 1, maxLength: 255 },
+      code: { type: 'string', minLength: 2, maxLength: 16 },
     },
   },
 } as const;
@@ -135,10 +157,11 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     action: (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS],
     target: { type: string; label: string },
     meta: Record<string, unknown>,
+    outcome: 'success' | 'failure' = 'success',
   ): Promise<void> =>
     writeAudit(ctx.db, {
       action,
-      outcome: 'success',
+      outcome,
       actor: auditActorOf(actor),
       request: auditContextOf(request, requestIps(request)),
       moduleKey: 'lingue',
@@ -282,6 +305,92 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
       } catch (err) {
         if (err instanceof UnknownLanguage) {
           return reply.code(404).send({ error: 'lingua sconosciuta', detail: code });
+        }
+        throw err;
+      }
+    },
+  );
+
+  app.post(
+    '/api/lang/translate',
+    { schema: translateBody, preHandler: [requireAuth(ctx)] },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      requireLevel(actor, 'lingue', 2);
+      const db = gameDb(reply);
+      if (db === null) return reply;
+      const ai = ctx.assistant;
+      if (ai === null) {
+        return reply.code(503).send({
+          error: 'AI non configurata',
+          code: 'ai_non_configurata',
+          detail: 'manca ANTHROPIC_API_KEY nell’ambiente del processo',
+        });
+      }
+      const body = request.body as { ns: string; key: string; code: string };
+      if (body.code === REFERENCE) {
+        return reply.code(400).send({ error: 'l’inglese è il riferimento', code: 'riferimento' });
+      }
+
+      await ctx.rateLimit.consumeAll([
+        ['langAiUser', actor.userId],
+        ['langAiGlobal', 'tutti'],
+      ]);
+      const now = new Date();
+      if (await ai.spend.exhausted(now)) {
+        return reply.code(503).send({
+          error: 'tetto di spesa raggiunto',
+          code: 'tetto_di_spesa',
+          detail: 'il budget mensile dell’AI è esaurito: si traduce a mano fino al mese prossimo',
+        });
+      }
+
+      // L'inglese lo legge il server. Se lo mandasse il client, questa rotta
+      // sarebbe un traduttore gratuito per qualunque testo.
+      let source: string | undefined;
+      try {
+        source = (await readKey(db, body.ns, body.key))[REFERENCE];
+      } catch (err) {
+        if (err instanceof UnknownBundle || err instanceof UnknownKey) {
+          return reply.code(404).send({ error: 'chiave sconosciuta', detail: `${body.ns} ${body.key}` });
+        }
+        throw err;
+      }
+      if (source === undefined || source.trim() === '') {
+        return reply.code(409).send({ error: 'niente da tradurre', code: 'niente_da_tradurre' });
+      }
+
+      const target = { type: 'lang_value', label: `${body.ns} ${body.key} [${body.code}]` };
+      const meta = { ns: body.ns, key: body.key, code: body.code, model: TRANSLATE_MODEL };
+      const charge = (usage: TokenUsage): Promise<void> =>
+        ai.spend.add(now, costUsdOn(TRANSLATE_MODEL, usage)).catch((err) => {
+          ctx.logger.error({ err }, 'lingue: spesa dell’AI NON contata');
+        });
+
+      try {
+        const result = await translateWithAi(ai.client, { ...body, source });
+        await charge(result.usage);
+        await audit(request, actor, AUDIT_ACTIONS.langAiTranslated, target, {
+          ...meta,
+          attempts: result.attempts,
+        });
+        return { text: result.text };
+      } catch (err) {
+        if (err instanceof AiTranslationFailed) {
+          await charge(err.usage);
+          await audit(
+            request,
+            actor,
+            AUDIT_ACTIONS.langAiTranslated,
+            target,
+            { ...meta, failure: err.code },
+            'failure',
+          );
+          return reply.code(422).send({ error: 'traduzione non riuscita', code: err.code });
+        }
+        if (err instanceof Anthropic.APIError) {
+          ctx.logger.warn({ err, status: err.status }, 'lingue: AI non raggiungibile');
+          return reply.code(503).send({ error: 'AI non raggiungibile', code: 'ai_non_raggiungibile' });
         }
         throw err;
       }

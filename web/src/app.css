@@ -382,6 +382,17 @@ body {
     filter: brightness(1.1);
   }
 
+  /* «Genera con l’AI» (Lingue). Bordo e colore stanno qui e non in linea:
+   * `:hover` in linea non esiste. */
+  .lang-ai {
+    border: 1px solid var(--bd-strong);
+    color: var(--tx-primary);
+  }
+  .lang-ai:hover:not(:disabled) {
+    border-color: rgba(219, 110, 25, 0.5);
+    color: var(--ac-text);
+  }
+
   /* --- campi -------------------------------------------------------------- */
   .field {
     display: block;

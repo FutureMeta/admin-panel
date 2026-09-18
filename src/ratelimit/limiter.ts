@@ -96,6 +96,17 @@ export const LIMITS = {
   assistantUser: { points: 30, duration: 3600, blockDuration: 600 },
   assistantGlobal: { points: 300, duration: 3600 },
 
+  /**
+   * «Genera con l'AI» nelle Lingue: una chiamata all'API per clic.
+   *
+   * Duecento l'ora per persona: tradurre un bundle intero di seguito sono
+   * cento, centotrenta clic, e deve starci. Il tetto per rotta e' tre persone
+   * che lo fanno insieme. Il conto vero lo ferma il tetto di spesa mensile,
+   * lo stesso dell'assistente.
+   */
+  langAiUser: { points: 200, duration: 3600 },
+  langAiGlobal: { points: 600, duration: 3600 },
+
   /** Fondo scala per tutte le rotte autenticate. */
   apiIp: { points: 600, duration: 60 },
 } as const satisfies Record<string, LimitSpec>;

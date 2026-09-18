@@ -5,9 +5,8 @@
 // traduce non deve staccare le mani dalla tastiera.
 //
 // DUE CARD IMPILATE: sopra l'inglese, il testo da cui si parte; sotto la
-// lingua in lavorazione, in arancio. Il confronto dei segnaposto e' VIVO: se
-// nella traduzione manca `%time%` che l'inglese ha, lo si vede prima di
-// salvare, non dopo.
+// lingua in lavorazione, in arancio, con «Genera con l'AI»: la proposta
+// finisce nella textarea, e ⌘↵ la salva come se l'avesse scritta chi traduce.
 //
 // SALVARE FA SPARIRE LA CHIAVE DALL'ELENCO, perche' non e' piu' non
 // tradotta: si resta sullo stesso indice e sotto compare la successiva. Non
@@ -18,8 +17,11 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AiButton,
+  aiErrorText,
+  aiTranslate,
   bundleQuery,
   Eyebrow,
   FieldNotice,
@@ -50,6 +52,9 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  /** La chiave aperta ADESSO: una risposta dell'AI per un'altra chiave si butta. */
+  const keyRef = useRef<string | undefined>(undefined);
 
   const at = Math.min(index, Math.max(0, todo.length - 1));
   const item = todo[at];
@@ -60,6 +65,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
   useEffect(() => {
     setDraft('');
     setSaveError(null);
+    keyRef.current = item?.key;
   }, [item?.key]);
 
   const reference = item?.values[REFERENCE] ?? '';
@@ -75,6 +81,19 @@ export function LangTranslatePage({ me }: { me: Me }) {
       await invalidateLang(queryClient, ns);
     },
     onError: (err) => setSaveError(err instanceof Error ? err.message : 'Salvataggio non riuscito.'),
+  });
+
+  const ai = useMutation({
+    mutationFn: (key: string) => aiTranslate({ ns, key, code }),
+    onMutate: () => setSaveError(null),
+    onSuccess: (res, key) => {
+      if (key !== keyRef.current) return;
+      setDraft(res.text);
+      area.current?.focus();
+    },
+    onError: (err, key) => {
+      if (key === keyRef.current) setSaveError(aiErrorText(err));
+    },
   });
 
   const submit = (): void => {
@@ -298,9 +317,19 @@ export function LangTranslatePage({ me }: { me: Me }) {
                   {code}
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>stai traducendo questa</span>
+                {canWrite && code !== REFERENCE && item !== undefined ? (
+                  <AiButton
+                    background="var(--s-surface)"
+                    busy={ai.isPending}
+                    disabled={reference === ''}
+                    title={reference === '' ? 'L’inglese non ha un testo per questa chiave' : undefined}
+                    onClick={() => ai.mutate(item.key)}
+                  />
+                ) : null}
               </div>
               <div style={{ padding: '14px 18px' }}>
                 <textarea
+                  ref={area}
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {

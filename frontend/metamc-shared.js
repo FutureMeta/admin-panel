@@ -2368,6 +2368,7 @@
       const broken = has && mmBad(l.value);
       return {
         code:l.code, name:l.name, off:!!l.off,
+        canAi: l.code !== 'en',
         has: has, empty: !has,
         valueLines: has ? mmSrc(l.value) : [],
         renderLines: has ? mmRen(l.value) : [],
@@ -2465,6 +2466,9 @@
       })),
       lgKeyRows: keyRows,
       lgSelKey: selKey,
+      lgAiBusy: !!s.lgAi,
+      lgAiIdle: !s.lgAi,
+      lgAiRun: () => { ctx.setState({lgAi: true}); setTimeout(() => ctx.setState({lgAi: false}), 1400); },
       mcLangOpts: LG_CODES.slice(0, 3).map(cd => ({
         code: cd, go: () => ctx.setState({mcLang: cd}),
         bg: mcLang === cd ? 'var(--ac-soft)' : 'var(--s-inset)',
@@ -2533,6 +2537,9 @@
       lgCols: cols, lgWarns: warns, lgHistory: LG_HISTORY,
       lgEnPh: enPh,
 
+      lgTrAiBusy: !!s.lgAi,
+      lgTrAiIdle: !s.lgAi,
+      lgTrAiRun: () => { ctx.setState({lgAi: true}); setTimeout(() => ctx.setState({lgAi: false}), 1400); },
       lgTrSetup: !trStarted, lgTrRun: trStarted,
       lgTrStart: () => ctx.setState({lgTrStarted: true, lgTrIdx: 0, lgTrDraft: undefined}),
       lgTrBack: () => ctx.setState({lgTrStarted: false}),

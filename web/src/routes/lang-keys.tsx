@@ -5,21 +5,21 @@
 // lista — centodieci chiavi devono starci in una colonna, senza paginazione.
 //
 // A DESTRA LA CHIAVE SCELTA: una card per lingua, UN SOLO CAMPO EDITABILE per
-// lingua, e sotto ogni campo gli avvisi. Tre avvisi, ognuno con la sua
-// spiegazione, perche' sono tre cose diverse:
+// lingua. Un valore svuotato non si salva: si scrive <reset>.
 //
-//   - MiniMessage non valido: il server scarterebbe il testo. SALVATAGGIO
-//     BLOCCATO, perche' salvarlo vorrebbe dire un messaggio che sparisce;
-//   - segnaposto che mancano rispetto all'inglese: avviso, si salva lo stesso;
-//   - valore vuoto dove prima c'era un testo: non si salva, si scrive <reset>.
+// «GENERA CON L'AI» su ogni lingua tranne l'inglese, che e' il riferimento:
+// la proposta finisce nel campo come bozza, e si salva col pulsante di sempre.
 //
 // Dove la lingua non ha valore non c'e' un errore: c'e' «in gioco si vede
 // l'inglese», che e' uno stato, e lo si dice.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from '@tanstack/react-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AiButton,
+  aiErrorText,
+  aiTranslate,
   bundleQuery,
   Eyebrow,
   FieldNotice,
@@ -32,7 +32,7 @@ import {
 import { PageHeader } from '../components/page.tsx';
 import { ICONS, Icon, SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
-import { keyTree, languageName, prefixesOf } from '../lib/lang.ts';
+import { keyTree, languageName, prefixesOf, REFERENCE } from '../lib/lang.ts';
 import { canOpen } from '../lib/modules.ts';
 import { INPUT, SEARCH } from './lang-overview.tsx';
 
@@ -66,6 +66,25 @@ export function LangKeysPage({ me }: { me: Me }) {
   }, [selected, keys]);
 
   const row = keys.find((k) => k.key === current);
+  const reference = row?.values[REFERENCE] ?? '';
+
+  // Una risposta dell'AI arrivata dopo aver cambiato chiave e' per l'altra
+  // chiave: si butta. Il ref dice quale chiave e' aperta ADESSO.
+  const keyRef = useRef(current);
+  useEffect(() => {
+    keyRef.current = current;
+  }, [current]);
+  const [aiError, setAiError] = useState<{ code: string; text: string } | null>(null);
+  const ai = useMutation({
+    mutationFn: (v: { key: string; code: string }) => aiTranslate({ ns, ...v }),
+    onMutate: () => setAiError(null),
+    onSuccess: (res, v) => {
+      if (v.key === keyRef.current) setDrafts((prev) => ({ ...prev, [v.code]: res.text }));
+    },
+    onError: (err, v) => {
+      if (v.key === keyRef.current) setAiError({ code: v.code, text: aiErrorText(err) });
+    },
+  });
   const dirtyCodes = Object.keys(drafts).filter((code) => drafts[code] !== (row?.values[code] ?? ''));
   const dirty = dirtyCodes.length > 0;
 
@@ -85,6 +104,7 @@ export function LangKeysPage({ me }: { me: Me }) {
     setSelected(key);
     setDrafts({});
     setSaveError(null);
+    setAiError(null);
   };
 
   const needle = search.trim().toLowerCase();
@@ -307,6 +327,15 @@ export function LangKeysPage({ me }: { me: Me }) {
                   <span style={{ fontSize: 10.5, color: 'var(--tx-disabled)' }}>
                     modificabile · un solo valore per lingua
                   </span>
+                  {canWrite && c.code !== REFERENCE && current !== null ? (
+                    <AiButton
+                      background="var(--s-elevated)"
+                      busy={ai.isPending && ai.variables?.code === c.code}
+                      disabled={ai.isPending || reference === ''}
+                      title={reference === '' ? 'L’inglese non ha un testo per questa chiave' : undefined}
+                      onClick={() => ai.mutate({ key: current, code: c.code })}
+                    />
+                  ) : null}
                 </div>
                 <MiniField
                   value={c.value}
@@ -314,6 +343,7 @@ export function LangKeysPage({ me }: { me: Me }) {
                   tone={c.emptied ? 'err' : 'neutral'}
                   onChange={(next) => setDrafts((prev) => ({ ...prev, [c.code]: next }))}
                 />
+                {aiError?.code === c.code ? <FieldNotice tone="err">{aiError.text}</FieldNotice> : null}
                 {c.emptied ? (
                   <FieldNotice tone="err">
                     Un testo vuoto non si salva: per un messaggio senza contenuto scrivi{' '}

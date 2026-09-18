@@ -75,7 +75,17 @@ const MODELS = {
   },
 } as const;
 
-type ModelKey = keyof typeof MODELS;
+export type ModelKey = keyof typeof MODELS;
+
+/**
+ * Parametri e header beta che QUEL modello vuole, dalla stessa tabella dei
+ * prezzi. Per chi chiama un modello diverso da quello dell'assistente — la
+ * traduzione delle Lingue — e non deve riscriverli a mano: e' esattamente il
+ * modo in cui e' nato il 400 del 2026-08-23.
+ */
+export function extrasOf<K extends ModelKey>(model: K): (typeof MODELS)[K]['extras'] {
+  return MODELS[model].extras;
+}
 /** Le velocita' che QUEL modello accetta davvero. Su Sonnet 5 e' solo `standard`. */
 type SpeedFor<K extends ModelKey> = keyof (typeof MODELS)[K]['prices'] & string;
 
@@ -245,15 +255,26 @@ export function addUsage(a: TokenUsage, b: TokenUsage): TokenUsage {
   };
 }
 
-/** Quanto e' costata questa manciata di token, in dollari. */
-export function costUsd(usage: TokenUsage): number {
+type Prices = { input: number; output: number; cacheWrite: number; cacheRead: number };
+
+function priced(prices: Prices, usage: TokenUsage): number {
   return (
-    (usage.input * PRICE_USD_PER_MTOK.input +
-      usage.output * PRICE_USD_PER_MTOK.output +
-      usage.cacheWrite * PRICE_USD_PER_MTOK.cacheWrite +
-      usage.cacheRead * PRICE_USD_PER_MTOK.cacheRead) /
+    (usage.input * prices.input +
+      usage.output * prices.output +
+      usage.cacheWrite * prices.cacheWrite +
+      usage.cacheRead * prices.cacheRead) /
     1_000_000
   );
+}
+
+/** Quanto e' costata questa manciata di token, in dollari. */
+export function costUsd(usage: TokenUsage): number {
+  return priced(PRICE_USD_PER_MTOK, usage);
+}
+
+/** Lo stesso conto su un altro modello della tabella, a velocita' standard. */
+export function costUsdOn(model: ModelKey, usage: TokenUsage): number {
+  return priced(MODELS[model].prices.standard, usage);
 }
 
 /**

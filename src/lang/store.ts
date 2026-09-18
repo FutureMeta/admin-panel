@@ -160,6 +160,21 @@ export async function readBundleKeys(db: DuelsMysql, ns: string): Promise<Bundle
   return { ns, keys: [...keys.entries()].map(([key, values]) => ({ key, values })) };
 }
 
+/** Le righe di una chiave, una per lingua, con il testo che il gioco usa. */
+const KEY_ROWS =
+  'SELECT locale, COALESCE(custom, shipped) AS value FROM metaverse_message WHERE namespace = ? AND message_key = ?';
+type KeyRow = { locale: string; value: string | null };
+
+/** I testi di una chiave, per lingua. Serve all'AI: l'inglese lo legge il server, non lo manda il client. */
+export async function readKey(db: DuelsMysql, ns: string, key: string): Promise<Record<string, string>> {
+  if (parseNamespace(ns) === null) throw new UnknownBundle(ns);
+  const rows = await db.rows<KeyRow>(KEY_ROWS, [ns, key]);
+  if (rows.length === 0) throw new UnknownKey(ns, key);
+  const values: Record<string, string> = {};
+  for (const row of rows) if (row.value !== null) values[row.locale] = row.value;
+  return values;
+}
+
 /**
  * Scrive il testo di una chiave in una lingua. Restituisce quello di prima,
  * perche' e' l'unico posto in cui lo si puo' ancora leggere: finisce nel
@@ -182,10 +197,7 @@ export async function setValue(
     // traduce; nessuno ha `event.fulll`, e' un refuso che non deve entrare.
     // Una lettura sola: le righe della chiave dicono sia che esiste sia
     // com'era nella lingua che si sta scrivendo.
-    const rows = await t.rows<{ locale: string; value: string | null }>(
-      'SELECT locale, COALESCE(custom, shipped) AS value FROM metaverse_message WHERE namespace = ? AND message_key = ?',
-      [input.ns, input.key],
-    );
+    const rows = await t.rows<KeyRow>(KEY_ROWS, [input.ns, input.key]);
     if (rows.length === 0) throw new UnknownKey(input.ns, input.key);
 
     const language = await t.rows<{ locale: string }>(

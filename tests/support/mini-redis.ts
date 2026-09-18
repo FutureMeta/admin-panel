@@ -404,6 +404,19 @@ export class MiniRedis {
         return encodeInteger(next);
       }
 
+      // Il tetto di spesa dell'assistente, e della traduzione AI delle Lingue.
+      case 'INCRBYFLOAT': {
+        const key = a[0];
+        if (key === undefined || a[1] === undefined) return encodeError('wrong number of arguments');
+        const e = this.#live(key);
+        if (e?.hash) return encodeError('WRONGTYPE');
+        const current = e?.value ? Number.parseFloat(e.value.toString('utf8')) : 0;
+        const next = current + Number.parseFloat(a[1]);
+        if (Number.isNaN(next)) return encodeError('value is not a valid float');
+        this.#store.set(key, { value: Buffer.from(String(next)), expiresAt: e?.expiresAt ?? null });
+        return encodeBulk(Buffer.from(String(next)));
+      }
+
       case 'KEYS': {
         const pattern = a[0] ?? '*';
         const re = new RegExp(

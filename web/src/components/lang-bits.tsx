@@ -7,12 +7,12 @@
 
 import type { QueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { api } from '../lib/api.ts';
+import { ApiError, api } from '../lib/api.ts';
 import { type BundleKeys, heat, type Overview } from '../lib/lang.ts';
 import { renderMiniMessage } from '../lib/minimessage.ts';
 import { MiniSource } from './mini-text.tsx';
 
-/** La panoramica: lingue, bundle, «in arrivo». UNA chiave, cosi' ogni schermata legge la stessa cache. */
+/** La panoramica: lingue e bundle. UNA chiave, cosi' ogni schermata legge la stessa cache. */
 export const overviewQuery = { queryKey: ['lang'] as const, queryFn: () => api<Overview>('/api/lang') };
 
 export const bundleQuery = (ns: string) => ({
@@ -23,10 +23,94 @@ export const bundleQuery = (ns: string) => ({
 export const putValue = (body: { ns: string; key: string; code: string; value: string }) =>
   api<{ ok: true }>('/api/lang/value', { method: 'PUT', body });
 
-/** Dopo una scrittura: il bundle e la panoramica (i conteggi, e «in arrivo»). */
+/** Dopo una scrittura: il bundle e la panoramica, che ne conta i testi. */
 export async function invalidateLang(queryClient: QueryClient, ns?: string): Promise<void> {
   if (ns !== undefined) await queryClient.invalidateQueries({ queryKey: ['lang-keys', ns] });
   await queryClient.invalidateQueries({ queryKey: ['lang'] });
+}
+
+/**
+ * «Genera con l'AI»: una proposta di traduzione dall'inglese, da rivedere e
+ * salvare come ogni altro testo. L'inglese lo legge il server.
+ */
+export const aiTranslate = (body: { ns: string; key: string; code: string }) =>
+  api<{ text: string }>('/api/lang/translate', { method: 'POST', body });
+
+const AI_ERRORS: Record<string, string> = {
+  ai_non_configurata: 'L’AI non è configurata su questo pannello.',
+  tetto_di_spesa: 'Il budget mensile dell’AI è finito: si traduce a mano fino al mese prossimo.',
+  niente_da_tradurre: 'L’inglese non ha un testo per questa chiave.',
+  formato_cambiato: 'L’AI ha cambiato tag o segnaposto anche al secondo tentativo: traducilo a mano.',
+  rifiuto: 'L’AI si è rifiutata di tradurre questo testo.',
+  incompleta: 'La risposta dell’AI è arrivata incompleta. Riprova.',
+  ai_non_raggiungibile: 'L’AI non risponde adesso. Riprova tra poco.',
+};
+
+/** Cosa dire quando «Genera con l'AI» non va. */
+export function aiErrorText(err: unknown): string {
+  if (err instanceof ApiError && err.isRateLimited)
+    return 'Troppe richieste all’AI: riprova tra qualche minuto.';
+  const code = err instanceof ApiError ? err.code : undefined;
+  return (
+    (code === undefined ? undefined : AI_ERRORS[code]) ?? 'L’AI non ha risposto. Riprova, o traduci a mano.'
+  );
+}
+
+/** Il pulsante «Genera con l'AI»: la stella, e «Genero…» mentre aspetta. */
+export function AiButton({
+  busy,
+  disabled = false,
+  title,
+  background,
+  onClick,
+}: {
+  busy: boolean;
+  disabled?: boolean;
+  title?: string | undefined;
+  /** Il fondo cambia con la card che lo ospita, come nel disegno. */
+  background: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="lang-ai"
+      disabled={busy || disabled}
+      title={title}
+      onClick={onClick}
+      style={{
+        marginLeft: 'auto',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 6,
+        height: 26,
+        padding: '0 10px',
+        borderRadius: 'var(--r-sm)',
+        background,
+        fontFamily: 'var(--font-ui)',
+        fontSize: 11.5,
+        fontWeight: 600,
+        cursor: busy || disabled ? 'default' : 'pointer',
+        opacity: disabled && !busy ? 0.5 : 1,
+      }}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width="12"
+        height="12"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{ flex: 'none' }}
+        aria-hidden="true"
+      >
+        <path d="M12 3.5l1.6 4.3 4.3 1.6-4.3 1.6-1.6 4.3-1.6-4.3-4.3-1.6 4.3-1.6zM18 16l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z" />
+      </svg>
+      {busy ? <span style={{ color: 'var(--ac-text)' }}>Genero…</span> : <span>Genera con l’AI</span>}
+    </button>
+  );
 }
 
 /** La barra di completamento con la percentuale accanto. */

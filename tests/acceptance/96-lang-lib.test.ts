@@ -101,9 +101,9 @@ describe('tradurre un bundle in blocco', () => {
     { key: 'd', values: { en: '  ', it: '' } },
   ];
 
-  it('solo le non tradotte, oppure tutte; mai quelle senza inglese', () => {
-    expect(bulkTargets(KEYS, 'it', 'missing')).toEqual(['b']);
-    expect(bulkTargets(KEYS, 'it', 'all')).toEqual(['a', 'b']);
+  it('solo le non tradotte, e mai quelle senza inglese', () => {
+    expect(bulkTargets(KEYS, 'it')).toEqual(['b']);
+    expect(bulkTargets(KEYS, 'es')).toEqual(['a', 'b']);
   });
 
   class Skip extends Error {}

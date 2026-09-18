@@ -130,16 +130,14 @@ const NAMES: Record<string, string> = {
 // Tradurre un bundle intero con l'AI.
 // ---------------------------------------------------------------------------
 
-export type BulkMode = 'missing' | 'all';
-
 /**
- * Le chiavi da tradurre. Mai quelle senza un testo inglese: l'AI traduce
- * dall'inglese, e senza non ha niente da cui partire.
+ * Le chiavi che l'AI puo' tradurre: quelle ancora senza testo nella lingua, e
+ * mai quelle senza un testo inglese — l'AI traduce dall'inglese, e senza non
+ * ha niente da cui partire.
  */
-export function bulkTargets(keys: readonly KeyValues[], code: string, mode: BulkMode): string[] {
+export function bulkTargets(keys: readonly KeyValues[], code: string): string[] {
   return keys
-    .filter((k) => (k.values[REFERENCE] ?? '').trim() !== '')
-    .filter((k) => mode === 'all' || (k.values[code] ?? '') === '')
+    .filter((k) => (k.values[REFERENCE] ?? '').trim() !== '' && (k.values[code] ?? '') === '')
     .map((k) => k.key);
 }
 

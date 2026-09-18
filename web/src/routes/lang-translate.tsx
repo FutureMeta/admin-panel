@@ -1,12 +1,17 @@
 // «Lingue · Traduzione». Le misure vengono da `frontend/15-lingue-traduzione.dc.html`.
 //
 // SCORRE SOLO LE CHIAVI NON TRADOTTE in quella lingua, una dopo l'altra:
-// precedente, successiva, «Salva e avanti» — e ⌘↵ dalla textarea, perche' chi
-// traduce non deve staccare le mani dalla tastiera.
+// precedente, successiva, «Salva e avanti» — e Ctrl/⌘+Invio dalla textarea,
+// perche' chi traduce non deve staccare le mani dalla tastiera.
 //
 // DUE CARD IMPILATE: sopra l'inglese, il testo da cui si parte; sotto la
 // lingua in lavorazione, in arancio, con «Genera con l'AI»: la proposta
 // finisce nella textarea, e ⌘↵ la salva come se l'avesse scritta chi traduce.
+//
+// «TRADUCI TUTTO CON L'AI» fa lo stesso su tutto il bundle, in una volta: un
+// popup chiede se solo le chiavi non tradotte o tutte, e le traduzioni si
+// SALVANO subito — rivederne cento una per una e' il lavoro che si voleva
+// evitare. Ogni testo va a registro come se l'avesse salvato chi ha avviato.
 //
 // SALVARE FA SPARIRE LA CHIAVE DALL'ELENCO, perche' non e' piu' non
 // tradotta: si resta sullo stesso indice e sotto compare la successiva. Non
@@ -32,9 +37,19 @@ import {
 } from '../components/lang-bits.tsx';
 import { MiniSource } from '../components/mini-text.tsx';
 import { PageHeader } from '../components/page.tsx';
-import { SkeletonRows } from '../components/ui.tsx';
-import type { Me } from '../lib/api.ts';
-import { heat, pctOf, REFERENCE } from '../lib/lang.ts';
+import { Modal, SkeletonRows } from '../components/ui.tsx';
+import { ApiError, type Me } from '../lib/api.ts';
+import {
+  type BulkMode,
+  type BulkState,
+  bulkTargets,
+  heat,
+  type KeyValues,
+  languageName,
+  pctOf,
+  REFERENCE,
+  runBulk,
+} from '../lib/lang.ts';
 import { canOpen } from '../lib/modules.ts';
 import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
 
@@ -52,6 +67,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const [index, setIndex] = useState(0);
   const [draft, setDraft] = useState('');
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
   /** La chiave aperta ADESSO: una risposta dell'AI per un'altra chiave si butta. */
   const keyRef = useRef<string | undefined>(undefined);
@@ -61,7 +77,6 @@ export function LangTranslatePage({ me }: { me: Me }) {
 
   // Una chiave nuova, una bozza nuova: la traduzione di prima non deve
   // restare nel campo della chiave dopo.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: si azzera quando cambia la chiave, non a ogni render
   useEffect(() => {
     setDraft('');
     setSaveError(null);
@@ -182,6 +197,14 @@ export function LangTranslatePage({ me }: { me: Me }) {
             {done} / {keys.length} chiavi tradotte ·{' '}
             <span style={{ color: 'var(--warn)', fontWeight: 600 }}>{todo.length} da fare</span>
           </span>
+          {canWrite && code !== REFERENCE && keys.length > 0 ? (
+            <AiButton
+              background="var(--s-elevated)"
+              busy={false}
+              label="Traduci tutto con l’AI"
+              onClick={() => setBulkOpen(true)}
+            />
+          ) : null}
         </div>
 
         {bundle.isLoading ? <SkeletonRows rows={6} /> : null}
@@ -240,19 +263,6 @@ export function LangTranslatePage({ me }: { me: Me }) {
                 >
                   {save.isPending ? 'Salvo…' : 'Salva e avanti'}
                 </button>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    color: 'var(--tx-muted)',
-                    padding: '3px 8px',
-                    border: '1px solid var(--bd-subtle)',
-                    borderRadius: 'var(--r-xs)',
-                    background: 'var(--s-inset)',
-                  }}
-                >
-                  ⌘↵
-                </span>
               </span>
             </div>
 
@@ -369,6 +379,10 @@ export function LangTranslatePage({ me }: { me: Me }) {
           </>
         ) : null}
       </div>
+
+      {bulkOpen ? (
+        <BulkTranslateDialog ns={ns} code={code} keys={keys} onClose={() => setBulkOpen(false)} />
+      ) : null}
     </>
   );
 }
@@ -396,3 +410,309 @@ const NAV: React.CSSProperties = {
   background: 'var(--s-inset)',
   fontSize: 12,
 };
+
+/** Quante chiavi alla volta. Tre: il giro dura minuti invece di dieci, e l'API non si ingolfa. */
+const BULK_CONCURRENCY = 3;
+/** Il conto di una chiave, in dollari: una riga di chat, con il ragionamento breve. E' una stima. */
+const USD_PER_KEY = 0.01;
+const STOPPED_BY_HAND = 'Fermata a mano.';
+
+/** Le ragioni brevi, per l'elenco delle chiavi saltate. */
+const SKIPPED: Record<string, string> = {
+  formato_cambiato: 'l’AI ha cambiato tag o segnaposto',
+  rifiuto: 'l’AI si è rifiutata',
+  incompleta: 'risposta incompleta',
+  niente_da_tradurre: 'l’inglese non ha un testo',
+};
+
+/**
+ * Cosa fare di un errore, chiave per chiave.
+ *
+ * I 4xx di una chiave sola — formato cambiato, chiave sparita, testo vuoto —
+ * saltano quella chiave. Tutto il resto vale per tutte, e ferma il giro.
+ */
+function classifyBulk(err: unknown): { fatal: boolean; reason: string } {
+  if (err instanceof ApiError) {
+    if ([400, 404, 409, 422].includes(err.status)) {
+      return { fatal: false, reason: SKIPPED[err.code ?? ''] ?? 'non riuscita' };
+    }
+    if (err.isUnauthorized) return { fatal: true, reason: 'la sessione è scaduta: rientra e riprendi.' };
+    if (err.isForbidden) return { fatal: true, reason: 'non hai più il permesso di modificare i testi.' };
+  }
+  return { fatal: true, reason: aiErrorText(err) };
+}
+
+const usd = (n: number): string => n.toLocaleString('it-IT', { style: 'currency', currency: 'USD' });
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+function BulkTranslateDialog({
+  ns,
+  code,
+  keys,
+  onClose,
+}: {
+  ns: string;
+  code: string;
+  keys: readonly KeyValues[];
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [mode, setMode] = useState<BulkMode>('missing');
+  const [state, setState] = useState<BulkState | null>(null);
+  const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const abort = useRef<AbortController | null>(null);
+
+  const missing = bulkTargets(keys, code, 'missing');
+  const all = bulkTargets(keys, code, 'all');
+  const targets = mode === 'missing' ? missing : all;
+  const withoutEnglish = keys.length - all.length;
+
+  // Uscire dalla pagina ferma il giro: niente chiamate a nome di una
+  // schermata che non c'e' piu'. Quello gia' salvato resta.
+  useEffect(() => () => abort.current?.abort(), []);
+  useEffect(() => {
+    if (!running) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [running]);
+
+  const start = async (): Promise<void> => {
+    const ctrl = new AbortController();
+    abort.current = ctrl;
+    setRunning(true);
+    const before = new Map(keys.map((k) => [k.key, k.values[code] ?? '']));
+    const final = await runBulk(
+      targets,
+      async (key) => {
+        const { text } = await aiTranslate({ ns, key, code });
+        // Uguale a quello che c'e' gia': niente scrittura, e niente giro di
+        // rilettura dei server per un testo che non cambia.
+        if (text !== before.get(key)) await putValue({ ns, key, code, value: text });
+      },
+      { concurrency: BULK_CONCURRENCY, signal: ctrl.signal, classify: classifyBulk, onProgress: setState },
+    );
+    setState(final);
+    setRunning(false);
+    setStopping(false);
+    await invalidateLang(queryClient, ns);
+  };
+
+  const stop = (): void => {
+    setStopping(true);
+    abort.current?.abort();
+  };
+
+  // Mentre gira, Esc e il clic fuori non chiudono: fermare cento traduzioni
+  // per un tasto premuto per sbaglio sarebbe troppo. Si ferma con «Ferma».
+  const close = (): void => {
+    if (!running) onClose();
+  };
+
+  const finished = state !== null && !running;
+  const progress = state === null ? 0 : pctOf(state.done + state.failed.length, state.total);
+  const skipped = state === null || state.failed.length === 0 ? '' : `, ${state.failed.length} saltate`;
+
+  let footer: React.ReactNode;
+  if (finished) {
+    footer = (
+      <button type="button" onClick={onClose} style={PRIMARY}>
+        Chiudi
+      </button>
+    );
+  } else if (running) {
+    footer = (
+      <button
+        type="button"
+        onClick={stop}
+        disabled={stopping}
+        style={{ ...GHOST, ...(stopping ? DISABLED : {}) }}
+      >
+        {stopping ? 'Fermo dopo quelle in corso…' : 'Ferma'}
+      </button>
+    );
+  } else {
+    footer = (
+      <>
+        <button type="button" onClick={onClose} style={GHOST}>
+          Annulla
+        </button>
+        <button
+          type="button"
+          onClick={() => void start()}
+          disabled={targets.length === 0}
+          style={{ ...PRIMARY, ...(targets.length === 0 ? DISABLED : {}) }}
+        >
+          Traduci {plural(targets.length, 'chiave', 'chiavi')}
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <Modal
+      title="Tradurre tutto con l’AI"
+      subtitle={`${ns} · dall’inglese in ${languageName(code)} (${code})`}
+      width={520}
+      onClose={close}
+      footer={footer}
+    >
+      {state === null ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <BulkOption
+            on={mode === 'missing'}
+            onPick={() => setMode('missing')}
+            title="Solo le chiavi non tradotte"
+            detail={
+              missing.length === 0
+                ? `Tutte le chiavi hanno già un testo in ${code}.`
+                : `${plural(missing.length, 'chiave', 'chiavi')} senza testo in ${code}. Quelle già tradotte non si toccano.`
+            }
+          />
+          <BulkOption
+            on={mode === 'all'}
+            onPick={() => setMode('all')}
+            title="Tutte, anche quelle già tradotte"
+            detail={`${plural(all.length, 'chiave', 'chiavi')}. Sovrascrive ${plural(all.length - missing.length, 'traduzione esistente', 'traduzioni esistenti')}, anche quelle scritte a mano: il testo di prima resta nel registro.`}
+          />
+          <ul
+            style={{
+              margin: '6px 0 0',
+              paddingLeft: 18,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+              fontSize: 12,
+              lineHeight: '18px',
+              color: 'var(--tx-secondary)',
+            }}
+          >
+            <li>
+              Le traduzioni si salvano subito, senza revisione una per una: in gioco arrivano entro un minuto.
+            </li>
+            <li>
+              Tag, colori, segnaposto e comandi restano identici. Una traduzione che li cambia viene scartata
+              e la chiave resta com’era.
+            </li>
+            {withoutEnglish > 0 ? (
+              <li>
+                {plural(withoutEnglish, 'chiave non ha', 'chiavi non hanno')} un testo inglese: si saltano.
+              </li>
+            ) : null}
+            <li>
+              Costo stimato: circa {usd(targets.length * USD_PER_KEY)}, sul budget mensile dell’AI. Ci
+              vogliono un paio di minuti ogni cento chiavi: tieni aperta questa pagina.
+            </li>
+          </ul>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span
+              style={{
+                flex: 1,
+                height: 6,
+                borderRadius: 3,
+                background: 'var(--s-inset)',
+                overflow: 'hidden',
+              }}
+            >
+              <span
+                style={{
+                  display: 'block',
+                  height: '100%',
+                  width: `${progress}%`,
+                  background: 'var(--ac)',
+                  transition: 'width .3s',
+                }}
+              />
+            </span>
+            <span
+              style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}
+            >
+              {state.done + state.failed.length} / {state.total}
+            </span>
+          </div>
+          <div style={{ fontSize: 12.5, color: 'var(--tx-secondary)', lineHeight: '19px' }}>
+            {running
+              ? `Traduco… ${state.done} salvate${skipped}.`
+              : `${plural(state.done, 'traduzione salvata', 'traduzioni salvate')}${skipped}.`}
+          </div>
+          {finished && state.stopped !== null ? (
+            <FieldNotice tone={state.stopped === STOPPED_BY_HAND ? 'info' : 'err'}>
+              {state.stopped === STOPPED_BY_HAND
+                ? 'Fermata prima della fine.'
+                : `Interrotta: ${state.stopped}`}{' '}
+              Quelle non ancora fatte restano da tradurre: rilanciando «solo le non tradotte» si riprende da
+              lì.
+            </FieldNotice>
+          ) : null}
+          {state.failed.length > 0 ? (
+            <div
+              style={{
+                maxHeight: 180,
+                overflowY: 'auto',
+                border: '1px solid var(--bd-subtle)',
+                borderRadius: 'var(--r-sm)',
+                background: 'var(--s-inset)',
+                padding: '8px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 4,
+              }}
+            >
+              {state.failed.map((f) => (
+                <div key={f.key} style={{ display: 'flex', gap: 10, fontSize: 11.5 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--tx-primary)' }}>{f.key}</span>
+                  <span style={{ color: 'var(--tx-muted)' }}>{f.reason}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function BulkOption({
+  on,
+  onPick,
+  title,
+  detail,
+}: {
+  on: boolean;
+  onPick: () => void;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <label
+      style={{
+        display: 'flex',
+        gap: 11,
+        alignItems: 'flex-start',
+        padding: '11px 13px',
+        border: `1px solid ${on ? 'rgba(219,110,25,.55)' : 'var(--bd-subtle)'}`,
+        borderRadius: 'var(--r-sm)',
+        background: on ? 'var(--ac-soft)' : 'var(--s-inset)',
+        cursor: 'pointer',
+      }}
+    >
+      <input
+        type="radio"
+        name="bulk-mode"
+        checked={on}
+        onChange={onPick}
+        style={{ margin: '2px 0 0', accentColor: 'var(--ac)', flex: 'none' }}
+      />
+      <span style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <span style={{ fontSize: 13, fontWeight: 600, color: on ? 'var(--ac-text)' : 'var(--tx-primary)' }}>
+          {title}
+        </span>
+        <span style={{ fontSize: 11.5, lineHeight: '17px', color: 'var(--tx-muted)' }}>{detail}</span>
+      </span>
+    </label>
+  );
+}

@@ -62,9 +62,11 @@ export function AiButton({
   disabled = false,
   title,
   background,
+  label = 'Genera con l’AI',
   onClick,
 }: {
   busy: boolean;
+  label?: string;
   disabled?: boolean;
   title?: string | undefined;
   /** Il fondo cambia con la card che lo ospita, come nel disegno. */
@@ -108,7 +110,7 @@ export function AiButton({
       >
         <path d="M12 3.5l1.6 4.3 4.3 1.6-4.3 1.6-1.6 4.3-1.6-4.3-4.3-1.6 4.3-1.6zM18 16l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z" />
       </svg>
-      {busy ? <span style={{ color: 'var(--ac-text)' }}>Genero…</span> : <span>Genera con l’AI</span>}
+      {busy ? <span style={{ color: 'var(--ac-text)' }}>Genero…</span> : <span>{label}</span>}
     </button>
   );
 }

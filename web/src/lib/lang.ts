@@ -1,7 +1,7 @@
 // I tipi e le funzioni pure di «Lingue».
 //
 // STANNO IN UN MODULO SENZA JSX perche' le usano quattro schermate e perche'
-// l'albero delle chiavi e il confronto dei segnaposto si provano senza montare
+// l'albero delle chiavi e la traduzione in blocco si provano senza montare
 // React. Sono le due sole logiche vere della sezione: tutto il resto e' dato
 // che arriva dal server e si disegna.
 
@@ -125,3 +125,78 @@ const NAMES: Record<string, string> = {
   ru: 'Русский',
   tr: 'Türkçe',
 };
+
+// ---------------------------------------------------------------------------
+// Tradurre un bundle intero con l'AI.
+// ---------------------------------------------------------------------------
+
+export type BulkMode = 'missing' | 'all';
+
+/**
+ * Le chiavi da tradurre. Mai quelle senza un testo inglese: l'AI traduce
+ * dall'inglese, e senza non ha niente da cui partire.
+ */
+export function bulkTargets(keys: readonly KeyValues[], code: string, mode: BulkMode): string[] {
+  return keys
+    .filter((k) => (k.values[REFERENCE] ?? '').trim() !== '')
+    .filter((k) => mode === 'all' || (k.values[code] ?? '') === '')
+    .map((k) => k.key);
+}
+
+export type BulkState = {
+  total: number;
+  done: number;
+  /** Le chiavi saltate, col perche': restano da tradurre a mano. */
+  failed: Array<{ key: string; reason: string }>;
+  /** Perche' il lavoro si e' fermato prima della fine. `null` = e' arrivato in fondo. */
+  stopped: string | null;
+};
+
+/**
+ * Passa le chiavi a `work`, `concurrency` alla volta.
+ *
+ * DUE SPECIE DI ERRORE, e `classify` dice quale. Una chiave che non si
+ * traduce — formato cambiato, rifiuto — si segna e si va avanti. Un guasto
+ * che vale per tutte — budget finito, sessione scaduta, AI giu' — ferma il
+ * giro: provare le altre cento chiavi vorrebbe dire cento errori uguali.
+ *
+ * FERMARSI NON INTERROMPE quelle in corso: sono gia' pagate, e buttarle
+ * vorrebbe dire aver speso per niente. Non ne parte nessuna nuova.
+ */
+export async function runBulk(
+  keys: readonly string[],
+  work: (key: string) => Promise<void>,
+  opts: {
+    concurrency: number;
+    signal: AbortSignal;
+    classify: (err: unknown) => { fatal: boolean; reason: string };
+    onProgress?: (state: BulkState) => void;
+  },
+): Promise<BulkState> {
+  const state: BulkState = { total: keys.length, done: 0, failed: [], stopped: null };
+  const report = (): void => opts.onProgress?.({ ...state, failed: [...state.failed] });
+  let next = 0;
+
+  const worker = async (): Promise<void> => {
+    while (next < keys.length && state.stopped === null && !opts.signal.aborted) {
+      const key = keys[next] as string;
+      next += 1;
+      try {
+        await work(key);
+        state.done += 1;
+      } catch (err) {
+        const { fatal, reason } = opts.classify(err);
+        if (!fatal) state.failed.push({ key, reason });
+        else if (state.stopped === null) state.stopped = reason;
+      }
+      report();
+    }
+  };
+
+  await Promise.all(Array.from({ length: Math.min(opts.concurrency, keys.length) }, worker));
+  if (state.stopped === null && state.done + state.failed.length < keys.length) {
+    state.stopped = 'Fermata a mano.';
+  }
+  report();
+  return state;
+}

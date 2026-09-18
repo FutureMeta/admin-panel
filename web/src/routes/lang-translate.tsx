@@ -413,8 +413,6 @@ const NAV: React.CSSProperties = {
 
 /** Quante chiavi alla volta. Tre: il giro dura minuti invece di dieci, e l'API non si ingolfa. */
 const BULK_CONCURRENCY = 3;
-/** Il conto di una chiave, in dollari: una riga di chat, con il ragionamento breve. E' una stima. */
-const USD_PER_KEY = 0.01;
 const STOPPED_BY_HAND = 'Fermata a mano.';
 
 /** Le ragioni brevi, per l'elenco delle chiavi saltate. */
@@ -442,7 +440,6 @@ function classifyBulk(err: unknown): { fatal: boolean; reason: string } {
   return { fatal: true, reason: aiErrorText(err) };
 }
 
-const usd = (n: number): string => n.toLocaleString('it-IT', { style: 'currency', currency: 'USD' });
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
 
 function BulkTranslateDialog({
@@ -466,7 +463,6 @@ function BulkTranslateDialog({
   const missing = bulkTargets(keys, code, 'missing');
   const all = bulkTargets(keys, code, 'all');
   const targets = mode === 'missing' ? missing : all;
-  const withoutEnglish = keys.length - all.length;
 
   // Uscire dalla pagina ferma il giro: niente chiamate a nome di una
   // schermata che non c'e' piu'. Quello gia' salvato resta.
@@ -576,35 +572,6 @@ function BulkTranslateDialog({
             title="Tutte, anche quelle già tradotte"
             detail={`${plural(all.length, 'chiave', 'chiavi')}. Sovrascrive ${plural(all.length - missing.length, 'traduzione esistente', 'traduzioni esistenti')}, anche quelle scritte a mano: il testo di prima resta nel registro.`}
           />
-          <ul
-            style={{
-              margin: '6px 0 0',
-              paddingLeft: 18,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 6,
-              fontSize: 12,
-              lineHeight: '18px',
-              color: 'var(--tx-secondary)',
-            }}
-          >
-            <li>
-              Le traduzioni si salvano subito, senza revisione una per una: in gioco arrivano entro un minuto.
-            </li>
-            <li>
-              Tag, colori, segnaposto e comandi restano identici. Una traduzione che li cambia viene scartata
-              e la chiave resta com’era.
-            </li>
-            {withoutEnglish > 0 ? (
-              <li>
-                {plural(withoutEnglish, 'chiave non ha', 'chiavi non hanno')} un testo inglese: si saltano.
-              </li>
-            ) : null}
-            <li>
-              Costo stimato: circa {usd(targets.length * USD_PER_KEY)}, sul budget mensile dell’AI. Ci
-              vogliono un paio di minuti ogni cento chiavi: tieni aperta questa pagina.
-            </li>
-          </ul>
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

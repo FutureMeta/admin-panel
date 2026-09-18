@@ -11,6 +11,7 @@ import { sql } from 'kysely';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
 import { startTestApp, type TestApp } from '#tests/support/app.ts';
+import { grantOverride } from '#tests/support/fixtures.ts';
 import {
   type FakeMetaverseMysql,
   fakeMetaverseMysql,
@@ -190,7 +191,7 @@ describe('modificare un testo e` di livello 2', () => {
   });
 });
 
-describe('gestire le lingue e` di livello 3', () => {
+describe('gestire le lingue e` il livello 3 dell`Elenco', () => {
   it('un dev non crea lingue', async () => {
     const res = await t.app.inject({
       method: 'POST',
@@ -285,5 +286,87 @@ describe('gestire le lingue e` di livello 3', () => {
       payload: { active: true },
     });
     expect(missing.statusCode).toBe(404);
+  });
+});
+
+describe('un modulo per schermata: Bundle e Elenco', () => {
+  /** Una persona senza ruoli, con solo il permesso dato qui: nient'altro la fa passare. */
+  async function only(grants: Array<['lingue' | 'lingue_elenco', number]>) {
+    const user = await seedUser(t);
+    for (const [module, level] of grants) await grantOverride(t.ctx.db, user.id, module, level);
+    await t.ctx.store.invalidate(user.id);
+    return loginAs(t, user);
+  }
+
+  const get = (actor: Awaited<ReturnType<typeof loginAs>>, url: string) =>
+    t.app.inject({ method: 'GET', url, headers: actor.cookieOnly() });
+  const createEs = (actor: Awaited<ReturnType<typeof loginAs>>) =>
+    t.app.inject({
+      method: 'POST',
+      url: '/api/lang/language',
+      headers: actor.headers(),
+      payload: { code: 'es', display: '<white>Español' },
+    });
+  const translateIt = (actor: Awaited<ReturnType<typeof loginAs>>) =>
+    t.app.inject({
+      method: 'PUT',
+      url: '/api/lang/value',
+      headers: actor.headers(),
+      payload: { ns: 'duels.uhc', key: 'event.countdown', code: 'it', value: '<gray>Ciao' },
+    });
+
+  it('la migration da` a Elenco lo stesso livello che ogni ruolo aveva su Lingue, e i nomi del menu', async () => {
+    const levels = await sql<{ role: string; lingue: number; elenco: number }>`
+      SELECT r.key AS role,
+             max(rp.level) FILTER (WHERE m.key = 'lingue')        AS lingue,
+             max(rp.level) FILTER (WHERE m.key = 'lingue_elenco') AS elenco
+        FROM auth.role_permissions rp
+        JOIN auth.roles r   ON r.id = rp.role_id
+        JOIN auth.modules m ON m.id = rp.module_id
+       WHERE m.key IN ('lingue', 'lingue_elenco')
+       GROUP BY r.key ORDER BY r.key
+    `.execute(t.ctx.db);
+    expect(levels.rows).toEqual([
+      { role: 'admin', lingue: 3, elenco: 3 },
+      { role: 'dev', lingue: 2, elenco: 2 },
+      { role: 'moderatore', lingue: 1, elenco: 1 },
+      { role: 'owner', lingue: 3, elenco: 3 },
+    ]);
+
+    const names = await sql<{ key: string; name: string }>`
+      SELECT key, name FROM auth.modules WHERE key LIKE 'lingue%' ORDER BY sort_order
+    `.execute(t.ctx.db);
+    expect(names.rows).toEqual([
+      { key: 'lingue', name: 'Bundle' },
+      { key: 'lingue_elenco', name: 'Elenco' },
+    ]);
+  });
+
+  it('Bundle al massimo traduce, ma non tocca le lingue', async () => {
+    const actor = await only([['lingue', 3]]);
+    expect((await get(actor, '/api/lang')).statusCode).toBe(200);
+    expect((await get(actor, '/api/lang/keys?ns=duels.uhc')).statusCode).toBe(200);
+    expect((await translateIt(actor)).statusCode).toBe(200);
+    expect((await createEs(actor)).statusCode).toBe(403);
+    expect(my.state.languages).toHaveLength(2);
+  });
+
+  it('Bundle in sola lettura legge i testi e non li scrive', async () => {
+    const actor = await only([['lingue', 1]]);
+    expect((await get(actor, '/api/lang/keys?ns=duels.uhc')).statusCode).toBe(200);
+    expect((await translateIt(actor)).statusCode).toBe(403);
+  });
+
+  it('solo Elenco: vede e gestisce le lingue, ma i testi no', async () => {
+    const actor = await only([['lingue_elenco', 3]]);
+    expect((await get(actor, '/api/lang')).statusCode).toBe(200);
+    expect((await get(actor, '/api/lang/keys?ns=duels.uhc')).statusCode).toBe(403);
+    expect((await translateIt(actor)).statusCode).toBe(403);
+    expect((await createEs(actor)).statusCode).toBe(201);
+  });
+
+  it('senza nessuno dei due, nemmeno la panoramica', async () => {
+    const actor = await only([]);
+    expect((await get(actor, '/api/lang')).statusCode).toBe(403);
   });
 });

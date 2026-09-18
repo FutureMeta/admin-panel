@@ -286,8 +286,9 @@ function DuelsConfigRoute() {
   return <DuelsConfigPage me={me.data} />;
 }
 
-// Le quattro schermate di «Lingue» stanno sullo stesso modulo: chi lo ha
-// legge, e il livello decide il resto dentro la schermata.
+// Le schermate di «Lingue»: Bundle, chiavi e traduzione stanno su `lingue`,
+// l'Elenco su `lingue_elenco`. La traduzione vuole il 2 — a chi legge
+// soltanto non serve —, il resto apre col 1 e il livello decide dentro.
 function LangOverviewRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
@@ -305,14 +306,14 @@ function LangKeysRoute() {
 function LangTranslateRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
+  if (!canOpen(me.data, 'lingue', 2)) return <ForbiddenPage />;
   return <LangTranslatePage me={me.data} />;
 }
 
 function LangLanguagesRoute() {
   const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
   if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
+  if (!canOpen(me.data, 'lingue_elenco')) return <ForbiddenPage />;
   return <LangLanguagesPage me={me.data} />;
 }
 

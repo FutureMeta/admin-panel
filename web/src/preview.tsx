@@ -59,6 +59,7 @@ const ME: Me = {
     duels_config: 3,
     assistente: 3,
     lingue: 3,
+    lingue_elenco: 3,
   },
   modules: [
     'utenti',
@@ -75,6 +76,7 @@ const ME: Me = {
     'duels_maps',
     'assistente',
     'lingue',
+    'lingue_elenco',
   ],
   aal: 2,
   authenticatedAt: new Date().toISOString(),

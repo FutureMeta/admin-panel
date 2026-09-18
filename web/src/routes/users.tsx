@@ -35,7 +35,7 @@ import {
   SkeletonRows,
 } from '../components/ui.tsx';
 import { ApiError, api, type Me, type RolesMatrix, type UserDetail, type UserRow } from '../lib/api.ts';
-import { areaOfModule, MODULE_TOTAL } from '../lib/modules.ts';
+import { areaOfModule, MODULE_LEVEL_HINTS, MODULE_TOTAL, type ModuleKey } from '../lib/modules.ts';
 
 const LEVELS = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
 
@@ -808,7 +808,14 @@ export function RolesPage({ me }: { me: Me }) {
                       const level = levelOf(m.id);
                       return (
                         <tr key={m.id}>
-                          <td style={{ paddingLeft: 20 }}>{m.name}</td>
+                          <td style={{ paddingLeft: 20 }}>
+                            {m.name}
+                            {MODULE_LEVEL_HINTS[m.key as ModuleKey] ? (
+                              <div style={{ marginTop: 2, fontSize: 11, color: 'var(--tx-muted)' }}>
+                                {MODULE_LEVEL_HINTS[m.key as ModuleKey]}
+                              </div>
+                            ) : null}
+                          </td>
                           {LEVELS.map((label, value) => {
                             const on = level === value;
                             const changed = draft[m.id] !== undefined && draft[m.id] !== savedLevelOf(m.id);

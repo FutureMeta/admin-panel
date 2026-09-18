@@ -29,7 +29,7 @@ import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
 
 export function LangLanguagesPage({ me }: { me: Me }) {
   const queryClient = useQueryClient();
-  const canManage = canOpen(me, 'lingue', 3);
+  const canManage = canOpen(me, 'lingue_elenco', 3);
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

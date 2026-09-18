@@ -6,11 +6,15 @@
 // minuto. Il pannello scrive nello stesso posto, e loro se ne accorgono da
 // soli. Nessuna riga di Java cambia.
 //
-// I TRE LIVELLI:
+// DUE MODULI, uno per schermata (migration 023):
 //
-//   1  legge i testi
-//   2  li modifica — e arrivano in gioco entro un minuto, senza bozza
-//   3  gestisce le lingue: ne crea, le accende per i giocatori, le riordina
+//   `lingue` — Bundle, con le chiavi e la traduzione
+//      1  legge i testi
+//      2  li traduce e li corregge, anche con l'AI — arrivano in gioco entro
+//         un minuto, senza bozza sul server
+//   `lingue_elenco` — Elenco
+//      1  vede le lingue
+//      3  le crea, le accende per i giocatori, le rinomina, le riordina
 //
 // IL MINIMESSAGE NON SI CONTROLLA. I tag li risolve il plugin — `<player>`,
 // `<server>` e quelli che ogni bundle si inventa — e il pannello non ha la
@@ -27,7 +31,7 @@ import type { AppContext } from '#src/app-context.ts';
 import { costUsdOn, type TokenUsage } from '#src/assistant/config.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
-import { require as requireLevel } from '#src/authz/can.ts';
+import { can, require as requireLevel } from '#src/authz/can.ts';
 import type { DuelsMysql } from '#src/duels/mysql.ts';
 import { AiTranslationFailed, TRANSLATE_MODEL, translateWithAi } from '#src/lang/ai.ts';
 import {
@@ -155,7 +159,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     request: FastifyRequest,
     actor: ReturnType<typeof actorOf>,
     action: (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS],
-    target: { type: string; label: string },
+    target: { module: 'lingue' | 'lingue_elenco'; type: string; label: string },
     meta: Record<string, unknown>,
     outcome: 'success' | 'failure' = 'success',
   ): Promise<void> =>
@@ -164,7 +168,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
       outcome,
       actor: auditActorOf(actor),
       request: auditContextOf(request, requestIps(request)),
-      moduleKey: 'lingue',
+      moduleKey: target.module,
       targetType: target.type,
       targetId: null,
       targetLabel: target.label,
@@ -174,7 +178,10 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     });
 
   app.get('/api/lang', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
-    requireLevel(actorOf(request), 'lingue', 1);
+    // La leggono tutte e due le schermate: Bundle per i bundle, Elenco per le
+    // lingue e quanto sono complete. Basta uno dei due moduli.
+    const actor = actorOf(request);
+    if (!can(actor, 'lingue', 1)) requireLevel(actor, 'lingue_elenco', 1);
     const db = gameDb(reply);
     if (db === null) return reply;
     reply.header('Cache-Control', 'private, no-store');
@@ -226,7 +233,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
         request,
         actor,
         AUDIT_ACTIONS.langValueSet,
-        { type: 'lang_value', label: `${body.ns} ${body.key} [${body.code}]` },
+        { module: 'lingue', type: 'lang_value', label: `${body.ns} ${body.key} [${body.code}]` },
         { ns: body.ns, key: body.key, code: body.code, before, after: body.value },
       );
 
@@ -239,7 +246,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     { schema: languageBody, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
-      requireLevel(actor, 'lingue', 3);
+      requireLevel(actor, 'lingue_elenco', 3);
       const db = gameDb(reply);
       if (db === null) return reply;
       const body = request.body as { code: string; display: string };
@@ -261,7 +268,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
         request,
         actor,
         AUDIT_ACTIONS.langLanguageCreated,
-        { type: 'lang_language', label: body.code },
+        { module: 'lingue_elenco', type: 'lang_language', label: body.code },
         body,
       );
 
@@ -274,7 +281,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     { schema: languagePatch, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       const actor = actorOf(request);
-      requireLevel(actor, 'lingue', 3);
+      requireLevel(actor, 'lingue_elenco', 3);
       const db = gameDb(reply);
       if (db === null) return reply;
       const { code } = request.params as { code: string };
@@ -297,7 +304,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
           request,
           actor,
           AUDIT_ACTIONS.langLanguageChanged,
-          { type: 'lang_language', label: code },
+          { module: 'lingue_elenco', type: 'lang_language', label: code },
           { code, ...body },
         );
 
@@ -360,7 +367,11 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
         return reply.code(409).send({ error: 'niente da tradurre', code: 'niente_da_tradurre' });
       }
 
-      const target = { type: 'lang_value', label: `${body.ns} ${body.key} [${body.code}]` };
+      const target = {
+        module: 'lingue' as const,
+        type: 'lang_value',
+        label: `${body.ns} ${body.key} [${body.code}]`,
+      };
       const meta = { ns: body.ns, key: body.key, code: body.code, model: TRANSLATE_MODEL };
       const charge = (usage: TokenUsage): Promise<void> =>
         ai.spend.add(now, costUsdOn(TRANSLATE_MODEL, usage)).catch((err) => {

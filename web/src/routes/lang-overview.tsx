@@ -21,8 +21,11 @@ import { PageHeader } from '../components/page.tsx';
 import { ICONS, Icon, SkeletonRows } from '../components/ui.tsx';
 import type { Me } from '../lib/api.ts';
 import { groupBundles, heat, languageName, pctOf, REFERENCE } from '../lib/lang.ts';
+import { canOpen } from '../lib/modules.ts';
 
-export function LangOverviewPage(_props: { me: Me }) {
+export function LangOverviewPage({ me }: { me: Me }) {
+  // «Traduci ›» porta a una schermata che serve solo a chi scrive.
+  const canTranslate = canOpen(me, 'lingue', 2);
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState<string | null>(null);
@@ -321,7 +324,7 @@ export function LangOverviewPage(_props: { me: Me }) {
                             >
                               completo
                             </span>
-                          ) : (
+                          ) : !canTranslate ? null : (
                             <button
                               type="button"
                               onClick={() =>

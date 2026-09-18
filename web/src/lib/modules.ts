@@ -43,6 +43,7 @@ export const MODULE_KEYS = [
   'duels_config',
   'assistente',
   'lingue',
+  'lingue_elenco',
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -80,11 +81,25 @@ export const MODULE_AREAS: Record<string, string> = {
   // spegne per persona.
   assistente: 'Sistema',
   lingue: 'Lingue',
+  lingue_elenco: 'Lingue',
 };
 
 export function areaOfModule(key: string): string {
   return MODULE_AREAS[key] ?? OTHER_AREA;
 }
+
+/**
+ * Cosa vuol dire ogni livello, per i moduli dove non si indovina.
+ *
+ * La matrice ha le stesse quattro colonne per tutti — Nessuno, Lettura,
+ * Scrittura, Gestione — e «Scrittura» su Bundle vuol dire TRADURRE: chi
+ * concede deve poterlo leggere li', non ricavarlo dal codice. La riga compare
+ * sotto il nome del modulo.
+ */
+export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, string>> = {
+  lingue: 'Lettura: vede i testi · Scrittura: traduce e corregge, anche con l’AI',
+  lingue_elenco: 'Lettura: vede le lingue · Gestione: le crea, le accende, le rinomina, le riordina',
+};
 
 /** Quanto in alto puo' arrivare un permesso. 0 = nessun accesso. */
 export type Level = 0 | 1 | 2 | 3;

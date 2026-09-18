@@ -147,7 +147,7 @@ export const NAV: readonly NavEntry[] = [
     title: 'Lingue · Elenco',
     label: 'Elenco',
     area: 'Lingue',
-    modules: ['lingue'],
+    modules: ['lingue_elenco'],
     hint: 'quali lingue vedono i giocatori',
   },
   {

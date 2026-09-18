@@ -98,19 +98,20 @@ describe('il formato che la traduzione non puo` toccare', () => {
 describe('la chiamata', () => {
   const input = { ns: 'duels.uhc', key: 'event.countdown', code: 'it', source: EN };
 
-  it('Opus 5 col ripiego automatico, uscita strutturata, e l`inglese nel messaggio', async () => {
+  it('Sonnet 5, uscita strutturata, niente parametri che non accetta, e l`inglese nel messaggio', async () => {
     const { client, seen } = fakeClient([IT]);
     const out = await translateWithAi(client, input);
     expect(out).toMatchObject({ text: IT, attempts: 1, usage: { input: 400, output: 60 } });
 
     const req = seen[0] as Params;
     expect(req).toMatchObject({
-      model: TRANSLATE_MODEL,
-      fallbacks: 'default',
-      betas: ['server-side-fallback-2026-07-01'],
+      model: 'claude-sonnet-5',
+      betas: [],
       thinking: { type: 'adaptive' },
       output_config: { effort: 'medium' },
     });
+    // `fallbacks` su Sonnet 5 e' un 400: non deve partire.
+    expect(req).not.toHaveProperty('fallbacks');
     expect((req.output_config as { format?: unknown }).format).toBeDefined();
     expect(JSON.parse(req.messages[0]?.content ?? '')).toEqual({
       bundle: 'duels.uhc',

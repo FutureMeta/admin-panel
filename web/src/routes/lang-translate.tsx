@@ -43,7 +43,16 @@ import { MiniSource } from '../components/mini-text.tsx';
 import { PageHeader } from '../components/page.tsx';
 import { Modal, SkeletonRows, Spinner } from '../components/ui.tsx';
 import { ApiError, type Me } from '../lib/api.ts';
-import { type BulkState, bulkTargets, heat, languageName, pctOf, REFERENCE, runBulk } from '../lib/lang.ts';
+import {
+  aiCostUsd,
+  type BulkState,
+  bulkTargets,
+  heat,
+  languageName,
+  pctOf,
+  REFERENCE,
+  runBulk,
+} from '../lib/lang.ts';
 import { canOpen } from '../lib/modules.ts';
 import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
 
@@ -77,6 +86,7 @@ function classifyBulk(err: unknown): { fatal: boolean; reason: string } {
 }
 
 const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+const usd = (n: number): string => n.toLocaleString('it-IT', { style: 'currency', currency: 'USD' });
 
 type BulkRun = { state: BulkState; running: boolean; stopping: boolean };
 
@@ -97,6 +107,8 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [aiError, setAiError] = useState<{ key: string; text: string } | null>(null);
   /** Il giro dell'AI su tutto il bundle: c'e' finche' il popup e' aperto. */
+  /** Il popup col costo, prima di partire. */
+  const [confirming, setConfirming] = useState(false);
   const [bulk, setBulk] = useState<BulkRun | null>(null);
   /** «Salva tutte»: l'avanzamento mentre scrive, e cosa non e' andato dopo. */
   const [saving, setSaving] = useState<{ state: BulkState; running: boolean } | null>(null);
@@ -124,6 +136,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const ready = todo.filter((k) => (drafts[k.key] ?? '').trim() !== '').map((k) => k.key);
   /** Cosa tradurrebbe l'AI adesso: le chiavi da fare con l'inglese, senza una bozza. */
   const aiTargets = bulkTargets(todo, code).filter((key) => (drafts[key] ?? '').trim() === '');
+  const aiCost = aiCostUsd(aiTargets.map((key) => todo.find((k) => k.key === key)?.values[REFERENCE] ?? ''));
 
   const done = keys.length - todo.length;
   const pct = pctOf(done, keys.length);
@@ -314,7 +327,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
               disabled={aiTargets.length === 0}
               title={aiTargets.length === 0 ? 'Nessuna chiave da tradurre senza una bozza' : undefined}
               label="Traduci tutto con l’AI"
-              onClick={() => void startBulk()}
+              onClick={() => setConfirming(true)}
             />
           ) : null}
         </div>
@@ -523,6 +536,44 @@ export function LangTranslatePage({ me }: { me: Me }) {
           </>
         ) : null}
       </div>
+
+      {confirming ? (
+        <Modal
+          title="Traduzione con l’AI"
+          subtitle={`${ns} · dall’inglese in ${languageName(code)} (${code})`}
+          width={420}
+          onClose={() => setConfirming(false)}
+          footer={
+            <>
+              <button type="button" onClick={() => setConfirming(false)} style={GHOST}>
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirming(false);
+                  void startBulk();
+                }}
+                style={PRIMARY}
+              >
+                Conferma
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <span style={{ fontSize: 12.5, color: 'var(--tx-secondary)' }}>
+              {plural(aiTargets.length, 'chiave da tradurre', 'chiavi da tradurre')}
+            </span>
+            <span style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 700 }}>
+              {aiCost < 0.01 ? 'meno di 0,01 USD' : `circa ${usd(aiCost)}`}
+            </span>
+            <span style={{ fontSize: 11.5, color: 'var(--tx-muted)' }}>
+              costo stimato, dal budget mensile dell’AI
+            </span>
+          </div>
+        </Modal>
+      ) : null}
 
       {bulk !== null ? (
         <BulkProgressDialog

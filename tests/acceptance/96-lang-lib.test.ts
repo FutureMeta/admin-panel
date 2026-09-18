@@ -6,7 +6,7 @@
 // la lista. Un controllo qui rifiuterebbe testi giusti.
 
 import { describe, expect, it } from 'vitest';
-import { bulkTargets, keyTree, prefixesOf, runBulk } from '#web/lib/lang.ts';
+import { aiCostUsd, bulkTargets, keyTree, prefixesOf, runBulk } from '#web/lib/lang.ts';
 import { lineSpans } from '#web/lib/mini-spans.ts';
 
 describe('l`albero delle chiavi', () => {
@@ -104,6 +104,15 @@ describe('tradurre un bundle in blocco', () => {
   it('solo le non tradotte, e mai quelle senza inglese', () => {
     expect(bulkTargets(KEYS, 'it')).toEqual(['b']);
     expect(bulkTargets(KEYS, 'es')).toEqual(['a', 'b']);
+  });
+
+  it('il costo stimato cresce con i testi, e una riga sta sotto il mezzo centesimo', () => {
+    expect(aiCostUsd([])).toBe(0);
+    const one = aiCostUsd(['<gray>%host% starts the event in <white>%time%']);
+    expect(one).toBeGreaterThan(0.003);
+    expect(one).toBeLessThan(0.006);
+    expect(aiCostUsd(['a', 'b'])).toBeCloseTo(2 * aiCostUsd(['a']), 10);
+    expect(aiCostUsd(['x'.repeat(600)])).toBeGreaterThan(one);
   });
 
   class Skip extends Error {}

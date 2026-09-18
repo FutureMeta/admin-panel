@@ -26,7 +26,13 @@ import {
 } from '#src/assistant/config.ts';
 import { PLACEHOLDER, TAG } from '#web/lib/minimessage.ts';
 
-export const TRANSLATE_MODEL = 'claude-opus-5' satisfies ModelKey;
+/**
+ * Sonnet 5, come l'assistente: tradurre una riga di gioco non chiede di piu',
+ * e costa 2 e 10 dollari per milione invece di 5 e 25. Senza `fallbacks` —
+ * su Sonnet 5 non esiste, e `extrasOf` lo sa: un rifiuto arriva come
+ * `stop_reason: refusal` e diventa un errore di quella chiave.
+ */
+export const TRANSLATE_MODEL = 'claude-sonnet-5' satisfies ModelKey;
 
 /**
  * Medio. Il testo e' una riga, ma rimettere a posto ogni tag — anche dentro le

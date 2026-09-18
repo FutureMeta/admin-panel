@@ -198,3 +198,24 @@ export async function runBulk(
   report();
   return state;
 }
+
+/**
+ * Quanto costa tradurre questi testi inglesi con l'AI, in dollari. UNA STIMA.
+ *
+ * Per chiave: le istruzioni fisse e il testo in entrata, un ragionamento
+ * breve e la traduzione in uscita, al listino di Claude Sonnet 5 — il modello
+ * di `src/lang/ai.ts` (2 $ per milione in entrata, 10 in uscita). Il testo
+ * conta per lunghezza: i tag spezzano le parole, e un token ogni tre
+ * caratteri e' piu' vicino al vero della media dell'inglese piano. Una chiave
+ * che va riprovata costa il doppio, e qui non si prevede.
+ */
+export function aiCostUsd(sources: readonly string[]): number {
+  const FIXED_IN = 500;
+  const THINKING = 300;
+  let usd = 0;
+  for (const text of sources) {
+    const tokens = Math.ceil(text.length / 3);
+    usd += ((FIXED_IN + tokens) * 2 + (THINKING + tokens) * 10) / 1_000_000;
+  }
+  return usd;
+}

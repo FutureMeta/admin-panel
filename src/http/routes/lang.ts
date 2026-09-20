@@ -14,7 +14,8 @@
 //         un minuto, senza bozza sul server
 //   `lingue_elenco` — Elenco
 //      1  vede le lingue
-//      3  le crea, le accende per i giocatori, le rinomina, le riordina
+//      3  le crea, le accende per i giocatori, le rinomina, le riordina, le
+//         cancella — coi loro testi
 //
 // IL MINIMESSAGE NON SI CONTROLLA. I tag li risolve il plugin — `<player>`,
 // `<server>` e quelli che ogni bundle si inventa — e il pannello non ha la
@@ -36,6 +37,7 @@ import type { DuelsMysql } from '#src/duels/mysql.ts';
 import { AiTranslationFailed, TRANSLATE_MODEL, translateWithAi } from '#src/lang/ai.ts';
 import {
   createLanguage,
+  deleteLanguage,
   LanguageExists,
   moveLanguage,
   readBundleKeys,
@@ -273,6 +275,42 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
       );
 
       return reply.code(201).send(language);
+    },
+  );
+
+  app.delete(
+    '/api/lang/language/:code',
+    { schema: { params: languagePatch.params }, preHandler: [requireAuth(ctx)] },
+    async (request, reply) => {
+      const actor = actorOf(request);
+      requireLevel(actor, 'lingue_elenco', 3);
+      const db = gameDb(reply);
+      if (db === null) return reply;
+      const { code } = request.params as { code: string };
+      // L'inglese e' il ripiego di tutto: senza, un giocatore con una lingua
+      // incompleta non avrebbe piu' niente da leggere.
+      if (code === REFERENCE) {
+        return reply.code(400).send({ error: 'l’inglese è il riferimento', code: 'riferimento' });
+      }
+
+      let gone: Awaited<ReturnType<typeof deleteLanguage>>;
+      try {
+        gone = await deleteLanguage(db, code);
+      } catch (err) {
+        if (err instanceof UnknownLanguage) {
+          return reply.code(404).send({ error: 'lingua sconosciuta', detail: code });
+        }
+        throw err;
+      }
+
+      await audit(
+        request,
+        actor,
+        AUDIT_ACTIONS.langLanguageDeleted,
+        { module: 'lingue_elenco', type: 'lang_language', label: code },
+        { code, display: gone.display, texts: gone.texts },
+      );
+      return reply.code(204).send();
     },
   );
 

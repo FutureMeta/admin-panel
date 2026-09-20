@@ -216,6 +216,19 @@ export function fakeMetaverseMysql(initial: LangState = seededState()): FakeMeta
       return { rows: [], affectedRows: 1 };
     }
 
+    if (q === 'DELETE FROM metaverse_message WHERE locale = ?') {
+      const kept = state.messages.filter((r) => r.locale !== p[0]);
+      const gone = state.messages.length - kept.length;
+      state.messages.splice(0, state.messages.length, ...kept);
+      return { rows: [], affectedRows: gone };
+    }
+    if (q === 'DELETE FROM metaverse_language WHERE locale = ?') {
+      const kept = state.languages.filter((l) => l.locale !== p[0]);
+      const gone = state.languages.length - kept.length;
+      state.languages.splice(0, state.languages.length, ...kept);
+      return { rows: [], affectedRows: gone };
+    }
+
     if (/^SET /.test(q)) return { rows: [], affectedRows: 0 };
 
     throw new Error(`il finto non conosce questa istruzione: ${q}`);

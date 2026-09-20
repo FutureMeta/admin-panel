@@ -289,6 +289,41 @@ describe('gestire le lingue e` il livello 3 dell`Elenco', () => {
   });
 });
 
+describe('cancellare una lingua', () => {
+  const del = (actor: Awaited<ReturnType<typeof loginAs>>, code: string) =>
+    t.app.inject({ method: 'DELETE', url: `/api/lang/language/${code}`, headers: actor.headers() });
+
+  it('e` di livello 3 sull`Elenco: un dev vede 404, non 403, e non cancella niente', async () => {
+    // SEC-31: su una rotta con un id un rifiuto e' un «non c'e'».
+    expect((await del(sviluppatore, 'it')).statusCode).toBe(404);
+    expect(my.state.languages).toHaveLength(2);
+  });
+
+  it('porta via lingua e testi, e il registro scrive quanti', async () => {
+    const res = await del(capo, 'it');
+    expect(res.statusCode).toBe(204);
+    expect(my.state.languages.map((l) => l.locale)).toEqual(['en']);
+    expect(my.state.messages.some((r) => r.locale === 'it')).toBe(false);
+    expect(my.state.messages.some((r) => r.locale === 'en')).toBe(true);
+    expect((await auditRows('lang.language.delete')).at(-1)?.meta).toEqual({
+      code: 'it',
+      display: '<white>Italiano',
+      texts: 1,
+    });
+  });
+
+  it('l`inglese no: e` il riferimento', async () => {
+    const res = await del(capo, 'en');
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('riferimento');
+    expect(my.state.languages).toHaveLength(2);
+  });
+
+  it('una lingua che non c`e` e` 404', async () => {
+    expect((await del(capo, 'xx')).statusCode).toBe(404);
+  });
+});
+
 describe('un modulo per schermata: Bundle e Elenco', () => {
   /** Una persona senza ruoli, con solo il permesso dato qui: nient'altro la fa passare. */
   async function only(grants: Array<['lingue' | 'lingue_elenco', number]>) {

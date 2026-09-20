@@ -2,7 +2,9 @@
 //
 // UNA TABELLA: posizione, codice, nome com'e' scritto e com'e' reso — e' MiniMessage,
 // e il giocatore vede il reso — completamento, attiva si'/no. Le frecce
-// spostano una lingua di un posto nel menu in gioco.
+// spostano una lingua di un posto nel menu in gioco; il nome si cambia
+// cliccandolo; il cestino cancella la lingua, coi suoi testi, dopo aver
+// chiesto di scriverne il codice — e' l'unica cosa qui che non si annulla.
 //
 // UNA LINGUA NUOVA NASCE DISATTIVATA E VUOTA. Accenderla la mostra a tutti i
 // giocatori, ed e' una decisione che si prende dopo averla riempita, non
@@ -41,7 +43,10 @@ export function LangLanguagesPage({ me }: { me: Me }) {
   const invalidate = () => invalidateLang(queryClient);
 
   const patch = useMutation({
-    mutationFn: (input: { code: string; body: { active?: boolean; move?: 'up' | 'down' } }) =>
+    mutationFn: (input: {
+      code: string;
+      body: { display?: string; active?: boolean; move?: 'up' | 'down' };
+    }) =>
       api<Language>(`/api/lang/language/${encodeURIComponent(input.code)}`, {
         method: 'PATCH',
         body: input.body,
@@ -49,6 +54,30 @@ export function LangLanguagesPage({ me }: { me: Me }) {
     onSuccess: invalidate,
     onError: (err) => setError(err instanceof Error ? err.message : 'Modifica non riuscita.'),
   });
+
+  const remove = useMutation({
+    mutationFn: (code: string) =>
+      api<undefined>(`/api/lang/language/${encodeURIComponent(code)}`, { method: 'DELETE' }),
+    onSuccess: invalidate,
+    onError: (err) => setError(err instanceof Error ? err.message : 'Cancellazione non riuscita.'),
+  });
+
+  const askDelete = (l: Language, texts: number): void => {
+    // Due conferme, e la seconda vuole il codice: e' l'unica operazione della
+    // sezione che non si annulla, e un clic per sbaglio butta via traduzioni.
+    if (
+      !window.confirm(
+        `Cancellare la lingua ${l.code}?
+
+` +
+          `Se ne vanno anche i suoi ${texts} testi tradotti. Chi la usava in gioco vedrà l’inglese. ` +
+          'Il testo di prima resta solo nel registro attività.',
+      )
+    ) {
+      return;
+    }
+    if (window.prompt(`Scrivi ${l.code} per confermare:`)?.trim() === l.code) remove.mutate(l.code);
+  };
 
   return (
     <>
@@ -117,6 +146,7 @@ export function LangLanguagesPage({ me }: { me: Me }) {
           <Eyebrow>Nome (reso)</Eyebrow>
           <Eyebrow>Completamento</Eyebrow>
           <Eyebrow>Attiva</Eyebrow>
+          <span />
         </div>
 
         {overview.isLoading ? (
@@ -164,7 +194,11 @@ export function LangLanguagesPage({ me }: { me: Me }) {
                 ) : null}
               </span>
               <span style={{ minWidth: 0 }}>
-                <MiniSource text={l.display} size={12} />
+                <DisplayName
+                  value={l.display}
+                  editable={canManage && !patch.isPending}
+                  onSave={(display) => patch.mutate({ code: l.code, body: { display } })}
+                />
               </span>
               <span style={{ minWidth: 0 }}>
                 <MiniSource text={l.display} size={13.5} tags={false} />
@@ -204,12 +238,33 @@ export function LangLanguagesPage({ me }: { me: Me }) {
                     }}
                   />
                 </button>
-                <span
-                  style={{ fontSize: 11, fontWeight: 600, color: l.active ? 'var(--ok)' : 'var(--tx-muted)' }}
-                >
-                  {l.active ? 'attiva' : 'disattivata'}
-                </span>
               </span>
+              {canManage && l.code !== REFERENCE ? (
+                <button
+                  type="button"
+                  title={`Cancella ${l.code}`}
+                  aria-label={`Cancella la lingua ${l.code}`}
+                  disabled={remove.isPending}
+                  onClick={() => askDelete(l, done)}
+                  style={TRASH}
+                >
+                  <svg
+                    viewBox="0 0 24 24"
+                    width="14"
+                    height="14"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.7"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
+                  </svg>
+                </button>
+              ) : (
+                <span />
+              )}
             </div>
           );
         })}
@@ -407,6 +462,88 @@ function AddLanguageDialog({ onClose, onCreated }: { onClose: () => void; onCrea
   );
 }
 
+/**
+ * Il nome com'e' scritto: si legge coi colori, e cliccandolo si scrive.
+ * Invio salva, Esc lascia com'era, e uscire dal campo salva se e' cambiato.
+ */
+function DisplayName({
+  value,
+  editable,
+  onSave,
+}: {
+  value: string;
+  editable: boolean;
+  onSave: (display: string) => void;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+
+  const commit = (): void => {
+    const next = draft?.trim() ?? '';
+    setDraft(null);
+    if (next !== '' && next !== value) onSave(next);
+  };
+
+  if (draft !== null) {
+    return (
+      <input
+        // Compare perche' lo si e' appena cliccato: il fuoco va col montaggio,
+        // e il testo tutto selezionato per riscriverlo da capo.
+        // biome-ignore lint/a11y/noAutofocus: il campo compare perche' lo si e' appena cliccato
+        autoFocus
+        onFocus={(e) => e.currentTarget.select()}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') commit();
+          if (e.key === 'Escape') setDraft(null);
+        }}
+        aria-label="Nome visualizzato"
+        spellCheck={false}
+        style={{ ...FIELD, height: 30, fontSize: 12 }}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      disabled={!editable}
+      title={editable ? 'Clicca per rinominare' : undefined}
+      onClick={() => setDraft(value)}
+      style={{
+        display: 'block',
+        width: '100%',
+        minWidth: 0,
+        padding: '4px 6px',
+        margin: '-4px -6px',
+        border: '1px solid transparent',
+        borderRadius: 'var(--r-sm)',
+        background: 'transparent',
+        textAlign: 'left',
+        cursor: editable ? 'text' : 'default',
+        font: 'inherit',
+        color: 'inherit',
+      }}
+    >
+      <MiniSource text={value} size={12} />
+    </button>
+  );
+}
+
+const TRASH: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  border: '1px solid transparent',
+  borderRadius: 'var(--r-sm)',
+  background: 'transparent',
+  color: 'var(--tx-muted)',
+  cursor: 'pointer',
+  padding: 0,
+};
+
 const PANEL: React.CSSProperties = {
   border: '1px solid var(--bd-subtle)',
   borderRadius: 'var(--r-lg)',
@@ -416,7 +553,7 @@ const PANEL: React.CSSProperties = {
 
 const ROW: React.CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: '44px 72px minmax(190px,1.2fr) minmax(150px,1fr) minmax(130px,.9fr) 116px',
+  gridTemplateColumns: '44px 72px minmax(190px,1.2fr) minmax(150px,1fr) minmax(130px,.9fr) 40px 28px',
   gap: '12px 28px',
   borderBottom: '1px solid var(--bd-subtle)',
 };

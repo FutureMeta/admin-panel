@@ -186,10 +186,9 @@ const EnvSchema = z.object({
    * Il MariaDB di Metaverse (database `metamc`), per la sezione Lingue.
    *
    * E' un database diverso da quello dei duels e ha bisogno della sua
-   * connessione. L'utente vuole SELECT, INSERT e UPDATE su due tabelle sole,
-   * `metaverse_message` e `metaverse_language` — mai DELETE: il pannello non
-   * cancella una chiave ne' una lingua, e un privilegio che non serve e' un
-   * privilegio che un giorno qualcuno usa per sbaglio.
+   * connessione. L'utente vuole SELECT, INSERT, UPDATE e DELETE su due tabelle
+   * sole, `metaverse_message` e `metaverse_language`, e niente altro. Il
+   * DELETE serve a una cosa: togliere una lingua, coi suoi testi.
    */
   METAVERSE_MYSQL_URL: z.string().min(1).optional(),
 

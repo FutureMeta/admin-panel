@@ -100,6 +100,8 @@ export const AUDIT_ACTIONS = {
   langValueSet: 'lang.value.set',
   langLanguageCreated: 'lang.language.create',
   langLanguageChanged: 'lang.language.change',
+  /** Con quanti testi se ne sono andati: e' l'unico posto in cui resta scritto. */
+  langLanguageDeleted: 'lang.language.delete',
   /** Una proposta dell'AI: chi l'ha chiesta, per quale testo, e se e' riuscita. Il testo scelto lo registra poi `lang.value.set`. */
   langAiTranslated: 'lang.value.ai',
 

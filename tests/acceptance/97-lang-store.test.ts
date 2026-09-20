@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLanguage,
+  deleteLanguage,
   LanguageExists,
   listLanguages,
   moveLanguage,
@@ -186,6 +187,18 @@ describe('le lingue', () => {
     expect(my.state.languages.find((l) => l.locale === 'es')).toMatchObject({ enabled: 1, version: 3 });
 
     await expect(updateLanguage(my, 'xx', { active: true })).rejects.toBeInstanceOf(UnknownLanguage);
+  });
+
+  it('cancellare una lingua porta via i suoi testi, e dice quanti', async () => {
+    const my = withDuels();
+    const gone = await deleteLanguage(my, 'it');
+    expect(gone).toEqual({ display: '<white>Italiano', texts: 1 });
+    expect((await listLanguages(my)).map((l) => l.code)).toEqual(['en']);
+    expect(my.state.messages.some((r) => r.locale === 'it')).toBe(false);
+    // Gli altri restano tutti.
+    expect(my.state.messages).toHaveLength(4);
+
+    await expect(deleteLanguage(my, 'xx')).rejects.toBeInstanceOf(UnknownLanguage);
   });
 
   it('spostare scambia due posizioni, e ai bordi non fa niente', async () => {

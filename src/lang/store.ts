@@ -21,6 +21,11 @@
 // pannello non scrive mai una chiave che nessuna lingua conosce: sarebbe un
 // testo che nessuno leggera' mai.
 //
+// L'UNICA CANCELLAZIONE E' QUELLA DI UNA LINGUA, con i suoi testi. Metaverse
+// non ne ha una: da console una lingua si spegne e basta. Qui si toglie del
+// tutto, e i server se ne accorgono dall'impronta — il numero di righe cala.
+// Chi la usava in gioco vede l'inglese, come per una lingua spenta.
+//
 // `updated_at` E' IN MILLISECONDI, come lo scrive Java (`System
 // .currentTimeMillis()`), e `version` sale di uno a ogni scrittura: sono le
 // due cose che l'impronta guarda, e scriverle diversamente da Metaverse
@@ -271,6 +276,34 @@ export async function updateLanguage(
       [display, enabled, Date.now(), code],
     );
     return toLanguage({ ...row, display_name: display, enabled });
+  });
+}
+
+/**
+ * Cancella una lingua e tutti i suoi testi. Restituisce quanti testi c'erano:
+ * finiscono nel registro, che e' l'unico posto in cui resta scritto quanto
+ * lavoro se n'e' andato.
+ *
+ * I TESTI SI CANCELLANO INSIEME, non si lasciano. Righe di una lingua che non
+ * esiste piu' sarebbero una seconda verita': non si vedono, contano nelle
+ * percentuali, e ricomparirebbero ricreando la lingua senza che nessuno se lo
+ * aspetti. Quelli del jar tornano da soli al prossimo avvio dei server.
+ */
+export async function deleteLanguage(
+  db: DuelsMysql,
+  code: string,
+): Promise<{ display: string; texts: number }> {
+  return db.tx(async (t) => {
+    const current = await t.rows<LanguageRow>(
+      'SELECT locale, enabled, display_name, position FROM metaverse_language WHERE locale = ?',
+      [code],
+    );
+    const row = current[0];
+    if (row === undefined) throw new UnknownLanguage(code);
+
+    const texts = await t.run('DELETE FROM metaverse_message WHERE locale = ?', [code]);
+    await t.run('DELETE FROM metaverse_language WHERE locale = ?', [code]);
+    return { display: row.display_name, texts: texts.affectedRows };
   });
 }
 

@@ -1,6 +1,8 @@
 // Istanza better-auth. §3.3, §8.2, §8.3
 //
-// Plugin registrati: SOLO `two-factor`.
+// Plugin registrati: `two-factor`, e i due endpoint interni del login con
+// codice di recupero (src/auth/recovery-challenge.ts), che nessuno raggiunge
+// da fuori.
 //   - `admin` NON registrato (§0.3, SEC-10): elimina in un colpo
 //     l'impersonation, la doppia fonte di verita' sui permessi, il ruolo
 //     `admin` con controllo totale di default e la classe GHSA-2vg6.
@@ -15,6 +17,7 @@ import type { Redis } from 'ioredis';
 import type pg from 'pg';
 import { AUTH_KEY_PREFIX, KEYS } from '#src/redis/client.ts';
 import type { PasswordService } from './password.ts';
+import { recoveryChallenge } from './recovery-challenge.ts';
 
 export type AuthDeps = {
   pool: pg.Pool;
@@ -127,6 +130,8 @@ export function createAuth(deps: AuthDeps) {
           period: 30,
         },
       }),
+      // Il login con i NOSTRI codici di recupero: vedi il file.
+      recoveryChallenge,
     ],
 
     // `trustDevice` non e' fra le opzioni passate di proposito (§8.3):

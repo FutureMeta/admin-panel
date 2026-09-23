@@ -498,7 +498,13 @@ export async function dailyClose(db: Database, now = new Date()): Promise<{ days
       `.execute(tx);
     }
 
-    const last = days.rows[days.rows.length - 1];
+    // IL WATERMARK SI FERMA AL PRIMO GIORNO PASSATO ANCORA APERTO. Il primo
+    // giro dopo mezzanotte trova quasi sempre ieri ancora in lavorazione nel
+    // rollup e giustamente non lo chiude; ma il watermark passava comunque a
+    // oggi, e ieri non veniva piu' rivisto: restava «non definitivo» per
+    // sempre, ogni notte. Fermo li', il giro dopo lo riprende.
+    const open = days.rows.find((d) => !d.is_today && d.rolled_up !== true);
+    const last = open ?? days.rows[days.rows.length - 1];
     if (last) {
       await sql`
         UPDATE stats.rollup_state

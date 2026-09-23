@@ -11,10 +11,11 @@
 import { Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { AuthFootnote, AuthShell } from '../components/auth-shell.tsx';
+import { TotpSetup } from '../components/totp-setup.tsx';
 import { Button, Field, Notice } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
 
-type Step = 'credenziali' | 'totp' | 'recovery';
+type Step = 'credenziali' | 'totp' | 'recovery' | 'enroll';
 
 /** Le sei celle del codice: il prototipo le tiene separate, non un campo unico. */
 function OtpCells({ value }: { value: string }) {
@@ -36,6 +37,7 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [recoveryCode, setRecoveryCode] = useState('');
+  const [totpUri, setTotpUri] = useState<string | undefined>();
   const [error, setError] = useState<{ title: string; body?: string } | undefined>();
   const [busy, setBusy] = useState(false);
 
@@ -83,11 +85,31 @@ export function LoginPage() {
       // Con il 2FA attivo il sign-in NON emette una sessione: emette una
       // challenge. È il comportamento voluto — la password da sola non apre nulla.
       if (res.twoFactorRedirect || !res.token) setStep('totp');
-      else await navigate({ to: '/' });
+      else await enrollOrEnter();
     } catch (err) {
       setError(describe(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  /**
+   * Una sessione SENZA secondo fattore: l'account arriva da un reset del 2FA
+   * (§8.8) e va riconfigurato prima di entrare. Il server risponde solo se e'
+   * davvero cosi'; per chiunque altro la rotta non esiste, e si entra come
+   * sempre.
+   */
+  async function enrollOrEnter() {
+    try {
+      const res = await api<{ totpURI: string | null }>('/api/account/two-factor/enroll', {
+        method: 'POST',
+        body: { password },
+      });
+      setTotpUri(res.totpURI ?? '');
+      setStep('enroll');
+    } catch (err) {
+      if (err instanceof ApiError && err.isNotFound) await navigate({ to: '/' });
+      else throw err;
     }
   }
 
@@ -147,7 +169,9 @@ export function LoginPage() {
           ? 'Accedi alla console'
           : step === 'totp'
             ? 'Verifica in due passaggi'
-            : 'Codice di recupero'}
+            : step === 'enroll'
+              ? 'Riattiva la verifica in due passaggi'
+              : 'Codice di recupero'}
       </h1>
 
       <p className="t-lead" style={{ margin: '0 0 28px' }}>
@@ -161,6 +185,8 @@ export function LoginPage() {
             </span>
             .
           </>
+        ) : step === 'enroll' ? (
+          'Il secondo fattore di questo account è stato azzerato. Configuralo di nuovo per entrare.'
         ) : (
           'Usa uno dei codici salvati durante la configurazione. Ognuno vale una volta sola.'
         )}
@@ -274,6 +300,21 @@ export function LoginPage() {
             </span>
           </div>
         </form>
+      ) : step === 'enroll' ? (
+        <TotpSetup
+          totpUri={totpUri}
+          email={email.trim()}
+          complete={async (c) =>
+            (
+              await api<{ recoveryCodes: string[] }>('/api/account/two-factor/complete', {
+                method: 'POST',
+                body: { code: c },
+              })
+            ).recoveryCodes
+          }
+          finishLabel="Entra nella console"
+          onFinish={() => navigate({ to: '/' })}
+        />
       ) : (
         <form onSubmit={submitRecovery}>
           <div style={{ marginBottom: 24 }}>

@@ -17,6 +17,7 @@
 // aggregazione sta dentro la finestra. Solo il '1d' ha un'unita' (il giorno)
 // piu' grande del passo del suo watermark (l'ora).
 
+import { readFileSync } from 'node:fs';
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
@@ -149,6 +150,52 @@ describe('«definitivo» si dice quando il rollup ha finito, non a mezzanotte', 
     expect(await isFinal()).toBe(true);
     // E il giorno che si congela e` quello INTERO, non la sua coda.
     expect(await networkRow()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+  });
+
+  it('e se la chiusura e` passata troppo presto, il giro dopo lo riprende', async () => {
+    // IL CASO DI TUTTE LE NOTTI. La chiusura gira ogni quarto d'ora, e il
+    // primo giro dopo mezzanotte arriva prima che il rollup abbia finito
+    // ieri: giusto lasciarlo riscrivibile. Ma il watermark saltava a oggi, e
+    // ieri non veniva piu` rivisto: restava «non definitivo» per sempre.
+    await runRollup(db, '1d', new Date('2026-02-10T11:00:00Z').getTime());
+    await sql.query(
+      `UPDATE stats.rollup_state SET watermark = timestamptz '2026-02-09 00:00Z' WHERE level = 'daily_close'`,
+    );
+    await dailyClose(db, new Date('2026-02-11T00:01:00Z'));
+    expect(await isFinal()).toBe(false);
+
+    await runRollup(db, '1d', new Date('2026-02-11T00:00:00Z').getTime());
+    await dailyClose(db, new Date('2026-02-11T00:16:00Z'));
+    expect(await isFinal()).toBe(true);
+    expect(await networkRow()).toEqual({ covered_s: 24 * 3600, player_seconds: 24 * 100 * 3600 });
+  });
+
+  it('la migration 026 ricalcola i giorni rimasti aperti, e poi li chiude', async () => {
+    // Un giorno lasciato aperto dalla chiusura vecchia, con il watermark gia`
+    // settimane piu` avanti. E sbagliato: un`ora riscritta dopo che il rollup
+    // giornaliero l`aveva gia` superata, come il 30 agosto in produzione.
+    await runRollup(db, '1d', new Date('2026-02-11T00:00:00Z').getTime());
+    await sql.query(`UPDATE stats.rollup_1d SET players_max = 78 WHERE day = $1::date`, [DAY]);
+    await sql.query(
+      `UPDATE stats.rollup_state SET watermark = timestamptz '2026-03-01 00:00Z' WHERE level = 'daily_close'`,
+    );
+    await dailyClose(db, new Date('2026-03-01T00:30:00Z'));
+    expect(await isFinal()).toBe(false);
+
+    // Il file vero, non una sua copia.
+    await sql.query(readFileSync('migrations/026_daily_close_catch_up.sql', 'utf8'));
+    // Prima che il rollup lo rifaccia, la chiusura non lo congela.
+    await dailyClose(db, new Date('2026-03-01T00:45:00Z'));
+    expect(await isFinal()).toBe(false);
+
+    await runRollup(db, '1d', new Date('2026-02-11T00:00:00Z').getTime());
+    await dailyClose(db, new Date('2026-03-01T01:00:00Z'));
+    expect(await isFinal()).toBe(true);
+    const max = await sql.query(
+      `SELECT players_max FROM stats.rollup_1d WHERE server_id = 0 AND day = $1::date`,
+      [DAY],
+    );
+    expect(max.rows[0]?.players_max).toBe(100);
   });
 });
 

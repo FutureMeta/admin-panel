@@ -135,4 +135,45 @@ describe('e la cosa per cui esiste', () => {
     expect(rows[0]?.bounds).toContain('2027-11-01');
     expect(rows[0]?.bounds).toContain('2027-12-01');
   });
+
+  it('un mese comincia dove finisce il precedente, in qualunque fuso sia nato', async () => {
+    // VISTO IN PRODUZIONE: le partizioni della migration 001 avevano i confini
+    // a mezzanotte UTC (il fuso del container), il pannello chiama con quello
+    // di Roma, e il primo mese creato da lui cominciava due ore prima della
+    // fine del precedente: «would overlap», a ogni giro. Con i fusi invertiti
+    // sarebbero state due ore di buco, cioe' scritture fallite.
+    const owner = await connect(testDb.migrateUrl, 'metamc-test-partizioni-owner');
+    try {
+      await owner.query(`CREATE TABLE audit.audit_log_2028_01 PARTITION OF audit.audit_log
+                           FOR VALUES FROM ('2028-01-01 00:00+00') TO ('2028-02-01 00:00+00')`);
+      await owner.query(`CREATE TABLE audit.audit_log_2028_04 PARTITION OF audit.audit_log
+                           FOR VALUES FROM ('2028-04-01 00:00+02') TO ('2028-05-01 00:00+02')`);
+    } finally {
+      await owner.end();
+    }
+
+    const bounds = async (name: string) =>
+      (
+        await app.query<{ lo: Date; hi: Date }>(
+          `SELECT (regexp_match(pg_get_expr(c.relpartbound, c.oid), 'FROM \\(''([^'']+)''\\)'))[1]::timestamptz AS lo,
+                  (regexp_match(pg_get_expr(c.relpartbound, c.oid), 'TO \\(''([^'']+)''\\)'))[1]::timestamptz AS hi
+             FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'audit' AND c.relname = $1`,
+          [name],
+        )
+      ).rows[0];
+
+    await app.query(`SET TIME ZONE 'Europe/Rome'`);
+    await app.query(`SELECT audit.create_month_partition('2028-02-01'::date)`);
+    expect((await bounds('audit_log_2028_02'))?.lo).toEqual((await bounds('audit_log_2028_01'))?.hi);
+
+    await app.query(`SET TIME ZONE 'UTC'`);
+    await app.query(`SELECT audit.create_month_partition('2028-05-01'::date)`);
+    expect((await bounds('audit_log_2028_05'))?.lo).toEqual((await bounds('audit_log_2028_04'))?.hi);
+
+    // E un mese fra due gia` esistenti si attacca a tutti e due.
+    await app.query(`SELECT audit.create_month_partition('2028-03-01'::date)`);
+    expect((await bounds('audit_log_2028_03'))?.lo).toEqual((await bounds('audit_log_2028_02'))?.hi);
+    expect((await bounds('audit_log_2028_03'))?.hi).toEqual((await bounds('audit_log_2028_04'))?.lo);
+  });
 });

@@ -9,10 +9,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction, writeAudit } from '#src/audit/log.ts';
-import { absoluteCap } from '#src/auth/auth.ts';
 import { HibpUnavailable, PasswordCompromised } from '#src/auth/hibp.ts';
 import { PASSWORD_MAX, PASSWORD_MIN } from '#src/auth/password.ts';
-import { formatRecoveryCode, issueRecoveryCodes } from '#src/auth/recovery-codes.ts';
+import { formatRecoveryCode } from '#src/auth/recovery-codes.ts';
 import {
   claimInvite,
   consumeInvite,
@@ -24,6 +23,7 @@ import {
 import { issueCsrfCookie } from '../csrf.ts';
 import { BadRequest, Conflict, Unauthorized } from '../errors.ts';
 import { auditContextOf, rateLimitIpKey, requestIps } from '../request-context.ts';
+import { completeTotpEnrollment } from '../totp-enrollment.ts';
 
 export const ONBOARDING_COOKIE = '__Host-metamc_onboarding';
 
@@ -338,110 +338,11 @@ export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppCon
       const { token: onboardingToken, state } = await readOnboarding(request);
       const userId = state.userId;
       if (!userId) throw new BadRequest('ACCETTAZIONE_NON_COMPLETATA');
-      const ips = requestIps(request);
       const body = request.body as { code: string };
 
-      await ctx.rateLimit.consume('twoFactorAccount', userId);
-
-      // SEC-11 — la guardia anti-replay vale anche qui: l'enrollment non e'
-      // un percorso privilegiato in cui rilassare il controllo.
-      const replay = await ctx.totpGuard.check(userId, body.code);
-      if (!replay.allowed) throw new Unauthorized();
-
-      const headers = new Headers();
-      const cookie = request.headers.cookie;
-      if (cookie) headers.set('cookie', cookie);
-
-      let verified: { headers: Headers };
-      try {
-        verified = await ctx.auth.api.verifyTOTP({
-          body: { code: body.code },
-          headers,
-          returnHeaders: true,
-        });
-      } catch {
-        await ctx.rateLimit.penalize('twoFactorAccount', userId);
-        throw new Unauthorized();
-      }
-
-      await ctx.totpGuard.markUsed(userId, body.code);
-      await ctx.rateLimit.reward('twoFactorAccount', userId);
-
-      const result = await securityTransaction(ctx.db, async (trx) => {
-        await trx
-          .updateTable('auth.user')
-          .set({ status: 'active', twoFactorEnabled: true })
-          .where('id', '=', userId)
-          .execute();
-
-        // La sessione appena ruotata sale ad aal=2: e' cio' che il middleware
-        // del §9 richiede e cio' che lo step-up misura.
-        await trx
-          .updateTable('auth.session')
-          .set({
-            aal: 2,
-            authenticated_at: new Date(),
-            amr: ['pwd', 'totp'],
-            absolute_expires_at: absoluteCap(ctx.env.SESSION_ABSOLUTE_SECONDS),
-          })
-          .where('userId', '=', userId)
-          // Una volta sola: il tetto assoluto non si proroga (SEC-05).
-          .where('aal', '<', 2)
-          .execute();
-
-        const { codes, generation } = await issueRecoveryCodes(trx, userId);
-        const user = await trx
-          .selectFrom('auth.user')
-          .select(['email', 'name'])
-          .where('id', '=', userId)
-          .executeTakeFirstOrThrow();
-
-        const actor = { userId, email: user.email, displayName: user.name, sessionId: null };
-        return {
-          result: { codes, generation },
-          events: [
-            {
-              action: AUDIT_ACTIONS.userTwoFactorEnabled,
-              outcome: 'success' as const,
-              actor,
-              request: auditContextOf(request, ips),
-              moduleKey: 'utenti',
-              targetType: 'user',
-              targetId: userId,
-              targetLabel: user.email,
-            },
-            {
-              action: AUDIT_ACTIONS.userRecoveryCodesGenerated,
-              outcome: 'success' as const,
-              actor,
-              request: auditContextOf(request, ips),
-              moduleKey: 'utenti',
-              targetType: 'user',
-              targetId: userId,
-              targetLabel: user.email,
-              meta: { generation, count: codes.length },
-            },
-          ],
-        };
-      });
-
-      // SEC-14 — la colonna backupCodes del plugin viene SOVRASCRITTA con
-      // byte casuali subito dopo l'enrollment. I recovery code veri sono i
-      // nostri; lasciare intatti quelli del plugin terrebbe in piedi un
-      // percorso di bypass con storage reversibile.
-      await ctx.db
-        .updateTable('auth.twoFactor')
-        .set({ backupCodes: randomBytes(48).toString('base64') })
-        .where('userId', '=', userId)
-        .execute();
-
-      await ctx.store.invalidate(userId);
+      const result = await completeTotpEnrollment(ctx, request, reply, userId, body.code);
       await ctx.redis.del(onboardingKey(onboardingToken));
       reply.clearCookie(ONBOARDING_COOKIE, { path: '/' });
-
-      // SEC-06 — il token nuovo prodotto da verifyTOTP sostituisce quello di
-      // enrollment.
-      for (const c of verified.headers.getSetCookie()) reply.header('set-cookie', c);
 
       // I recovery code si mostrano UNA SOLA VOLTA (§8.1.12).
       return reply.send({

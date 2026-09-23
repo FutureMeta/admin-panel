@@ -32,6 +32,7 @@ import { createHash } from 'node:crypto';
 import { brotliCompress, brotliDecompress, constants as Z } from 'node:zlib';
 import type { Redis } from 'ioredis';
 import type { CacheService, CacheStats, GetOrSetOptions } from '#src/cache/service.ts';
+import { civilDay } from './warm.ts';
 
 /** Versione dell'involucro BINARIO, indipendente da quella del contratto. */
 const ENVELOPE_VERSION = 1;
@@ -47,6 +48,9 @@ export const ENC_BROTLI = 1;
  */
 const HEADER = 42;
 const ETAG_BYTES = 12;
+
+/** Il giorno civile dentro una chiave: `stats:v3:ov:2026-09-24:24h`. */
+const DAY_IN_KEY = /:(\d{4}-\d{2}-\d{2}):/;
 
 export type Ttl = {
   /** Millisecondi di validita' piena. */
@@ -254,6 +258,32 @@ export class StatsCache implements CacheService {
     return next;
   }
 
+  /**
+   * Toglie le voci di un giorno civile che non e' oggi.
+   *
+   * Le chiavi delle statistiche e dei duels portano il giorno (vedi
+   * `civilDay`): a mezzanotte nasce un set nuovo e quello di ieri non lo
+   * chiede piu' nessuno. Restavano qui per sempre — memoria che cresce ogni
+   * giorno finche' il processo vive, e in `/internal/metrics` cinque serie per
+   * chiave con un'eta' che sale senza fine, cioe' un allarme che scatta ogni
+   * notte e non rientra.
+   *
+   * SOLO IL GIORNO, non l'eta'. Una chiave di OGGI che smette di aggiornarsi
+   * deve restare, con la sua eta' che cresce: e' esattamente il segnale che
+   * la metrica esiste per dare. Si pulisce scrivendo, quindi un guasto che
+   * ferma tutte le scritture non cancella niente.
+   */
+  #forgetPastDays(): void {
+    const today = civilDay();
+    for (const key of this.#lastGood.keys()) {
+      const day = DAY_IN_KEY.exec(key)?.[1];
+      if (day !== undefined && day !== today) {
+        this.#lastGood.delete(key);
+        this.#buildMs.delete(key);
+      }
+    }
+  }
+
   async #seal(key: string, raw: Buffer, ttl: Ttl, quality: 5 | 11): Promise<Envelope> {
     const t0 = Date.now();
     const body = await this.#compress(raw, quality);
@@ -270,6 +300,7 @@ export class StatsCache implements CacheService {
       body,
     };
     this.#lastGood.set(key, env);
+    this.#forgetPastDays();
     try {
       // Buffer, non stringa: `set` con una stringa la ricodifica in UTF-8 e
       // distrugge i byte Brotli senza dire niente.

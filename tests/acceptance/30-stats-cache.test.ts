@@ -14,6 +14,7 @@
 import type { Redis } from 'ioredis';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { decode, type Envelope, encode, inflate, StatsCache, type Ttl } from '#src/stats/cache.ts';
+import { civilDay } from '#src/stats/warm.ts';
 import { describeRedisBackend, type RedisHarness, startRedis } from '#tests/support/redis.ts';
 
 const LONG: Ttl = { fresh: 60_000, stale: 60_000 };
@@ -329,6 +330,19 @@ describe(`passo 5 — cache dei payload (${describeRedisBackend()})`, () => {
     // Tre ore: con l'hit rate al 100% per costruzione, e` l'unico numero che
     // distingue «cache che funziona» da «cache che ha smesso di aggiornarsi».
     expect(entry?.[1]).toBeGreaterThanOrEqual(3 * 3_600 - 5);
+  });
+
+  it('le voci di un giorno passato se ne vanno; quelle di oggi restano, anche ferme', async () => {
+    // A mezzanotte le chiavi cambiano giorno e quelle di ieri non le chiede
+    // piu` nessuno: restavano qui per sempre, e in /internal/metrics con
+    // un`eta` che saliva senza fine. Una chiave di OGGI ferma invece deve
+    // restare: la sua eta` e` il segnale che qualcosa non si aggiorna.
+    const today = civilDay();
+    await cache.warmEnvelope('stats:v2:ov:2020-01-01:24h', async () => Buffer.from('ieri'), LONG, 5);
+    await cache.warmEnvelope(`stats:v2:ov:${today}:1y`, async () => Buffer.from('oggi'), LONG, 5);
+    await cache.warmEnvelope('stats:v2:ov:24h', async () => Buffer.from('senza giorno'), LONG, 5);
+    expect(cache.ages().map(([k]) => k)).toEqual([`stats:v2:ov:${today}:1y`, 'stats:v2:ov:24h']);
+    expect(cache.buildTimes().map(([k]) => k)).not.toContain('stats:v2:ov:2020-01-01:24h');
   });
 
   it('i byte, grezzi e compressi, sono esposti per chiave', async () => {

@@ -78,7 +78,6 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
     trustProxy: ctx.env.TRUST_PROXY_CIDR,
     loggerInstance: ctx.logger as unknown as FastifyBaseLogger,
     genReqId: () => crypto.randomUUID(),
-    disableRequestLogging: false,
     // Rifiuto a monte di URL non canonici: nginx li blocca gia' (§2), ma la
     // difesa non deve dipendere da un file di configurazione altrui.
     onProtoPoisoning: 'remove',

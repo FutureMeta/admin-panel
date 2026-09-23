@@ -45,7 +45,15 @@ export function createPool(opts: PoolOptions): pg.Pool {
   const pool = new pg.Pool({
     connectionString: opts.connectionString,
     max: opts.max ?? 6,
-    idleTimeoutMillis: 30_000,
+    // CINQUE MINUTI, non trenta secondi. I job girano ogni trenta-sessanta
+    // secondi — warm delle statistiche, rollup, reaper, ingestione duels — e
+    // con trenta secondi di inattivita' quasi ogni giro trovava il pool vuoto:
+    // un processo Postgres nuovo, il login, l'hook qui sotto e una cache del
+    // catalogo fredda su tabelle con decine di partizioni, a ogni giro e per
+    // ogni connessione. Su questo host una connessione costa centinaia di
+    // millisecondi (vedi `connectionTimeoutMillis`); tenerne aperte una
+    // ventina non costa niente.
+    idleTimeoutMillis: 300_000,
     connectionTimeoutMillis: opts.connectionTimeoutMillis ?? 5_000,
     application_name: opts.applicationName ?? 'metamc-admin',
   });

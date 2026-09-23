@@ -685,8 +685,32 @@ export function RolesPage({ me }: { me: Me }) {
   // ruolo, quindi si conferma in blocco. Una PUT per pallino significherebbe
   // anche una challenge di step-up per pallino.
   const [draft, setDraft] = useState<Record<number, number>>({});
+  /** Il popup del nome: un ruolo nuovo, o quello aperto da rinominare. */
+  const [naming, setNaming] = useState<'create' | 'rename' | null>(null);
   const matrix = useQuery({ queryKey: ['roles'], queryFn: () => api<RolesMatrix>('/api/roles') });
   const canEdit = (me.permissions.ruoli ?? 0) >= 3;
+
+  const pick = (id: number | undefined): void => {
+    setRoleId(id);
+    setDraft({});
+    setError(undefined);
+  };
+
+  const remove = useMutation({
+    mutationFn: (id: number) => api(`/api/roles/${id}`, { method: 'DELETE' }),
+    onSuccess: async () => {
+      pick(undefined);
+      await matrix.refetch();
+    },
+    onError: (err) =>
+      setError(
+        err instanceof ApiError && err.code === 'RUOLO_ASSEGNATO'
+          ? 'Il ruolo è ancora assegnato a qualcuno: toglilo prima a tutte le persone che ce l’hanno.'
+          : err instanceof ApiError && err.code === 'RUOLO_IN_INVITI'
+            ? 'Un invito ancora valido offre questo ruolo: revocalo, o aspetta che scada, prima di eliminarlo.'
+            : 'Eliminazione non riuscita.',
+      ),
+  });
 
   const save = useMutation({
     mutationFn: (input: { roleId: number; entries: Array<{ moduleId: number; level: number }> }) =>
@@ -765,16 +789,42 @@ export function RolesPage({ me }: { me: Me }) {
             <FilterSelect
               label="Ruolo da modificare"
               value={String(current.id)}
-              onChange={(v) => {
-                setRoleId(Number(v));
-                setDraft({});
-                setError(undefined);
-              }}
+              onChange={(v) => pick(Number(v))}
               options={roles.map((r) => ({ value: String(r.id), label: r.name }))}
             />
             <span style={{ fontSize: 11.5, color: 'var(--tx-muted)', whiteSpace: 'nowrap' }}>
               {current.members} {current.members === 1 ? 'utente' : 'utenti'}
             </span>
+            {editable ? (
+              <>
+                <Button size="sm" variant="ghost" onClick={() => setNaming('rename')}>
+                  Rinomina
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  loading={remove.isPending}
+                  // Toglierlo alle persone e' un'azione su di loro: si fa dalla
+                  // loro scheda, una per una. Qui si elimina un ruolo vuoto.
+                  disabled={current.members > 0}
+                  title={
+                    current.members > 0
+                      ? 'Assegnato ad almeno una persona: toglilo prima a tutti.'
+                      : undefined
+                  }
+                  onClick={() => {
+                    if (window.confirm(`Eliminare il ruolo «${current.name}»?`)) remove.mutate(current.id);
+                  }}
+                >
+                  Elimina
+                </Button>
+              </>
+            ) : null}
+            {canEdit ? (
+              <Button size="sm" variant="primary" onClick={() => setNaming('create')}>
+                Nuovo ruolo
+              </Button>
+            ) : null}
           </div>
         </div>
 
@@ -901,7 +951,91 @@ export function RolesPage({ me }: { me: Me }) {
           ) : null}
         </div>
       </Panel>
+
+      {naming !== null ? (
+        <RoleNameDialog
+          role={naming === 'rename' ? current : undefined}
+          onClose={() => setNaming(null)}
+          onSaved={async (id) => {
+            setNaming(null);
+            pick(id);
+            await matrix.refetch();
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+/**
+ * Il nome di un ruolo: nuovo, o da cambiare. Un ruolo nuovo nasce senza
+ * permessi, e si apre subito nella matrice per darglieli.
+ */
+function RoleNameDialog({
+  role,
+  onClose,
+  onSaved,
+}: {
+  role: { id: number; name: string } | undefined;
+  onClose: () => void;
+  onSaved: (id: number) => Promise<void>;
+}) {
+  const [name, setName] = useState(role?.name ?? '');
+  const ready = name.trim().length >= 2 && name.trim() !== role?.name;
+
+  const save = useMutation({
+    mutationFn: async (): Promise<number> => {
+      if (role === undefined) {
+        const created = await api<{ id: number }>('/api/roles', { method: 'POST', body: { name } });
+        return created.id;
+      }
+      await api(`/api/roles/${role.id}`, { method: 'PATCH', body: { name } });
+      return role.id;
+    },
+    onSuccess: (id) => onSaved(id),
+  });
+
+  const error =
+    save.error instanceof ApiError && save.error.code === 'NOME_IN_USO'
+      ? 'Esiste già un ruolo con questo nome.'
+      : save.error
+        ? 'Salvataggio non riuscito.'
+        : undefined;
+
+  return (
+    <Modal
+      title={role === undefined ? 'Nuovo ruolo' : `Rinomina «${role.name}»`}
+      {...(role === undefined
+        ? { subtitle: 'Nasce senza permessi: li dai subito dopo, nella matrice.' }
+        : {})}
+      onClose={onClose}
+      footer={
+        <>
+          <Button onClick={onClose}>Annulla</Button>
+          <Button variant="primary" loading={save.isPending} disabled={!ready} onClick={() => save.mutate()}>
+            {role === undefined ? 'Crea ruolo' : 'Salva'}
+          </Button>
+        </>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ready && !save.isPending) save.mutate();
+        }}
+      >
+        <Field
+          label="Nome"
+          id="role-name"
+          value={name}
+          maxLength={40}
+          autoFocus
+          onChange={(e) => setName(e.target.value)}
+          placeholder="es. Staff eventi"
+          error={error}
+        />
+      </form>
+    </Modal>
   );
 }
 

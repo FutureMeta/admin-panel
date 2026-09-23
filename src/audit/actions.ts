@@ -44,6 +44,7 @@ export const AUDIT_ACTIONS = {
   permissionRevoked: 'user.permission.revoke',
   rolePermissionsChanged: 'role.permissions.change',
   roleCreated: 'role.create',
+  roleRenamed: 'role.rename',
   roleDeleted: 'role.delete',
 
   // --- statistiche: dizionario delle modalita' (fase 2) ---------------------
@@ -218,6 +219,7 @@ export const SECURITY_ACTIONS: ReadonlySet<AuditAction> = new Set<AuditAction>([
   AUDIT_ACTIONS.permissionRevoked,
   AUDIT_ACTIONS.rolePermissionsChanged,
   AUDIT_ACTIONS.roleCreated,
+  AUDIT_ACTIONS.roleRenamed,
   AUDIT_ACTIONS.roleDeleted,
   AUDIT_ACTIONS.sessionRevoked,
   AUDIT_ACTIONS.sessionsRevokedAll,

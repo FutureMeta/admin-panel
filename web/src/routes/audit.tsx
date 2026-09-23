@@ -56,6 +56,7 @@ const SENSITIVE = new Set([
   'user.permission.grant',
   'user.permission.revoke',
   'role.permissions.change',
+  'role.delete',
   'user.banned',
   'user.offboarded',
   'user.2fa_disabled',

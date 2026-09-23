@@ -36,14 +36,18 @@ export async function dominates(db: Database, actorId: string, targetId: string)
 }
 
 /**
- * `true` se l'attore puo' concedere quel ruolo: il ruolo non deve dare, su
- * alcun modulo, un livello superiore a quello effettivo dell'attore.
+ * `true` se l'attore puo' concedere quel ruolo: il ruolo esiste, non e' stato
+ * eliminato, e non da', su alcun modulo, un livello superiore a quello
+ * effettivo dell'attore.
  *
- * Usata dall'invito (§8.1) e dall'assegnazione di ruolo (§8, RBAC).
+ * Usata dall'invito (§8.1) e dall'assegnazione di ruolo (§8, RBAC). Un ruolo
+ * eliminato non ha piu' permessi, e senza il primo controllo risulterebbe
+ * concedibile a chiunque proprio perche' non da' niente.
  */
 export async function canGrantRole(db: Database, actorId: string, roleId: number): Promise<boolean> {
   const res = await sql<{ ok: boolean }>`
-    SELECT NOT EXISTS (
+    SELECT EXISTS (SELECT 1 FROM auth.roles WHERE id = ${roleId} AND deleted_at IS NULL)
+      AND NOT EXISTS (
       SELECT 1 FROM auth.role_permissions rp
       LEFT JOIN auth.effective_permissions a
         ON a.module_id = rp.module_id AND a.user_id = ${actorId}
@@ -81,6 +85,7 @@ export async function grantableRoles(
     FROM auth.roles r
     -- SEC-09: un ruolo di sistema non e' assegnabile ne' via invito ne' via UI.
     WHERE r.is_system = false
+      AND r.deleted_at IS NULL
       AND NOT EXISTS (
         SELECT 1 FROM auth.role_permissions rp
         LEFT JOIN auth.effective_permissions a

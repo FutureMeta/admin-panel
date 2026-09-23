@@ -434,11 +434,12 @@ const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: '/', com
 // dall'app perche' il proxy manda `/accept` al server, che li' scambia il
 // token con un cookie. Qui si guarda per quello che e'.
 const acceptRoute = createRoute({ getParentRoute: () => rootRoute, path: '/accept', component: AcceptPage });
-const usersRoute = createRoute({ getParentRoute: () => rootRoute, path: '/utenti', component: Preview });
-const auditRoute = createRoute({ getParentRoute: () => rootRoute, path: '/registro', component: Preview });
-// Le schermate delle Lingue leggono i parametri dalla rotta: gli stessi
-// percorsi dell'app, o `useParams` non li troverebbe.
+// Tutto cio' che nell'app sta dentro il guscio sta qui sotto `shell`: le
+// Lingue leggono i parametri dalla rotta, e la barra in alto legge il periodo
+// da `/shell` (`range.ts`) — fuori, la schermata non si monta.
 const shellLike = createRoute({ getParentRoute: () => rootRoute, id: 'shell', component: Outlet });
+const usersRoute = createRoute({ getParentRoute: () => shellLike, path: '/utenti', component: Preview });
+const auditRoute = createRoute({ getParentRoute: () => shellLike, path: '/registro', component: Preview });
 const langOverview = createRoute({ getParentRoute: () => shellLike, path: '/lingue', component: Preview });
 const langLanguages = createRoute({
   getParentRoute: () => shellLike,
@@ -454,10 +455,8 @@ const langTranslate = createRoute({
 const router = createRouter({
   routeTree: rootRoute.addChildren([
     indexRoute,
-    usersRoute,
-    auditRoute,
     acceptRoute,
-    shellLike.addChildren([langOverview, langLanguages, langKeys, langTranslate]),
+    shellLike.addChildren([usersRoute, auditRoute, langOverview, langLanguages, langKeys, langTranslate]),
   ]),
   history: createMemoryHistory({
     initialEntries: [

@@ -122,6 +122,8 @@ export type RolesTable = {
   name: string;
   is_system: WithDefault<boolean>;
   sort_order: WithDefault<number>;
+  /** Migration 024: un ruolo eliminato resta come riga, per gli inviti che lo nominano. */
+  deleted_at: WithDefault<Date | null>;
 };
 
 export type RolePermissionsTable = {

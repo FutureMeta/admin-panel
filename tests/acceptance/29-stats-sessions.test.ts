@@ -23,9 +23,21 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import type { OnlinePlayer } from '#src/stats/game-redis.ts';
+import { romeMidnight } from '#src/stats/read.ts';
 import { dailyClose } from '#src/stats/rollup.ts';
 import { SessionTracker } from '#src/stats/sessions.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
+
+/**
+ * Mezzogiorno di OGGI, ora di Roma: l'istante da cui partono i tick.
+ *
+ * Con `Date.now()` questi test fallivano fra mezzanotte e l'una: tre tick a
+ * trenta secondi l'uno dall'altro finivano su due giorni civili, e il
+ * giorno contava due righe o nessuna. Il codice era giusto — e' il giorno
+ * che cambiava sotto i piedi del test. Mezzogiorno e' lontano da
+ * mezzanotte e dai cambi d'ora, e resta dentro le partizioni del mese.
+ */
+const NOON = romeMidnight(new Date()).getTime() + 12 * 3_600_000;
 
 let testDb: TestDatabase;
 let pool: pg.Pool;
@@ -106,7 +118,7 @@ const rows = async (q: string, p: unknown[] = []): Promise<Row[]> => (await sql.
 describe('una sessione si apre, si conta e si chiude sull`ultima prova', () => {
   it('la prima osservazione apre la sessione e segna il giorno', async () => {
     const t = await tracker();
-    const now = new Date();
+    const now = new Date(NOON);
     const conn = now.getTime() - 60_000;
     await t.observe(db, now, online([{ id: 1, server: ARENA, connectionMs: conn }]), idOf);
 
@@ -127,7 +139,7 @@ describe('una sessione si apre, si conta e si chiude sull`ultima prova', () => {
     // chiave per un attimo. Chiudere li' spezzerebbe ogni sessione a ogni
     // cambio di server.
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     const p = online([{ id: 1, server: ARENA, connectionMs: base - 60_000 }]);
     await t.observe(db, new Date(base), p, idOf);
     for (let i = 1; i <= 3; i += 1) {
@@ -139,7 +151,7 @@ describe('una sessione si apre, si conta e si chiude sull`ultima prova', () => {
 
   it('oltre la grazia chiude, e chiude sull`ULTIMA prova, non su adesso', async () => {
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     const visto = new Date(base);
     await t.observe(db, visto, online([{ id: 1, server: ARENA, connectionMs: base - 60_000 }]), idOf);
     for (let i = 1; i <= 4; i += 1) {
@@ -157,9 +169,9 @@ describe('una sessione si apre, si conta e si chiude sull`ultima prova', () => {
 
   it('il reaper chiude chi nessuno vede piu`, e lo dichiara', async () => {
     const t = await tracker();
-    const base = Date.now() - 3_600_000;
+    const base = NOON - 3_600_000;
     await t.observe(db, new Date(base), online([{ id: 1, server: ARENA, connectionMs: base }]), idOf);
-    const closed = await t.reap(db, new Date());
+    const closed = await t.reap(db, new Date(NOON));
     expect(closed).toBe(1);
 
     // `end_reason` non e' decorazione: `v_session_observed` filtra su di lui,
@@ -173,7 +185,7 @@ describe('una sessione si apre, si conta e si chiude sull`ultima prova', () => {
 describe('prova di proprieta` 3: rename, riconnessione, trasferimento', () => {
   it('il trasferimento fra server NON spezza la sessione', async () => {
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     const conn = base - 120_000;
     await t.observe(db, new Date(base), online([{ id: 1, server: ARENA, connectionMs: conn }]), idOf);
     await t.observe(
@@ -196,7 +208,7 @@ describe('prova di proprieta` 3: rename, riconnessione, trasferimento', () => {
 
   it('la riconnessione INVECE la spezza, e il giorno conta due sessioni', async () => {
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     await t.observe(
       db,
       new Date(base),
@@ -219,7 +231,7 @@ describe('prova di proprieta` 3: rename, riconnessione, trasferimento', () => {
 
   it('un giocatore conta UNA volta negli unici, comunque si muova', async () => {
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     await t.observe(
       db,
       new Date(base),
@@ -306,7 +318,7 @@ describe('la chiusura giornaliera scrive cio` che non e` additivo', () => {
 
   it('gli unici di rete sono un conteggio PROPRIO, non la somma delle modalita`', async () => {
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     // Tre giocatori: uno solo in arena, uno solo in lobby, uno in entrambe.
     await t.observe(
       db,
@@ -329,7 +341,7 @@ describe('la chiusura giornaliera scrive cio` che non e` additivo', () => {
       idOf,
     );
 
-    await dailyClose(db);
+    await dailyClose(db, new Date(NOON + 120_000));
 
     const rete = await rows(
       'SELECT uniques, sessions FROM stats.rollup_1d WHERE server_id = 0 AND day = stats.civil_day(now())',
@@ -353,9 +365,9 @@ describe('la chiusura giornaliera scrive cio` che non e` additivo', () => {
 
   it('il giorno in corso non e` definitivo, e si riscrive', async () => {
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     await t.observe(db, new Date(base), online([{ id: 1, server: ARENA, connectionMs: base }]), idOf);
-    await dailyClose(db);
+    await dailyClose(db, new Date(NOON + 120_000));
     let d = await rows('SELECT uniques, final FROM stats.rollup_1d WHERE server_id = 0');
     expect(Number(d[0]?.['uniques'])).toBe(1);
     // Sta ancora succedendo: dichiararlo definitivo congelerebbe un numero
@@ -368,7 +380,7 @@ describe('la chiusura giornaliera scrive cio` che non e` additivo', () => {
       online([{ id: 2, server: ARENA, connectionMs: base + 25_000 }]),
       idOf,
     );
-    await dailyClose(db);
+    await dailyClose(db, new Date(NOON + 120_000));
     d = await rows('SELECT uniques FROM stats.rollup_1d WHERE server_id = 0');
     expect(Number(d[0]?.['uniques'])).toBe(2);
   });
@@ -377,7 +389,7 @@ describe('la chiusura giornaliera scrive cio` che non e` additivo', () => {
 describe('I10 — nessuna durata impossibile', () => {
   it('nessuna sessione negativa, e i motivi di chiusura sono dichiarati', async () => {
     const t = await tracker();
-    const base = Date.now();
+    const base = NOON;
     await t.observe(
       db,
       new Date(base),

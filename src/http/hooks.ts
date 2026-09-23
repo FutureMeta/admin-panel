@@ -12,6 +12,7 @@
 
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { CSRF_HEADER, csrfValid } from './csrf.ts';
+import { pathOf } from './logger.ts';
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -51,7 +52,7 @@ export function registerSecurityHooks(app: FastifyInstance, opts: SecurityHookOp
 
     const origin = request.headers.origin;
     if (typeof origin !== 'string' || origin !== opts.appOrigin) {
-      request.log.warn({ origin: origin ?? null, url: request.url }, 'SEC-15: origine rifiutata');
+      request.log.warn({ origin: origin ?? null, url: pathOf(request.url) }, 'SEC-15: origine rifiutata');
       return reply.code(403).send({ error: 'forbidden' });
     }
   });
@@ -70,7 +71,7 @@ export function registerSecurityHooks(app: FastifyInstance, opts: SecurityHookOp
 
     const site = request.headers['sec-fetch-site'];
     if (typeof site !== 'string' || site !== 'same-origin') {
-      request.log.warn({ site: site ?? null, url: request.url }, 'SEC-16: Sec-Fetch-Site rifiutato');
+      request.log.warn({ site: site ?? null, url: pathOf(request.url) }, 'SEC-16: Sec-Fetch-Site rifiutato');
       return reply.code(403).send({ error: 'forbidden' });
     }
   });
@@ -91,7 +92,7 @@ export function registerSecurityHooks(app: FastifyInstance, opts: SecurityHookOp
     const presented = request.headers[CSRF_HEADER];
     const token = Array.isArray(presented) ? presented[0] : presented;
     if (!csrfValid(opts.csrfKey, sessionId, token)) {
-      request.log.warn({ url: request.url }, 'SEC-17: token CSRF non valido');
+      request.log.warn({ url: pathOf(request.url) }, 'SEC-17: token CSRF non valido');
       return reply.code(403).send({ error: 'forbidden' });
     }
   });

@@ -66,6 +66,11 @@ COPY --chown=node:node --from=prod-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=build /app/dist ./dist
 COPY --chown=node:node package.json ./
 COPY --chown=node:node src ./src
+# Il backend importa `#web/lib/minimessage.ts` e `#web/lib/lang.ts` (le
+# Lingue: il formato che una traduzione non puo' toccare e' LO STESSO che
+# l'editor mostra). Senza questa riga l'immagine si ferma all'avvio con
+# ERR_MODULE_NOT_FOUND, da quando le Lingue esistono.
+COPY --chown=node:node web/src/lib ./web/src/lib
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node migrations ./migrations
 
@@ -78,5 +83,5 @@ HEALTHCHECK --interval=15s --timeout=3s --start-period=20s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:3000/health/live').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 # Nessun build step per il server: Node 24 esegue TypeScript con il type
-# stripping nativo. `tsc` fa solo il controllo dei tipi, in CI.
+# stripping nativo. `tsc` fa solo il controllo dei tipi, dentro `pnpm run check`.
 CMD ["node", "src/server/main.ts"]

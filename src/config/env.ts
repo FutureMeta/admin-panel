@@ -167,11 +167,6 @@ const EnvSchema = z.object({
     .regex(/^(UTC|[A-Za-z]+(\/[A-Za-z0-9_+-]+){1,2})$/)
     .default('Europe/Rome'),
   /**
-   * Il Redis di gioco. In questa installazione e' la stessa istanza del
-   * pannello, quindi in assenza si usa REDIS_URL — ma con un client
-   * dedicato, con i suoi timeout e senza autopipelining.
-   */
-  /**
    * Il segreto con cui i server di gioco chiedono il proprio bundle di
    * configurazioni.
    *
@@ -192,6 +187,11 @@ const EnvSchema = z.object({
    */
   METAVERSE_MYSQL_URL: z.string().min(1).optional(),
 
+  /**
+   * Il Redis di gioco. In questa installazione e' la stessa istanza del
+   * pannello, quindi in assenza si usa REDIS_URL — ma con un client
+   * dedicato, con i suoi timeout e senza autopipelining.
+   */
   GAME_REDIS_URL: z.string().min(1).optional(),
   /** Il pattern dell'insieme online, misurato dalla sonda del passo 0. */
   GAME_REDIS_PATTERN: z.string().min(1).default('metaverse:player:*'),

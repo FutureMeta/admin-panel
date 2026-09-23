@@ -1,6 +1,7 @@
 # Cosa NON entra nel contesto di build.
 #
-# L'immagine che gira copia gia' solo dist, src, scripts e migrations: qui si
+# L'immagine che gira copia gia' solo dist, src, web/src/lib, scripts e
+# migrations: qui si
 # taglia prima, al contesto, che e' cio' che viene spedito al demone Docker e
 # che finisce nei livelli intermedi dello stadio di build (`COPY . .`).
 #

@@ -1,11 +1,19 @@
-# MetaMC Admin — fase 1
+# MetaMC Admin
 
 Pannello di amministrazione interno per il network Minecraft MetaMC.
 10-50 utenti di staff, accesso solo su invito, nessuna registrazione pubblica.
 
-**Perimetro di questa fase**: inviti, login, 2FA, sessioni, RBAC per modulo,
-audit log, e le schermate che servono a usarli. Le statistiche di gioco sono
-fase 2 e qui non ci sono.
+**Cosa c'è**:
+
+- **accessi**: inviti, login, 2FA con codici di recupero, sessioni, RBAC con un
+  modulo per schermata, ruoli creati dal pannello, registro attività a catena
+  di hash;
+- **statistiche del network**: campionamento del Redis di gioco, rollup
+  5m/1h/1d, panoramica, dettaglio per modalità, mappa dei paesi;
+- **duels**: andamento, rating, partite dal vivo, configurazioni dei server;
+- **lingue**: i testi del plugin Metaverse, letti e scritti nel suo MariaDB,
+  con la traduzione assistita dall'AI;
+- **Svetlana**, l'assistente, in sola lettura.
 
 Il progetto è normato da [`docs/stack-decisions.md`](docs/stack-decisions.md).
 Quel documento decide; questo repository lo implementa e, dove ha trovato un
@@ -41,7 +49,7 @@ locale per un motivo che non c'entra col codice.
 
 ```bash
 pnpm run check      # guardie + identificatori + dipendenze + tipi + lint
-pnpm test           # i 17 test di accettazione del §14
+pnpm test           # la suite di accettazione, con Postgres vero
 pnpm run build:web  # build del frontend, col controllo del nonce CSP in coda
 ```
 
@@ -76,13 +84,19 @@ src/
   authz/       l'UNICO posto che decide. can(actor, module, level)
   auth/        Argon2 con pepper e semaforo, TOTP anti-replay, recovery code, HIBP
   audit/       scrittura in transazione, sanitizzazione, verifica della catena
-  assistant/   Svetlana: cinque tool in sola lettura, con il permesso dentro
   http/        server Fastify, middleware del §9, rotte
   invites/     ciclo di vita dell'invito
-  db/          pool iniettato, interfaccia Kysely scritta a mano
-migrations/    forward-only, una per passo
+  stats/       campionamento, sessioni, rollup, costruzione e cache dei payload
+  duels/       ingestione delle partite, payload, partite dal vivo, configurazioni
+  lang/        i testi del plugin Metaverse, e la traduzione con l'AI
+  assistant/   Svetlana: tool in sola lettura, con il permesso dentro
+  geo/         paese dall'IP, che resta sul server
+  jobs/        lo scheduler e i lavori periodici
+  db/  redis/  pool e client iniettati; interfaccia Kysely scritta a mano
+  cache/  config/  crypto/  email/  minecraft/  observability/  ratelimit/  server/
+migrations/    forward-only: le applicate non si toccano, si aggiungono
 scripts/       migrate, bootstrap-owner, job, guardie che fermano la build
-tests/         i 17 test di accettazione, con Postgres vero
+tests/         la suite di accettazione, con Postgres vero
 web/           frontend Vite + React
 ```
 
@@ -114,7 +128,7 @@ operazione che tocca un altro utente. Il client non le ricalcola: riceve
 | [`docs/spike-outcomes.md`](docs/spike-outcomes.md) | i 5 spike del §15, con l'esito e il ramo preso |
 | [`docs/runbook.md`](docs/runbook.md) | primo avvio, segreti, backup, manutenzione, break-glass |
 | [`docs/svetlana.md`](docs/svetlana.md) | l'assistente: cosa legge, il modello di sicurezza, i costi, **e le due decisioni che servono al committente prima di accenderlo** |
-| [`docs/security/deviations.md`](docs/security/deviations.md) | 8 deviazioni, con motivo e data di rientro |
+| [`docs/security/deviations.md`](docs/security/deviations.md) | le deviazioni (D-01…D-11), con motivo e data di rientro |
 | [`docs/security/asvs.md`](docs/security/asvs.md) | mappatura ASVS 5.0 L2 |
 | [`docs/deps-policy.md`](docs/deps-policy.md) | aggiornamenti, bus factor, floor verificati |
 
@@ -122,9 +136,7 @@ operazione che tocca un altro utente. Il client non le ricalcola: riceve
 
 ## Cosa NON è qui, di proposito
 
-**Predisposto e vuoto** (§16): schema `stats`, tabella
-`auth.webauthn_credential`, interfaccia `CacheService` con la sola
-implementazione passthrough, `proxy_buffering off` sulla futura rotta SSE,
+**Predisposto e vuoto** (§16): tabella `auth.webauthn_credential`,
 `AbortSignal` propagato a ogni handler.
 
 **Non installato** (§4), ognuno con la sua soglia di rientro: bentocache,

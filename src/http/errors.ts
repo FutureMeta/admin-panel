@@ -14,6 +14,7 @@ import { HibpUnavailable, PasswordCompromised } from '#src/auth/hibp.ts';
 import { Overloaded } from '#src/auth/semaphore.ts';
 import { Forbidden } from '#src/authz/can.ts';
 import { RateLimited } from '#src/ratelimit/limiter.ts';
+import { pathOf } from './logger.ts';
 
 export class NotFound extends Error {
   constructor(message = 'risorsa inesistente') {
@@ -72,7 +73,7 @@ export function installErrorHandler(app: {
       // SEC-31 — su una risorsa indirizzata da id, stesso status di un id
       // inesistente. Il motivo reale finisce nel log, non nella risposta.
       request.log.warn(
-        { module: error.module, required: error.required, had: error.had, url: request.url },
+        { module: error.module, required: error.required, had: error.had, url: pathOf(request.url) },
         'autorizzazione negata',
       );
       const status = addressesResourceById(request) ? 404 : 403;
@@ -124,7 +125,7 @@ export function installErrorHandler(app: {
 
     // Nessun dettaglio interno esce mai: niente stack, niente messaggio,
     // niente nome di tabella.
-    request.log.error({ err: error, url: request.url }, 'errore non gestito');
+    request.log.error({ err: error, url: pathOf(request.url) }, 'errore non gestito');
     return reply.code(500).send({ error: 'internal_error' } satisfies ErrorBody);
   });
 }

@@ -58,6 +58,15 @@ export const REDACT_PATHS = [
   'req.headers["x-real-ip"]',
 ];
 
+/**
+ * L'URL senza la query. La query puo' contenere un token — il link di un
+ * invito, di un reset — e nei log non entra mai: vale per il serializer qui
+ * sotto e per chiunque metta l'URL in un campo suo (SEC-43).
+ */
+export function pathOf(url: string): string {
+  return url.split('?')[0] ?? url;
+}
+
 export function createLogger(level: string, pretty = false): Logger {
   const options: LoggerOptions = {
     level,
@@ -72,7 +81,7 @@ export function createLogger(level: string, pretty = false): Logger {
           method: request.method,
           // La query string puo' contenere un token (link di invito): si
           // registra solo il path.
-          url: typeof request.url === 'string' ? request.url.split('?')[0] : undefined,
+          url: typeof request.url === 'string' ? pathOf(request.url) : undefined,
           userAgent: request.headers?.['user-agent'],
         };
       },

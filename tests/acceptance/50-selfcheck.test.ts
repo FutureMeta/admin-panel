@@ -15,6 +15,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { romeMidnight } from '#src/stats/read.ts';
 import { CHECK_NAMES, runSelfcheck } from '#src/stats/selfcheck.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
@@ -56,6 +57,19 @@ afterAll(async () => {
 });
 
 /**
+ * Mezzogiorno di OGGI, ora di Roma: l'istante di tutto il file — i cicli
+ * seminati, il rollup e i controlli.
+ *
+ * Con l'orologio vero questo file falliva fra mezzanotte e l'una: «l'ultima
+ * ora chiusa» e «ieri» cadevano su due giorni diversi rispetto ai dati
+ * appena seminati. Mezzogiorno e' lontano da mezzanotte e dai cambi d'ora, e
+ * venticinque ore prima sta ancora nelle partizioni di ieri.
+ */
+const NOW = new Date(romeMidnight(new Date()).getTime() + 12 * 3_600_000);
+/** Lo stesso istante, come letterale SQL. */
+const AT = `'${NOW.toISOString()}'::timestamptz`;
+
+/**
  * Uno storico SANO di venticinque ore, coerente a ogni livello.
  *
  * Venticinque e non sei: `ticks_missing_24h` cammina una griglia di
@@ -75,11 +89,11 @@ beforeEach(async () => {
     DELETE FROM stats.mode_alias; DELETE FROM stats.mode;
     DELETE FROM stats.server WHERE server_id > 1;
     UPDATE stats.ingest_state SET nominal_delta_s = 30 WHERE id = 1;
-    -- Il watermark nasce a now(): senza riportarlo indietro, il rollup non
+    -- Il watermark nasce ad adesso: senza riportarlo indietro, il rollup non
     -- guarderebbe nemmeno una riga di questo storico e i controlli
     -- confronterebbero tabelle vuote: passerebbero senza aver guardato niente,
     -- che e' il modo in cui un controllo diventa inerte.
-    UPDATE stats.rollup_state SET watermark = now() - interval '26 hours', max_buckets = 400;`);
+    UPDATE stats.rollup_state SET watermark = ${AT} - interval '26 hours', max_buckets = 400;`);
 
   await sql.query('INSERT INTO stats.server (server_key) SELECT unnest($1::text[])', [SERVERS]);
   await sql.query(`INSERT INTO stats.mode (mode_key, display_name) VALUES ('duels', 'Duels')`);
@@ -100,8 +114,8 @@ beforeEach(async () => {
     INSERT INTO stats.poll_cycle (tick_at, run_id, status, delta_s, players, keys_read)
     SELECT g, '00000000-0000-4000-8000-0000000000aa'::uuid, 'ok', 30, 150, 150
       FROM generate_series(
-        to_timestamp(floor(extract(epoch FROM now() - interval '25 hours') / 30) * 30),
-        to_timestamp(floor(extract(epoch FROM now()) / 30) * 30) - interval '30 seconds',
+        to_timestamp(floor(extract(epoch FROM ${AT} - interval '25 hours') / 30) * 30),
+        to_timestamp(floor(extract(epoch FROM ${AT}) / 30) * 30) - interval '30 seconds',
         interval '30 seconds') g`);
 
   await sql.query(
@@ -124,14 +138,14 @@ async function rollupAll(): Promise<void> {
   for (const level of ['5m', '1h', '1d'] as const) {
     // Fino in pari: sei ore sono piu` bucket del tetto di un giro solo.
     for (let i = 0; i < 40; i += 1) {
-      const r = await runRollup(db, level);
+      const r = await runRollup(db, level, NOW.getTime());
       if (r.caughtUp) break;
     }
   }
 }
 
 async function offendersOf(name: string): Promise<number> {
-  const results = await runSelfcheck(db);
+  const results = await runSelfcheck(db, NOW);
   const one = results.find((r) => r.name === name);
   if (!one) throw new Error(`controllo assente: ${name}`);
   return one.failures;
@@ -158,7 +172,7 @@ describe('gli invarianti girano tutti e tacciono su dati sani', () => {
 
   it('su storico coerente nessuno trova niente', async () => {
     await rollupAll();
-    const results = await runSelfcheck(db);
+    const results = await runSelfcheck(db, NOW);
 
     for (const r of results) {
       expect(r.failures, `${r.name}: ${JSON.stringify(r.detail)}`).toBe(0);
@@ -170,7 +184,7 @@ describe('gli invarianti girano tutti e tacciono su dati sani', () => {
     // bene» da «il job e` morto tre settimane fa», e le due situazioni
     // richiedono azioni opposte.
     await rollupAll();
-    await runSelfcheck(db);
+    await runSelfcheck(db, NOW);
 
     const rows = await sql.query<{ name: string; failures: string }>(
       'SELECT name, failures::text FROM stats.integrity_check ORDER BY name',
@@ -206,7 +220,7 @@ describe('ogni invariante grida quando lo si viola', () => {
     await rollupAll();
     await sql.query(`
       UPDATE stats.rollup_5m SET covered_s = covered_s - 30
-       WHERE bucket = (SELECT max(bucket) FROM stats.rollup_5m WHERE bucket < date_bin('5 minutes', now(), 'epoch'::timestamptz))
+       WHERE bucket = (SELECT max(bucket) FROM stats.rollup_5m WHERE bucket < date_bin('5 minutes', ${AT}, 'epoch'::timestamptz))
          AND server_id = ${ids['duels_1']}`);
 
     expect(await offendersOf('covered_uniform')).toBe(1);
@@ -218,7 +232,7 @@ describe('ogni invariante grida quando lo si viola', () => {
     // un rollup gerarchico sbagliato mente davvero.
     const changed = await sql.query(`
       UPDATE stats.rollup_1d SET players_max = players_max + 40
-       WHERE day < stats.civil_day(now()) AND server_id = 0`);
+       WHERE day < stats.civil_day(${AT}) AND server_id = 0`);
 
     // Lo storico e` di sei ore: se cade tutto dentro oggi non c'e` nessun
     // giorno chiuso da sporcare, e allora si sporca l'ora contro i cinque
@@ -226,7 +240,7 @@ describe('ogni invariante grida quando lo si viola', () => {
     if ((changed.rowCount ?? 0) === 0) {
       await sql.query(`
         UPDATE stats.rollup_1h SET players_max = players_max + 40
-         WHERE bucket = (SELECT max(bucket) FROM stats.rollup_1h WHERE bucket < date_bin('1 hour', now(), 'epoch'::timestamptz))
+         WHERE bucket = (SELECT max(bucket) FROM stats.rollup_1h WHERE bucket < date_bin('1 hour', ${AT}, 'epoch'::timestamptz))
            AND server_id = 0`);
     }
 
@@ -239,7 +253,7 @@ describe('ogni invariante grida quando lo si viola', () => {
     await rollupAll();
     await sql.query(`
       UPDATE stats.rollup_1h SET player_seconds = player_seconds / 2
-       WHERE bucket = (SELECT max(bucket) FROM stats.rollup_1h WHERE bucket < date_bin('1 hour', now(), 'epoch'::timestamptz))
+       WHERE bucket = (SELECT max(bucket) FROM stats.rollup_1h WHERE bucket < date_bin('1 hour', ${AT}, 'epoch'::timestamptz))
          AND server_id = 0`);
 
     expect(await offendersOf('rollup_vs_raw')).toBe(1);
@@ -281,7 +295,7 @@ describe('ogni invariante grida quando lo si viola', () => {
                          WHERE tick_at < (SELECT max(tick_at) - interval '100 minutes'
                                             FROM stats.poll_cycle))`);
 
-    const results = await runSelfcheck(db);
+    const results = await runSelfcheck(db, NOW);
     const ticks = results.find((r) => r.name === 'ticks_missing_24h');
 
     expect(ticks?.failures).toBe(0);
@@ -294,10 +308,10 @@ describe('ogni invariante grida quando lo si viola', () => {
     // 5 000 persone che diventano 11 000 perche` chi gioca a due modalita` e`
     // stato contato due volte. Qui: la rete dichiara piu` unici della somma
     // di tutte le modalita`, che e` aritmeticamente impossibile.
-    const day = 'stats.civil_day(now()) - 1';
+    const day = `stats.civil_day(${AT}) - 1`;
     await sql.query(`
       INSERT INTO stats.player_day (day, player_id, first_seen_at, last_seen_at)
-      SELECT ${day}, g, now() - interval '1 day', now() - interval '1 day'
+      SELECT ${day}, g, ${AT} - interval '1 day', ${AT} - interval '1 day'
         FROM generate_series(1, 10) g`);
     await sql.query(`
       INSERT INTO stats.player_day_server (day, server_id, player_id)
@@ -319,7 +333,7 @@ describe('ogni invariante grida quando lo si viola', () => {
     // due e` assurdo da solo.
     await sql.query(`
       INSERT INTO stats.player_day (day, player_id, first_seen_at, last_seen_at, country)
-      VALUES (stats.civil_day(now()) - 1, 4242, now(), now(), 'IT')`);
+      VALUES (stats.civil_day(${AT}) - 1, 4242, ${AT}, ${AT}, 'IT')`);
 
     expect(await offendersOf('geo_sum_equals_uniques')).toBe(1);
   });
@@ -330,12 +344,12 @@ describe('ogni invariante grida quando lo si viola', () => {
     // attribuisce una volta sola e le due popolazioni restano uguali.
     await sql.query(`
       INSERT INTO stats.player_day (day, player_id, first_seen_at, last_seen_at, country)
-      VALUES (stats.civil_day(now()) - 1, 1, now(), now(), 'IT'),
-             (stats.civil_day(now()) - 2, 1, now(), now(), 'FR')`);
+      VALUES (stats.civil_day(${AT}) - 1, 1, ${AT}, ${AT}, 'IT'),
+             (stats.civil_day(${AT}) - 2, 1, ${AT}, ${AT}, 'FR')`);
     await sql.query(`
       INSERT INTO stats.player_day_server (day, server_id, player_id)
-      VALUES (stats.civil_day(now()) - 1, ${ids['duels_1']}, 1),
-             (stats.civil_day(now()) - 2, ${ids['duels_2']}, 1)`);
+      VALUES (stats.civil_day(${AT}) - 1, ${ids['duels_1']}, 1),
+             (stats.civil_day(${AT}) - 2, ${ids['duels_2']}, 1)`);
 
     expect(await offendersOf('geo_sum_equals_uniques')).toBe(0);
   });
@@ -347,7 +361,7 @@ describe('ogni invariante grida quando lo si viola', () => {
     // invece di contare zero.
     await sql.query('REVOKE SELECT ON stats.poll_cycle FROM metamc_stats_rw, metamc_ingest');
     try {
-      const results = await runSelfcheck(db);
+      const results = await runSelfcheck(db, NOW);
       const rotto = results.find((r) => r.name === 'network_equals_servers');
       expect(rotto?.failures).toBe(-1);
       expect(JSON.stringify(rotto?.detail)).toContain('poll_cycle');

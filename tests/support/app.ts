@@ -29,7 +29,12 @@ export type TestApp = {
   redis: RedisHarness;
   mailer: InMemoryMailer;
   /** Esito impostabile dai test per il controllo HIBP. */
-  hibp: { mode: 'clean' | 'compromised' | 'down'; calls: number };
+  /**
+   * HIBP finto. `leaked` sono le password che risultano trapelate: il servizio
+   * vede solo i primi cinque caratteri dell'hash, quindi per rispondere «si',
+   * questa» il finto deve conoscere la password — e la conosce solo il test.
+   */
+  hibp: { mode: 'clean' | 'compromised' | 'down'; calls: number; leaked: string[] };
   /** Il finto Mojang: `calls` sono le URL uscite, in ordine. */
   minecraft: MinecraftStub;
   close: () => Promise<void>;
@@ -106,7 +111,7 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
   const db = await createTestDatabase(opts.label ?? 'app');
   const redis = await startRedis();
   const mailer = new InMemoryMailer();
-  const hibp = { mode: 'clean' as 'clean' | 'compromised' | 'down', calls: 0 };
+  const hibp = { mode: 'clean' as 'clean' | 'compromised' | 'down', calls: 0, leaked: [] as string[] };
 
   const hibpFetch: typeof fetch = async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -114,12 +119,16 @@ export async function startTestApp(opts: TestAppOptions = {}): Promise<TestApp> 
     hibp.calls += 1;
     if (hibp.mode === 'down') throw new Error('HIBP non raggiungibile (simulato)');
     // Una riga con conteggio > 0 che corrisponde al suffisso richiesto non si
-    // puo' fabbricare senza conoscere la password: per il caso "compromessa"
-    // si risponde con un suffisso jolly che il client non trovera' mai, e si
-    // usa invece il ramo esplicito qui sotto.
+    // puo' fabbricare senza conoscere la password: le conosce il test, che le
+    // mette in `leaked`. Senza, il caso "compromessa" rispondeva con un
+    // suffisso jolly che il client non trovava mai — e nessun test poteva
+    // vedere il rifiuto.
+    const suffixes = hibp.leaked.map(
+      (pw) => `${createHash('sha1').update(pw).digest('hex').toUpperCase().slice(5)}:3\n`,
+    );
     const body =
       hibp.mode === 'compromised'
-        ? `${'0'.repeat(35)}:1\n`
+        ? `${suffixes.join('')}${'0'.repeat(35)}:1\n`
         : '0018A45C4D1DEF81644B54AB7F969B88D65:1\n00D4F6E8FA6EECAD2A3AA415EEC418D38EC:2\n';
     return new Response(body, { status: 200, headers: { 'content-type': 'text/plain' } });
   };

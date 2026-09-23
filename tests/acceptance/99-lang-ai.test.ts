@@ -7,7 +7,7 @@
 
 import { Anthropic } from '@anthropic-ai/sdk';
 import { sql } from 'kysely';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AiTranslationFailed, frameDiff, TRANSLATE_MODEL, translateWithAi } from '#src/lang/ai.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
 import { startTestApp, type TestApp } from '#tests/support/app.ts';
@@ -20,24 +20,32 @@ import {
 
 type Params = Record<string, unknown> & { messages: Array<{ content: string }> };
 
-/** Risponde con le traduzioni date, una per chiamata, e ricorda le richieste. */
-function fakeClient(answers: Array<string | 'refusal' | Error>) {
+type Answer = string | 'refusal' | { raw: string } | Error;
+
+/**
+ * Risponde con le traduzioni date, una per chiamata, e ricorda le richieste.
+ * Con `gate`, ogni risposta aspetta che il cancello si apra.
+ */
+function fakeClient(answers: Answer[], gate?: Promise<void>) {
   const seen: Params[] = [];
   const client = {
     beta: {
       messages: {
-        parse: async (params: Params) => {
+        create: async (params: Params) => {
           seen.push(params);
           const answer = answers[seen.length - 1];
           if (answer === undefined) throw new Error('una chiamata in piu` che nessuno aspettava');
+          if (gate !== undefined) await gate;
           if (answer instanceof Error) throw answer;
-          return answer === 'refusal'
-            ? { stop_reason: 'refusal', parsed_output: null, usage: { input_tokens: 50, output_tokens: 0 } }
-            : {
-                stop_reason: 'end_turn',
-                parsed_output: { translation: answer },
-                usage: { input_tokens: 400, output_tokens: 60 },
-              };
+          if (answer === 'refusal') {
+            return { stop_reason: 'refusal', content: [], usage: { input_tokens: 50, output_tokens: 0 } };
+          }
+          const text = typeof answer === 'string' ? JSON.stringify({ translation: answer }) : answer.raw;
+          return {
+            stop_reason: 'end_turn',
+            content: [{ type: 'text', text }],
+            usage: { input_tokens: 400, output_tokens: 60 },
+          };
         },
       },
     },
@@ -142,6 +150,24 @@ describe('la chiamata', () => {
     await expect(translateWithAi(client, input)).rejects.toMatchObject({ code: 'rifiuto' });
     expect(seen).toHaveLength(1);
   });
+
+  it('un testo che non e` JSON e` una traduzione incompleta, non un errore qualunque', async () => {
+    const { client } = fakeClient([{ raw: 'Ecco la traduzione: …' }]);
+    await expect(translateWithAi(client, input)).rejects.toMatchObject({
+      code: 'incompleta',
+      usage: { input: 400, output: 60 },
+    });
+  });
+
+  it('la spesa si conta a ogni tentativo: anche il primo, se il secondo cade', async () => {
+    const { client } = fakeClient(['<grigio>x', new Anthropic.APIConnectionError({ message: 'giu`' })]);
+    const charged: unknown[] = [];
+    const err = await translateWithAi(client, input, async (u) => {
+      charged.push(u);
+    }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Anthropic.APIError);
+    expect(charged).toEqual([expect.objectContaining({ input: 400, output: 60 })]);
+  });
 });
 
 describe('la rotta', () => {
@@ -167,8 +193,8 @@ describe('la rotta', () => {
     (t.ctx as { metaverseMysql: unknown }).metaverseMysql = my;
   });
 
-  const useClient = (answers: Array<string | 'refusal' | Error>) => {
-    const fake = fakeClient(answers);
+  const useClient = (answers: Answer[], gate?: Promise<void>) => {
+    const fake = fakeClient(answers, gate);
     if (t.ctx.assistant === null) throw new Error('assistente non costruito');
     t.ctx.assistant.client = fake.client;
     return fake;
@@ -226,6 +252,40 @@ describe('la rotta', () => {
       404,
     );
     expect(seen).toHaveLength(0);
+  });
+
+  it('una lingua che non c`e` e` 404, prima di pagare', async () => {
+    const { seen } = useClient([IT]);
+    const res = await translate(sviluppatore, { ns: 'duels.uhc', key: 'event.countdown', code: 'fr' });
+    expect(res.statusCode).toBe(404);
+    expect(seen).toHaveLength(0);
+  });
+
+  it('tre in corso per persona: la quarta aspetta il suo turno', async () => {
+    let open = (): void => undefined;
+    const gate = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    const { seen } = useClient([IT, IT, IT, IT], gate);
+    const settled: number[] = [];
+    const all = Promise.all(
+      [1, 2, 3, 4].map(() =>
+        translate(sviluppatore).then((r) => {
+          settled.push(r.statusCode);
+          return r.statusCode;
+        }),
+      ),
+    );
+    // Tre ferme dentro l'API, una rimandata indietro subito.
+    await vi.waitFor(() => {
+      expect(settled).toEqual([429]);
+      expect(seen).toHaveLength(3);
+    });
+    open();
+    expect((await all).sort()).toEqual([200, 200, 200, 429]);
+    // I posti si liberano: la prossima passa.
+    useClient([IT]);
+    expect((await translate(sviluppatore)).statusCode).toBe(200);
   });
 
   it('formato rotto due volte: 422, e il registro scrive il fallimento', async () => {

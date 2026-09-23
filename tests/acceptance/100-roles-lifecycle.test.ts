@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { roleKeyOf } from '#src/http/routes/roles.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
 import { startTestApp, type TestApp } from '#tests/support/app.ts';
-import { roleIdByKey } from '#tests/support/fixtures.ts';
+import { grantOverride, moduleIdByKey, roleIdByKey } from '#tests/support/fixtures.ts';
 
 let t: TestApp;
 let owner: Awaited<ReturnType<typeof loginAs>>;
@@ -233,5 +233,75 @@ describe('eliminare un ruolo', () => {
     await expect(
       t.ctx.db.updateTable('auth.roles').set({ deleted_at: new Date() }).where('id', '=', id).execute(),
     ).rejects.toThrow(/non e' cancellabile/i);
+  });
+});
+
+describe('chi gestisce un ruolo, e chi lo riceve', () => {
+  it('«Gestione» su Ruoli non basta: un ruolo si tocca solo se si ha tutto cio` che da`', async () => {
+    const seeded = await seedUser(t, { email: 'mod-ruoli@metamc.it', roleKey: 'moderatore' });
+    await grantOverride(t.ctx.db, seeded.id, 'ruoli', 3);
+    const mod = await loginAs(t, seeded);
+    const adminRole = await roleIdByKey(t.ctx.db, 'admin');
+
+    const rename = await call(mod, 'PATCH', `/api/roles/${adminRole}`, { name: 'Sotto-admin' });
+    expect(rename.statusCode).toBe(400);
+    expect(rename.json().code).toBe('RUOLO_NON_GESTIBILE');
+    const utenti = await moduleIdByKey(t.ctx.db, 'utenti');
+    const demote = await call(mod, 'PUT', `/api/roles/${adminRole}/permissions`, {
+      entries: [{ moduleId: utenti, level: 0 }],
+    });
+    expect(demote.statusCode).toBe(400);
+    expect(demote.json().code).toBe('RUOLO_NON_GESTIBILE');
+
+    const listed = (await call(mod, 'GET', '/api/roles')).json().roles as Array<{
+      id: number;
+      editable: boolean;
+    }>;
+    expect(listed.find((r) => r.id === adminRole)?.editable).toBe(false);
+  });
+
+  it('un ruolo non cresce oltre cio` che chi l`ha assegnato poteva dare', async () => {
+    // L'admin da' a qualcuno un ruolo vuoto — lo puo', non da' niente — e poi
+    // l'owner lo alza: quel qualcuno riceverebbe «Gestione» su Ruoli da un
+    // admin che non ce l'ha.
+    const id = (await call(owner, 'POST', '/api/roles', { name: 'Vuoto per ora' })).json().id as number;
+    const target = (await seedUser(t, { email: 'ricevente-ruoli@metamc.it' })).id;
+    expect((await call(admin, 'POST', `/api/users/${target}/roles`, { roleId: id })).statusCode).toBe(200);
+
+    const ruoli = await moduleIdByKey(t.ctx.db, 'ruoli');
+    const raise = await call(owner, 'PUT', `/api/roles/${id}/permissions`, {
+      entries: [{ moduleId: ruoli, level: 3 }],
+    });
+    expect(raise.statusCode).toBe(409);
+    expect(raise.json().code).toBe('CONCESSO_DA_CHI_NON_PUO');
+
+    // Cio' che l'admin ha, invece, si da'.
+    const utenti = await moduleIdByKey(t.ctx.db, 'utenti');
+    expect(
+      (
+        await call(owner, 'PUT', `/api/roles/${id}/permissions`, {
+          entries: [{ moduleId: utenti, level: 1 }],
+        })
+      ).statusCode,
+    ).toBe(200);
+  });
+
+  it('nessuno si assegna un ruolo da solo, nemmeno l`owner', async () => {
+    const id = await roleIdByKey(t.ctx.db, 'moderatore');
+    const res = await call(owner, 'POST', `/api/users/${owner.userId}/roles`, { roleId: id });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().code).toBe('AUTOASSEGNAZIONE');
+  });
+
+  it('un id che non e` un numero di ruolo e` 400', async () => {
+    for (const bad of ['0', 'abc', '99999999']) {
+      expect((await call(owner, 'PATCH', `/api/roles/${bad}`, { name: 'Qualcosa' })).statusCode).toBe(400);
+    }
+  });
+
+  it('i caratteri invisibili non fanno un nome nuovo', async () => {
+    const res = await call(owner, 'POST', '/api/roles', { name: 'Mode​ratore' });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('NOME_IN_USO');
   });
 });

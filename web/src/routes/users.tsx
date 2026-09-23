@@ -39,6 +39,39 @@ import { areaOfModule, MODULE_TOTAL } from '../lib/modules.ts';
 
 const LEVELS = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
 
+const UNSAVED = 'Conferma o annulla prima le modifiche alla matrice.';
+
+/**
+ * I rifiuti del server sui ruoli, detti in una riga che spiega cosa fare.
+ * Una Map e non un oggetto: le chiavi sono codici del server, e scritte come
+ * stringhe il controllo sugli identificatori non le scambia per nomi di codice.
+ */
+const ROLE_ERRORS = new Map<string, string>([
+  ['LIVELLO_NON_CONCEDIBILE', 'Non puoi impostare un livello superiore al tuo.'],
+  ['RUOLO_DI_SISTEMA', 'Il ruolo di sistema non è modificabile: lo impedisce il database, non la schermata.'],
+  ['RUOLO_NON_GESTIBILE', 'Questo ruolo dà più di quanto hai tu: può modificarlo solo chi sta più in alto.'],
+  [
+    'CONCESSO_DA_CHI_NON_PUO',
+    'Qualcuno ha questo ruolo (o un invito lo offre) da chi non può concedere i livelli nuovi: riassegnalo tu, o revoca l’invito, prima di alzarlo.',
+  ],
+  [
+    'RUOLO_ASSEGNATO',
+    'Il ruolo è ancora assegnato a qualcuno: toglilo prima a tutte le persone che ce l’hanno.',
+  ],
+  [
+    'RUOLO_IN_INVITI',
+    'Un invito ancora valido offre questo ruolo: revocalo, o aspetta che scada, prima di eliminarlo.',
+  ],
+  ['NOME_IN_USO', 'Esiste già un ruolo con questo nome.'],
+  ['NOME_NON_VALIDO', 'Il nome vuole almeno due lettere o cifre.'],
+]);
+
+function roleErrorText(err: unknown, fallback: string): string {
+  return (
+    (err instanceof ApiError && err.code !== undefined ? ROLE_ERRORS.get(err.code) : undefined) ?? fallback
+  );
+}
+
 // ---------------------------------------------------------------------------
 
 export function UsersPage({ me }: { me: Me }) {
@@ -316,6 +349,10 @@ function UserDialog({
       }
       if (err instanceof ApiError && err.code === 'RUOLO_NON_ASSEGNABILE') {
         setError('I ruoli di sistema non si assegnano dal pannello.');
+        return;
+      }
+      if (err instanceof ApiError && err.code === 'AUTOASSEGNAZIONE') {
+        setError('Un ruolo non si assegna a se stessi: chiedilo a chi sta più in alto.');
         return;
       }
       if (err instanceof ApiError && err.code === 'SERVONO_DUE_OWNER') {
@@ -702,14 +739,7 @@ export function RolesPage({ me }: { me: Me }) {
       pick(undefined);
       await matrix.refetch();
     },
-    onError: (err) =>
-      setError(
-        err instanceof ApiError && err.code === 'RUOLO_ASSEGNATO'
-          ? 'Il ruolo è ancora assegnato a qualcuno: toglilo prima a tutte le persone che ce l’hanno.'
-          : err instanceof ApiError && err.code === 'RUOLO_IN_INVITI'
-            ? 'Un invito ancora valido offre questo ruolo: revocalo, o aspetta che scada, prima di eliminarlo.'
-            : 'Eliminazione non riuscita.',
-      ),
+    onError: (err) => setError(roleErrorText(err, 'Eliminazione non riuscita.')),
   });
 
   const save = useMutation({
@@ -723,15 +753,7 @@ export function RolesPage({ me }: { me: Me }) {
       setDraft({});
       void matrix.refetch();
     },
-    onError: (err) => {
-      setError(
-        err instanceof ApiError && err.code === 'LIVELLO_NON_CONCEDIBILE'
-          ? 'Non puoi impostare un livello superiore al tuo.'
-          : err instanceof ApiError && err.code === 'RUOLO_DI_SISTEMA'
-            ? 'Il ruolo di sistema non è modificabile: lo impedisce il database, non la schermata.'
-            : 'Modifica non riuscita.',
-      );
-    },
+    onError: (err) => setError(roleErrorText(err, 'Modifica non riuscita.')),
   });
 
   if (matrix.isPending) return <SkeletonRows rows={10} />;
@@ -797,7 +819,13 @@ export function RolesPage({ me }: { me: Me }) {
             </span>
             {editable ? (
               <>
-                <Button size="sm" variant="ghost" onClick={() => setNaming('rename')}>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending.length > 0}
+                  title={pending.length > 0 ? UNSAVED : undefined}
+                  onClick={() => setNaming('rename')}
+                >
                   Rinomina
                 </Button>
                 <Button
@@ -806,11 +834,13 @@ export function RolesPage({ me }: { me: Me }) {
                   loading={remove.isPending}
                   // Toglierlo alle persone e' un'azione su di loro: si fa dalla
                   // loro scheda, una per una. Qui si elimina un ruolo vuoto.
-                  disabled={current.members > 0}
+                  disabled={current.members > 0 || pending.length > 0}
                   title={
-                    current.members > 0
-                      ? 'Assegnato ad almeno una persona: toglilo prima a tutti.'
-                      : undefined
+                    pending.length > 0
+                      ? UNSAVED
+                      : current.members > 0
+                        ? 'Assegnato ad almeno una persona: toglilo prima a tutti.'
+                        : undefined
                   }
                   onClick={() => {
                     if (window.confirm(`Eliminare il ruolo «${current.name}»?`)) remove.mutate(current.id);
@@ -821,7 +851,13 @@ export function RolesPage({ me }: { me: Me }) {
               </>
             ) : null}
             {canEdit ? (
-              <Button size="sm" variant="primary" onClick={() => setNaming('create')}>
+              <Button
+                size="sm"
+                variant="primary"
+                disabled={pending.length > 0}
+                title={pending.length > 0 ? UNSAVED : undefined}
+                onClick={() => setNaming('create')}
+              >
                 Nuovo ruolo
               </Button>
             ) : null}
@@ -958,8 +994,10 @@ export function RolesPage({ me }: { me: Me }) {
           onClose={() => setNaming(null)}
           onSaved={async (id) => {
             setNaming(null);
-            pick(id);
+            // Prima i dati, poi la scelta: il ruolo nuovo deve gia' esserci
+            // quando lo si seleziona, o per un attimo si vede il primo.
             await matrix.refetch();
+            if (naming === 'create') pick(id);
           }}
         />
       ) : null}
@@ -995,12 +1033,7 @@ function RoleNameDialog({
     onSuccess: (id) => onSaved(id),
   });
 
-  const error =
-    save.error instanceof ApiError && save.error.code === 'NOME_IN_USO'
-      ? 'Esiste già un ruolo con questo nome.'
-      : save.error
-        ? 'Salvataggio non riuscito.'
-        : undefined;
+  const error = save.error ? roleErrorText(save.error, 'Salvataggio non riuscito.') : undefined;
 
   return (
     <Modal

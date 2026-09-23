@@ -24,9 +24,13 @@ export type BundleKeys = { ns: string; keys: KeyValues[] };
 /** Il ripiego del gioco: la lingua contro cui si misurano le altre. */
 export const REFERENCE = 'en';
 
-/** La percentuale, intera. Su zero chiavi e' zero, non una divisione. */
+/**
+ * La percentuale, intera, per difetto: 100 solo quando e' tutto fatto. Con
+ * l'arrotondamento normale 199 su 200 faceva 100, e la riga diceva «completo»
+ * togliendo «Traduci» proprio dove mancava una chiave. Su zero e' zero.
+ */
 export function pctOf(done: number, total: number): number {
-  return total === 0 ? 0 : Math.round((done / total) * 100);
+  return total === 0 ? 0 : Math.floor((done / total) * 100);
 }
 
 /**
@@ -141,6 +145,9 @@ export function bulkTargets(keys: readonly KeyValues[], code: string): string[] 
     .map((k) => k.key);
 }
 
+/** Il motivo di un giro fermato con «Ferma»: chi disegna lo distingue da un guasto. */
+export const STOPPED_BY_HAND = 'Fermata a mano.';
+
 export type BulkState = {
   total: number;
   done: number;
@@ -193,7 +200,7 @@ export async function runBulk(
 
   await Promise.all(Array.from({ length: Math.min(opts.concurrency, keys.length) }, worker));
   if (state.stopped === null && state.done + state.failed.length < keys.length) {
-    state.stopped = 'Fermata a mano.';
+    state.stopped = STOPPED_BY_HAND;
   }
   report();
   return state;

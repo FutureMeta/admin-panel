@@ -274,6 +274,7 @@ export function LangOverviewPage({ me }: { me: Me }) {
                           to="/lingue/b/$ns"
                           params={{ ns: r.ns }}
                           title="Apri le chiavi del bundle"
+                          aria-label={`Chiavi del bundle `}
                           style={{ position: 'absolute', inset: 0, zIndex: 1 }}
                         />
                         <span

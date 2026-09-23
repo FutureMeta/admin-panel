@@ -104,12 +104,19 @@ export function sanitizeIp(value: unknown): string | null {
  * campo da un'altra parte.
  */
 export function sanitizeDisplayName(value: string): string {
-  return (
-    value
-      .normalize('NFKC')
-      .replace(/[^\p{L}\p{N} '._-]/gu, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, LIMITS.displayName) || 'utente'
-  );
+  return cleanName(value, LIMITS.displayName) || 'utente';
+}
+
+/**
+ * La stessa allowlist, senza ripiego: lettere, cifre, spazio e `'._-`.
+ * Toglie anche i caratteri invisibili e di direzione, che renderebbero
+ * uguali a vedersi due nomi diversi. Vuoto se non resta niente.
+ */
+export function cleanName(value: string, max: number): string {
+  return value
+    .normalize('NFKC')
+    .replace(/[^\p{L}\p{N} '._-]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, max);
 }

@@ -36,8 +36,18 @@ export function lineSpans(line: string, size: number, tags = true): Span[] {
       ...(piece.style.colour === undefined ? { color: 'var(--tx-primary)' } : paint(piece.style.colour)),
       ...(piece.style.bold === true ? { WebkitTextStroke: '0.25px' } : {}),
       ...(piece.style.italic === true ? { fontStyle: 'italic' } : {}),
-      ...(piece.style.underlined === true ? { textDecoration: 'underline' } : {}),
-      ...(piece.style.strikethrough === true ? { textDecoration: 'line-through' } : {}),
+      // Una proprieta' sola per tutte e due: scritte separate, la seconda
+      // cancellava la prima.
+      ...(piece.style.underlined === true || piece.style.strikethrough === true
+        ? {
+            textDecoration: [
+              piece.style.underlined === true ? 'underline' : '',
+              piece.style.strikethrough === true ? 'line-through' : '',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          }
+        : {}),
     };
 
     // I segnaposto si staccano dal testo che li circonda e tengono il peso

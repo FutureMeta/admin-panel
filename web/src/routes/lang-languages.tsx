@@ -22,9 +22,8 @@ import {
 } from '../components/lang-bits.tsx';
 import { MiniSource } from '../components/mini-text.tsx';
 import { PageHeader } from '../components/page.tsx';
-import { SkeletonRows } from '../components/ui.tsx';
-import type { Me } from '../lib/api.ts';
-import { api } from '../lib/api.ts';
+import { Modal, SkeletonRows } from '../components/ui.tsx';
+import { ApiError, api, type Me } from '../lib/api.ts';
 import { type Language, pctOf, REFERENCE } from '../lib/lang.ts';
 import { canOpen } from '../lib/modules.ts';
 import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
@@ -166,6 +165,7 @@ export function LangLanguagesPage({ me }: { me: Me }) {
                     <button
                       type="button"
                       title="Sposta su"
+                      aria-label={`Sposta ${l.code} su`}
                       disabled={i === 0 || patch.isPending}
                       onClick={() => patch.mutate({ code: l.code, body: { move: 'up' } })}
                       style={ARROW}
@@ -175,6 +175,7 @@ export function LangLanguagesPage({ me }: { me: Me }) {
                     <button
                       type="button"
                       title="Sposta giù"
+                      aria-label={`Sposta ${l.code} giù`}
                       disabled={i === languages.length - 1 || patch.isPending}
                       onClick={() => patch.mutate({ code: l.code, body: { move: 'down' } })}
                       style={ARROW}
@@ -208,6 +209,7 @@ export function LangLanguagesPage({ me }: { me: Me }) {
                 <button
                   type="button"
                   role="switch"
+                  aria-label={`${l.code} attiva per i giocatori`}
                   aria-checked={l.active}
                   disabled={!canManage || patch.isPending}
                   onClick={() => patch.mutate({ code: l.code, body: { active: !l.active } })}
@@ -298,147 +300,22 @@ function AddLanguageDialog({ onClose, onCreated }: { onClose: () => void; onCrea
   const create = useMutation({
     mutationFn: () => api<Language>('/api/lang/language', { method: 'POST', body: { code, display } }),
     onSuccess: onCreated,
-    onError: (err) => setError(err instanceof Error ? err.message : 'Creazione non riuscita.'),
+    onError: (err) =>
+      setError(
+        err instanceof ApiError && err.status === 409
+          ? 'Esiste già una lingua con questo codice.'
+          : 'Creazione non riuscita.',
+      ),
   });
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 80,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 40,
-      }}
-    >
-      <button
-        type="button"
-        aria-label="Chiudi"
-        onClick={onClose}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          border: 'none',
-          background: 'rgba(4,10,14,.66)',
-          backdropFilter: 'blur(3px)',
-          cursor: 'default',
-        }}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Nuova lingua"
-        style={{
-          position: 'relative',
-          width: 560,
-          maxWidth: '100%',
-          border: '1px solid var(--bd-strong)',
-          borderRadius: 'var(--r-lg)',
-          background: 'var(--s-elevated)',
-          boxShadow: 'var(--e3)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            gap: 16,
-            padding: '20px 22px 16px',
-            borderBottom: '1px solid var(--bd-subtle)',
-          }}
-        >
-          <div>
-            <div
-              style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 17,
-                fontWeight: 700,
-                letterSpacing: '-.01em',
-              }}
-            >
-              Nuova lingua
-            </div>
-            <div style={{ fontSize: 12.5, color: 'var(--tx-muted)', marginTop: 4 }}>
-              La lingua nasce vuota: le chiavi non tradotte ricadono sull’inglese.
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Chiudi"
-            style={{
-              width: 28,
-              height: 28,
-              border: '1px solid var(--bd-subtle)',
-              borderRadius: 'var(--r-sm)',
-              background: 'transparent',
-              color: 'var(--tx-muted)',
-              cursor: 'pointer',
-              fontSize: 14,
-              lineHeight: 1,
-              flex: 'none',
-            }}
-          >
-            ×
-          </button>
-        </div>
-        <div style={{ padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div>
-            <label htmlFor="lang-code" style={LABEL}>
-              Codice
-            </label>
-            <input
-              id="lang-code"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toLowerCase())}
-              placeholder="es. fr"
-              maxLength={2}
-              style={FIELD}
-            />
-            <div style={HINT}>Due lettere minuscole, come le altre lingue.</div>
-          </div>
-          <div>
-            <label htmlFor="lang-display" style={LABEL}>
-              Nome visualizzato
-            </label>
-            <input
-              id="lang-display"
-              value={display}
-              onChange={(e) => setDisplay(e.target.value)}
-              placeholder="es. <white>Français"
-              style={FIELD}
-            />
-            <div style={HINT}>MiniMessage: è il nome che i giocatori vedono nel menu.</div>
-            {display.trim() !== '' ? (
-              <div
-                style={{
-                  marginTop: 8,
-                  padding: '8px 11px',
-                  border: '1px solid var(--bd-subtle)',
-                  borderRadius: 'var(--r-sm)',
-                  background: 'var(--s-inset)',
-                }}
-              >
-                <MiniSource text={display} size={13} tags={false} />
-              </div>
-            ) : null}
-          </div>
-          {error === null ? null : <div style={{ fontSize: 12.5, color: 'var(--err)' }}>{error}</div>}
-        </div>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'flex-end',
-            gap: 8,
-            padding: '16px 22px',
-            borderTop: '1px solid var(--bd-subtle)',
-            background: 'var(--s-inset)',
-          }}
-        >
+    <Modal
+      title="Nuova lingua"
+      subtitle="La lingua nasce vuota: le chiavi non tradotte ricadono sull’inglese."
+      width={560}
+      onClose={onClose}
+      footer={
+        <>
           <button type="button" onClick={onClose} style={{ ...GHOST, height: 36, fontSize: 13 }}>
             Annulla
           </button>
@@ -456,9 +333,53 @@ function AddLanguageDialog({ onClose, onCreated }: { onClose: () => void; onCrea
           >
             {create.isPending ? 'Creo…' : 'Aggiungi lingua'}
           </button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <label htmlFor="lang-code" style={LABEL}>
+            Codice
+          </label>
+          <input
+            id="lang-code"
+            value={code}
+            onChange={(e) => setCode(e.target.value.toLowerCase())}
+            placeholder="es. fr"
+            maxLength={2}
+            style={FIELD}
+          />
+          <div style={HINT}>Due lettere minuscole, come le altre lingue.</div>
         </div>
+        <div>
+          <label htmlFor="lang-display" style={LABEL}>
+            Nome visualizzato
+          </label>
+          <input
+            id="lang-display"
+            value={display}
+            onChange={(e) => setDisplay(e.target.value)}
+            placeholder="es. <white>Français"
+            style={FIELD}
+          />
+          <div style={HINT}>MiniMessage: è il nome che i giocatori vedono nel menu.</div>
+          {display.trim() !== '' ? (
+            <div
+              style={{
+                marginTop: 8,
+                padding: '8px 11px',
+                border: '1px solid var(--bd-subtle)',
+                borderRadius: 'var(--r-sm)',
+                background: 'var(--s-inset)',
+              }}
+            >
+              <MiniSource text={display} size={13} tags={false} />
+            </div>
+          ) : null}
+        </div>
+        {error === null ? null : <div style={{ fontSize: 12.5, color: 'var(--err)' }}>{error}</div>}
       </div>
-    </div>
+    </Modal>
   );
 }
 

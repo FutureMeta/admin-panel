@@ -38,6 +38,7 @@ import {
   overviewQuery,
   putValue,
   RetryBanner,
+  saveErrorText,
 } from '../components/lang-bits.tsx';
 import { MiniSource } from '../components/mini-text.tsx';
 import { PageHeader } from '../components/page.tsx';
@@ -52,13 +53,12 @@ import {
   pctOf,
   REFERENCE,
   runBulk,
+  STOPPED_BY_HAND,
 } from '../lib/lang.ts';
-import { canOpen } from '../lib/modules.ts';
 import { DISABLED, GHOST, PRIMARY } from './lang-keys.tsx';
 
 /** Quante chiavi alla volta. Tre: il giro dura minuti invece di dieci, e l'API non si ingolfa. */
 const CONCURRENCY = 3;
-const STOPPED_BY_HAND = 'Fermata a mano.';
 
 /** Le ragioni brevi, per l'elenco delle chiavi saltate. */
 const SKIPPED: Record<string, string> = {
@@ -90,10 +90,10 @@ const usd = (n: number): string => n.toLocaleString('it-IT', { style: 'currency'
 
 type BulkRun = { state: BulkState; running: boolean; stopping: boolean };
 
-export function LangTranslatePage({ me }: { me: Me }) {
+// Scrivere e' gia' deciso dalla rotta: si entra solo con «Scrittura» su Bundle.
+export function LangTranslatePage(_props: { me: Me }) {
   const { ns, code } = useParams({ from: '/shell/lingue/b/$ns/traduci/$code' });
   const queryClient = useQueryClient();
-  const canWrite = canOpen(me, 'lingue', 2);
 
   const overview = useQuery(overviewQuery);
   const bundle = useQuery(bundleQuery(ns));
@@ -104,11 +104,12 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const [index, setIndex] = useState(0);
   /** Le bozze, per chiave. Una chiave senza voce non e' stata toccata. */
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const [saveError, setSaveError] = useState<string | null>(null);
+  /** L'errore di salvataggio, con la chiave a cui appartiene: si mostra solo li'. */
+  const [saveError, setSaveError] = useState<{ key: string; text: string } | null>(null);
   const [aiError, setAiError] = useState<{ key: string; text: string } | null>(null);
-  /** Il giro dell'AI su tutto il bundle: c'e' finche' il popup e' aperto. */
   /** Il popup col costo, prima di partire. */
   const [confirming, setConfirming] = useState(false);
+  /** Il giro dell'AI su tutto il bundle: c'e' finche' il popup e' aperto. */
   const [bulk, setBulk] = useState<BulkRun | null>(null);
   /** «Salva tutte»: l'avanzamento mentre scrive, e cosa non e' andato dopo. */
   const [saving, setSaving] = useState<{ state: BulkState; running: boolean } | null>(null);
@@ -121,7 +122,6 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const item = todo[at];
 
   useEffect(() => {
-    setSaveError(null);
     keyRef.current = item?.key;
   }, [item?.key]);
 
@@ -136,6 +136,18 @@ export function LangTranslatePage({ me }: { me: Me }) {
   const ready = todo.filter((k) => (drafts[k.key] ?? '').trim() !== '').map((k) => k.key);
   /** Cosa tradurrebbe l'AI adesso: le chiavi da fare con l'inglese, senza una bozza. */
   const aiTargets = bulkTargets(todo, code).filter((key) => (drafts[key] ?? '').trim() === '');
+  // L'esito di «Salva tutte» quando qualcosa non e' andato. Resta finche' c'e'
+  // qualcosa da riprovare: salvate a mano le bozze rimaste, non ha piu'
+  // niente da dire.
+  const failedLeft = saving?.state.failed.filter((f) => ready.includes(f.key)).map((f) => f.key) ?? [];
+  const unsaved =
+    saving === null || saving.running
+      ? null
+      : saving.state.stopped !== null && ready.length > 0
+        ? `Salvataggio interrotto: ${saving.state.stopped} Le bozze non salvate restano qui.`
+        : failedLeft.length > 0
+          ? `Non salvate: ${failedLeft.join(', ')}. Restano qui, da riprovare.`
+          : null;
   const aiCost = aiCostUsd(aiTargets.map((key) => todo.find((k) => k.key === key)?.values[REFERENCE] ?? ''));
 
   const done = keys.length - todo.length;
@@ -158,16 +170,22 @@ export function LangTranslatePage({ me }: { me: Me }) {
   // Uscire dalla pagina ferma il giro: niente chiamate per una schermata che non c'e' piu'.
   useEffect(() => () => bulkAbort.current?.abort(), []);
 
-  const forget = (saved: readonly string[]): void =>
-    setDrafts((prev) => Object.fromEntries(Object.entries(prev).filter(([key]) => !saved.includes(key))));
+  /**
+   * Toglie le bozze salvate — solo se nel frattempo non sono cambiate. Chi
+   * corregge una chiave mentre «Salva tutte» gira non deve perdere la
+   * correzione: quella bozza resta, ed e' ancora da salvare.
+   */
+  const forgetSaved = (sent: Readonly<Record<string, string>>): void =>
+    setDrafts((prev) => Object.fromEntries(Object.entries(prev).filter(([key, text]) => sent[key] !== text)));
 
   const save = useMutation({
     mutationFn: (v: { key: string; value: string }) => putValue({ ns, code, ...v }),
+    onMutate: () => setSaveError(null),
     onSuccess: async (_res, v) => {
-      forget([v.key]);
+      forgetSaved({ [v.key]: v.value });
       await invalidateLang(queryClient, ns);
     },
-    onError: (err) => setSaveError(err instanceof Error ? err.message : 'Salvataggio non riuscito.'),
+    onError: (err, v) => setSaveError({ key: v.key, text: saveErrorText(err) }),
   });
 
   const ai = useMutation({
@@ -181,7 +199,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
   });
 
   const submit = (): void => {
-    if (blocked || save.isPending || !canWrite || item === undefined) return;
+    if (blocked || save.isPending || item === undefined) return;
     save.mutate({ key: item.key, value: draft });
   };
 
@@ -219,13 +237,13 @@ export function LangTranslatePage({ me }: { me: Me }) {
 
   const saveAll = async (): Promise<void> => {
     const snapshot = { ...drafts };
-    const saved: string[] = [];
+    const saved: Record<string, string> = {};
     setSaving({ state: { total: ready.length, done: 0, failed: [], stopped: null }, running: true });
     const final = await runBulk(
       ready,
       async (key) => {
         await putValue({ ns, key, code, value: snapshot[key] as string });
-        saved.push(key);
+        saved[key] = snapshot[key] as string;
       },
       {
         concurrency: CONCURRENCY,
@@ -234,7 +252,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
         onProgress: (state) => setSaving({ state, running: true }),
       },
     );
-    forget(saved);
+    forgetSaved(saved);
     setSaving(final.failed.length === 0 && final.stopped === null ? null : { state: final, running: false });
     await invalidateLang(queryClient, ns);
   };
@@ -320,7 +338,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
             {done} / {keys.length} chiavi tradotte ·{' '}
             <span style={{ color: 'var(--warn)', fontWeight: 600 }}>{todo.length} da fare</span>
           </span>
-          {canWrite && code !== REFERENCE && keys.length > 0 ? (
+          {code !== REFERENCE && keys.length > 0 ? (
             <AiButton
               background="var(--s-elevated)"
               busy={bulk?.running === true}
@@ -368,6 +386,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
                 <button
                   type="button"
                   onClick={() => setIndex(Math.max(0, at - 1))}
+                  aria-label="Chiave precedente"
                   disabled={at === 0}
                   style={NAV}
                 >
@@ -376,6 +395,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
                 <button
                   type="button"
                   onClick={() => setIndex(Math.min(todo.length - 1, at + 1))}
+                  aria-label="Chiave successiva"
                   disabled={at >= todo.length - 1}
                   style={NAV}
                 >
@@ -384,17 +404,17 @@ export function LangTranslatePage({ me }: { me: Me }) {
                 <button
                   type="button"
                   onClick={submit}
-                  disabled={blocked || save.isPending || !canWrite}
+                  disabled={blocked || save.isPending}
                   style={{
                     ...PRIMARY,
                     height: 32,
                     fontSize: 12,
-                    ...(blocked || save.isPending || !canWrite ? DISABLED : {}),
+                    ...(blocked || save.isPending ? DISABLED : {}),
                   }}
                 >
                   {save.isPending ? 'Salvo…' : 'Salva e avanti'}
                 </button>
-                {canWrite && ready.some((key) => key !== item.key) ? (
+                {ready.some((key) => key !== item.key) ? (
                   <button
                     type="button"
                     onClick={() => void saveAll()}
@@ -414,13 +434,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
               </span>
             </div>
 
-            {saving !== null && !saving.running ? (
-              <FieldNotice tone="err">
-                {saving.state.stopped === null
-                  ? `${plural(saving.state.failed.length, 'bozza non salvata', 'bozze non salvate')}: ${saving.state.failed.map((f) => f.key).join(', ')}. Restano qui, da riprovare.`
-                  : `Salvataggio interrotto: ${saving.state.stopped} Le bozze non salvate restano qui.`}
-              </FieldNotice>
-            ) : null}
+            {unsaved !== null ? <FieldNotice tone="err">{unsaved}</FieldNotice> : null}
 
             <section style={PANEL}>
               <div
@@ -483,7 +497,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
                   {code}
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--tx-secondary)' }}>stai traducendo questa</span>
-                {canWrite && code !== REFERENCE ? (
+                {code !== REFERENCE ? (
                   <AiButton
                     background="var(--s-surface)"
                     busy={ai.isPending && ai.variables === item.key}
@@ -506,7 +520,6 @@ export function LangTranslatePage({ me }: { me: Me }) {
                   }}
                   rows={3}
                   spellCheck={false}
-                  readOnly={!canWrite}
                   placeholder="Scrivi la traduzione…"
                   className="code-area"
                   style={{
@@ -530,7 +543,7 @@ export function LangTranslatePage({ me }: { me: Me }) {
                   </div>
                 ) : null}
                 {aiError?.key === item.key ? <FieldNotice tone="err">{aiError.text}</FieldNotice> : null}
-                {saveError === null ? null : <FieldNotice tone="err">{saveError}</FieldNotice>}
+                {saveError?.key === item.key ? <FieldNotice tone="err">{saveError.text}</FieldNotice> : null}
               </div>
             </section>
           </>

@@ -189,6 +189,34 @@ describe('modificare un testo e` di livello 2', () => {
     });
     expect(lang.statusCode).toBe(404);
   });
+
+  it('un comando di click che il gioco non aveva non entra', async () => {
+    const res = await t.app.inject({
+      method: 'PUT',
+      url: '/api/lang/value',
+      headers: capo.headers(),
+      payload: { ...body, value: "<click:run_command:'/op tizio'>Clicca" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toMatchObject({
+      code: 'COMANDO_NON_PREVISTO',
+      detail: "<click:run_command:'/op tizio'>",
+    });
+    expect(my.state.messages.some((r) => r.locale === 'it' && r.message_key === 'event.countdown')).toBe(
+      false,
+    );
+  });
+
+  it('un codice con uno spazio in fondo non e` un codice', async () => {
+    // Il collation di MariaDB ignora gli spazi in coda: `en ` sarebbe `en`.
+    const res = await t.app.inject({
+      method: 'PUT',
+      url: '/api/lang/value',
+      headers: capo.headers(),
+      payload: { ...body, code: 'it ' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe('gestire le lingue e` il livello 3 dell`Elenco', () => {
@@ -316,6 +344,9 @@ describe('cancellare una lingua', () => {
     const res = await del(capo, 'en');
     expect(res.statusCode).toBe(400);
     expect(res.json().code).toBe('riferimento');
+    expect(my.state.languages).toHaveLength(2);
+    // Nemmeno travestito: per MariaDB `en ` e` `en`.
+    expect((await del(capo, 'en%20')).statusCode).toBe(400);
     expect(my.state.languages).toHaveLength(2);
   });
 

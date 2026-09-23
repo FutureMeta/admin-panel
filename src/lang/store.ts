@@ -32,6 +32,7 @@
 // vorrebbe dire modifiche che i server non vedono mai.
 
 import type { DuelsMysql } from '#src/duels/mysql.ts';
+import { TAG } from '#web/lib/minimessage.ts';
 
 export type Language = {
   code: string;
@@ -77,6 +78,23 @@ export class UnknownLanguage extends Error {
   }
 }
 
+/**
+ * Un comando cliccabile che il plugin non spedisce per quella chiave.
+ *
+ * `<click:run_command:…>` fa eseguire il comando a chi clicca, con i SUOI
+ * permessi: in un messaggio che legge lo staff, un traduttore potrebbe far
+ * lanciare a un admin un comando che lui non ha. Da console lo puo' fare solo
+ * chi ha `/langadmin`; dal pannello, i comandi restano quelli del jar.
+ */
+export class UnsafeClick extends Error {
+  readonly command: string;
+  constructor(command: string) {
+    super(`comando non previsto: ${command}`);
+    this.name = 'UnsafeClick';
+    this.command = command;
+  }
+}
+
 export class LanguageExists extends Error {
   constructor(code: string) {
     super(`lingua già presente: ${code}`);
@@ -86,6 +104,9 @@ export class LanguageExists extends Error {
 
 const SEGMENT = /^[a-z0-9_-]+$/;
 export const KEY_SHAPE = /^[A-Za-z0-9_][A-Za-z0-9_.-]*$/;
+
+/** MariaDB: chiave primaria gia' presente. */
+const ER_DUP_ENTRY = 1062;
 
 /** `duels.uhc` → le sue due parti. Un punto solo, com'e' che i plugin le chiamano. */
 export function parseNamespace(ns: string): { owner: string; bundle: string } | null {
@@ -114,20 +135,22 @@ export async function listLanguages(db: DuelsMysql): Promise<Language[]> {
 }
 
 export async function readOverview(db: DuelsMysql): Promise<Overview> {
-  const languages = await listLanguages(db);
-
-  // Una chiave esiste nel bundle se ESISTE UNA RIGA per lei, in qualunque
-  // lingua: il jar la pubblica per le lingue che ha, e la prima traduzione
-  // ne aggiunge un'altra.
-  const bundles = await db.rows<{ namespace: string; n: number }>(
-    'SELECT namespace, COUNT(DISTINCT message_key) AS n FROM metaverse_message GROUP BY namespace ORDER BY namespace',
-  );
-  // Tradotta = ha un testo che il gioco userebbe: `custom`, o `shipped` se
-  // non c'e' un `custom`. Una riga con tutt'e due a NULL e' un residuo, e non
-  // conta.
-  const done = await db.rows<{ namespace: string; locale: string; n: number }>(
-    'SELECT namespace, locale, COUNT(*) AS n FROM metaverse_message WHERE COALESCE(custom, shipped) IS NOT NULL GROUP BY namespace, locale',
-  );
+  // Tre letture indipendenti, insieme: il pool ha quattro connessioni.
+  const [languages, bundles, done] = await Promise.all([
+    listLanguages(db),
+    // Una chiave esiste nel bundle se ESISTE UNA RIGA per lei, in qualunque
+    // lingua: il jar la pubblica per le lingue che ha, e la prima traduzione
+    // ne aggiunge un'altra.
+    db.rows<{ namespace: string; n: number | string }>(
+      'SELECT namespace, COUNT(DISTINCT message_key) AS n FROM metaverse_message GROUP BY namespace ORDER BY namespace',
+    ),
+    // Tradotta = ha un testo che il gioco userebbe: `custom`, o `shipped` se
+    // non c'e' un `custom`. Una riga con tutt'e due a NULL e' un residuo, e
+    // non conta. I conteggi arrivano come stringhe (`bigNumberStrings`).
+    db.rows<{ namespace: string; locale: string; n: number | string }>(
+      'SELECT namespace, locale, COUNT(*) AS n FROM metaverse_message WHERE COALESCE(custom, shipped) IS NOT NULL GROUP BY namespace, locale',
+    ),
+  ]);
   const byNs = new Map<string, Record<string, number>>();
   for (const row of done) {
     const map = byNs.get(row.namespace) ?? {};
@@ -167,8 +190,13 @@ export async function readBundleKeys(db: DuelsMysql, ns: string): Promise<Bundle
 
 /** Le righe di una chiave, una per lingua, con il testo che il gioco usa. */
 const KEY_ROWS =
-  'SELECT locale, COALESCE(custom, shipped) AS value FROM metaverse_message WHERE namespace = ? AND message_key = ?';
-type KeyRow = { locale: string; value: string | null };
+  'SELECT locale, COALESCE(custom, shipped) AS value, shipped FROM metaverse_message WHERE namespace = ? AND message_key = ?';
+type KeyRow = { locale: string; value: string | null; shipped: string | null };
+
+/** I `<click:…>` di un testo, com'e' scritto. Quelli dentro un hover non si cliccano, e il TAG li salta. */
+function clicksOf(text: string): string[] {
+  return [...text.matchAll(TAG)].map((m) => m[0]).filter((tag) => /^<click:/i.test(tag));
+}
 
 /** I testi di una chiave, per lingua. Serve all'AI: l'inglese lo legge il server, non lo manda il client. */
 export async function readKey(db: DuelsMysql, ns: string, key: string): Promise<Record<string, string>> {
@@ -205,6 +233,12 @@ export async function setValue(
     const rows = await t.rows<KeyRow>(KEY_ROWS, [input.ns, input.key]);
     if (rows.length === 0) throw new UnknownKey(input.ns, input.key);
 
+    // I comandi cliccabili sono quelli del jar, in una lingua qualunque: la
+    // traduzione cambia le parole, non cosa succede cliccandole.
+    const shipped = new Set(rows.flatMap((r) => clicksOf(r.shipped ?? '')));
+    const unexpected = clicksOf(input.value).find((c) => !shipped.has(c));
+    if (unexpected !== undefined) throw new UnsafeClick(unexpected);
+
     const language = await t.rows<{ locale: string }>(
       'SELECT locale FROM metaverse_language WHERE locale = ?',
       [input.code],
@@ -240,11 +274,18 @@ export async function createLanguage(
     );
     if (existing.length > 0) throw new LanguageExists(input.code);
 
-    await t.run(
-      `INSERT INTO metaverse_language (locale, enabled, display_name, head_texture, position, version, updated_at)
-       SELECT ?, 0, ?, NULL, COALESCE(MAX(position) + 1, 0), 1, ? FROM metaverse_language`,
-      [input.code, input.display, Date.now()],
-    );
+    try {
+      await t.run(
+        `INSERT INTO metaverse_language (locale, enabled, display_name, head_texture, position, version, updated_at)
+         SELECT ?, 0, ?, NULL, COALESCE(MAX(position) + 1, 0), 1, ? FROM metaverse_language`,
+        [input.code, input.display, Date.now()],
+      );
+    } catch (err) {
+      // 1062, chiave doppia: due creazioni insieme, e l'altra e' arrivata
+      // prima. Per chi ha cliccato e' la stessa cosa del controllo qui sopra.
+      if ((err as { errno?: number }).errno === ER_DUP_ENTRY) throw new LanguageExists(input.code);
+      throw err;
+    }
     const created = await t.rows<LanguageRow>(
       'SELECT locale, enabled, display_name, position FROM metaverse_language WHERE locale = ?',
       [input.code],
@@ -259,8 +300,10 @@ export async function updateLanguage(
   patch: { display?: string; active?: boolean },
 ): Promise<Language> {
   return db.tx(async (t) => {
+    // FOR UPDATE: una rinomina e un'accensione contemporanee si mettono in
+    // fila, invece di riscrivere ognuna il campo dell'altra con quello vecchio.
     const current = await t.rows<LanguageRow>(
-      'SELECT locale, enabled, display_name, position FROM metaverse_language WHERE locale = ?',
+      'SELECT locale, enabled, display_name, position FROM metaverse_language WHERE locale = ? FOR UPDATE',
       [code],
     );
     const row = current[0];
@@ -315,25 +358,29 @@ export async function deleteLanguage(
  */
 export async function moveLanguage(db: DuelsMysql, code: string, direction: 'up' | 'down'): Promise<void> {
   await db.tx(async (t) => {
-    const ordered = await t.rows<{ locale: string }>(
-      'SELECT locale FROM metaverse_language ORDER BY position, locale FOR UPDATE',
+    const ordered = await t.rows<{ locale: string; position: number }>(
+      'SELECT locale, position FROM metaverse_language ORDER BY position, locale FOR UPDATE',
     );
     const i = ordered.findIndex((r) => r.locale === code);
     if (i === -1) throw new UnknownLanguage(code);
     const j = direction === 'up' ? i - 1 : i + 1;
+    const moved = ordered[i];
     const other = ordered[j];
-    if (other === undefined) return;
-    // Le posizioni si riscrivono DALL'ORDINE, non dai numeri: due lingue
-    // potrebbero averne lo stesso dopo un inserimento a mano, e scambiare due
-    // numeri uguali non muoverebbe niente.
+    if (moved === undefined || other === undefined) return;
+    // Le posizioni si riscrivono TUTTE dall'ordine, 0..n-1, non solo le due
+    // scambiate: una lingua cancellata lascia un buco, due inserite a mano
+    // possono avere lo stesso numero, e scambiare due numeri fra buchi o
+    // doppioni sposterebbe la lingua di piu' posti. Si scrivono solo le righe
+    // il cui numero non e' gia' quello giusto.
+    ordered[i] = other;
+    ordered[j] = moved;
     const now = Date.now();
-    await t.run(
-      'UPDATE metaverse_language SET position = ?, version = version + 1, updated_at = ? WHERE locale = ?',
-      [j, now, code],
-    );
-    await t.run(
-      'UPDATE metaverse_language SET position = ?, version = version + 1, updated_at = ? WHERE locale = ?',
-      [i, now, other.locale],
-    );
+    for (const [index, row] of ordered.entries()) {
+      if (Number(row.position) === index) continue;
+      await t.run(
+        'UPDATE metaverse_language SET position = ?, version = version + 1, updated_at = ? WHERE locale = ?',
+        [index, now, row.locale],
+      );
+    }
   });
 }

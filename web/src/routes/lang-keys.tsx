@@ -14,7 +14,7 @@
 // l'inglese», che e' uno stato, e lo si dice.
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useParams } from '@tanstack/react-router';
+import { Link, useBlocker, useParams } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AiButton,
@@ -28,6 +28,7 @@ import {
   overviewQuery,
   putValue,
   RetryBanner,
+  saveErrorText,
 } from '../components/lang-bits.tsx';
 import { PageHeader } from '../components/page.tsx';
 import { ICONS, Icon, SkeletonRows } from '../components/ui.tsx';
@@ -88,15 +89,13 @@ export function LangKeysPage({ me }: { me: Me }) {
   const dirtyCodes = Object.keys(drafts).filter((code) => drafts[code] !== (row?.values[code] ?? ''));
   const dirty = dirtyCodes.length > 0;
 
-  // Chiudere la scheda con una modifica in sospeso: il browser chiede.
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (e: BeforeUnloadEvent) => {
-      e.preventDefault();
-    };
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+  // Uscire con una modifica in sospeso si chiede: dalla barra laterale, da
+  // «Tutti i bundle» e chiudendo la scheda. Cambiare chiave lo chiede `pick`.
+  useBlocker({
+    shouldBlockFn: () => !window.confirm('Ci sono modifiche non salvate. Uscire e perderle?'),
+    enableBeforeUnload: dirty,
+    disabled: !dirty,
+  });
 
   const pick = (key: string): void => {
     if (key === current) return;
@@ -134,21 +133,29 @@ export function LangKeysPage({ me }: { me: Me }) {
   const blocked = cards.some((c) => c.dirty && c.emptied);
 
   const save = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (): Promise<Record<string, string>> => {
       // Una lingua alla volta, nell'ordine del menu: se una fallisce le
       // precedenti restano salvate e l'errore dice quale.
-      if (current === null) return;
+      const sent: Record<string, string> = {};
+      if (current === null) return sent;
       for (const c of cards) {
         if (!c.dirty || c.value.trim() === '') continue;
         await putValue({ ns, key: current, code: c.code, value: c.value });
+        sent[c.code] = c.value;
       }
+      return sent;
     },
-    onSuccess: async () => {
-      setDrafts({});
-      setSaveError(null);
-      await invalidateLang(queryClient, ns);
-    },
-    onError: (err) => setSaveError(err instanceof Error ? err.message : 'Salvataggio non riuscito.'),
+    onMutate: () => setSaveError(null),
+    // Si tolgono solo le bozze salvate e rimaste uguali: chi corregge una
+    // lingua mentre il salvataggio gira non perde la correzione.
+    onSuccess: (sent) =>
+      setDrafts((prev) =>
+        Object.fromEntries(Object.entries(prev).filter(([code, text]) => sent[code] !== text)),
+      ),
+    onError: (err) => setSaveError(saveErrorText(err)),
+    // Anche dopo un errore: le lingue salvate prima di quella che ha fallito
+    // sono nel database, e la schermata deve vederle.
+    onSettled: () => invalidateLang(queryClient, ns),
   });
 
   return (

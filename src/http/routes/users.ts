@@ -267,6 +267,11 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       const { roleId } = request.body as { roleId: number };
       const ips = requestIps(request);
 
+      // Nessuno si assegna un ruolo da solo. Un ruolo che oggi non da' niente
+      // — uno appena creato — e' concedibile da chiunque, e prenderselo
+      // vorrebbe dire ricevere in silenzio tutto cio' che gli verra' dato poi.
+      if (id === actor.userId) throw new BadRequest('AUTOASSEGNAZIONE');
+
       const target = await requireDominatedTarget(request, id);
 
       // SEC-09 — il ruolo di sistema non e' assegnabile via UI.
@@ -288,12 +293,16 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       }
 
       await securityTransaction(ctx.db, async (trx) => {
+        // FOR SHARE, e poi di nuovo la concedibilita': una matrice alzata
+        // mentre si assegna finisce prima o dopo, mai in mezzo al controllo.
         const role = await trx
           .selectFrom('auth.roles')
           .select(['key', 'name'])
           .where('id', '=', roleId)
+          .forShare()
           .executeTakeFirst();
         if (!role) throw new NotFound();
+        if (!(await canGrantRole(trx, actor.userId, roleId))) throw new BadRequest('RUOLO_NON_CONCEDIBILE');
 
         await trx
           .insertInto('auth.user_roles')

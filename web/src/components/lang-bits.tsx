@@ -46,6 +46,20 @@ const AI_ERRORS: Record<string, string> = {
   ai_non_raggiungibile: 'L’AI non risponde adesso. Riprova tra poco.',
 };
 
+/** Cosa dire quando un salvataggio viene rifiutato. */
+export function saveErrorText(err: unknown): string {
+  if (err instanceof ApiError && err.code === 'COMANDO_NON_PREVISTO') {
+    return 'Il testo contiene un comando cliccabile che il plugin non prevede per questa chiave: non si salva.';
+  }
+  if (err instanceof ApiError && err.code === 'TESTO_VUOTO') {
+    return 'Un testo vuoto non si salva: per un messaggio senza contenuto scrivi <reset>.';
+  }
+  if (err instanceof ApiError && (err.isForbidden || err.isNotFound)) {
+    return 'Non si può salvare: la chiave o la lingua non c’è più, o non hai più il permesso.';
+  }
+  return 'Salvataggio non riuscito. Riprova.';
+}
+
 /** Cosa dire quando «Genera con l'AI» non va. */
 export function aiErrorText(err: unknown): string {
   if (err instanceof ApiError && err.isRateLimited)
@@ -173,18 +187,16 @@ export function MiniField({
   onChange,
   readOnly = false,
   tone = 'neutral',
-  placeholder = 'Scrivi il testo…',
 }: {
   value: string;
   onChange: (next: string) => void;
   readOnly?: boolean;
-  /** Il bordo: dice se sotto c'e' un avviso, prima ancora di leggerlo. */
-  tone?: 'neutral' | 'warn' | 'err';
-  placeholder?: string;
+  /** Il bordo: dice se sotto c'e' un errore, prima ancora di leggerlo. */
+  tone?: 'neutral' | 'err';
 }) {
   const [editing, setEditing] = useState(false);
 
-  const border = tone === 'err' ? 'var(--err)' : tone === 'warn' ? 'var(--warn)' : 'var(--bd-strong)';
+  const border = tone === 'err' ? 'var(--err)' : 'var(--bd-strong)';
 
   if (editing && !readOnly) {
     return (
@@ -203,7 +215,7 @@ export function MiniField({
         onBlur={() => setEditing(false)}
         rows={Math.max(2, value.split('\n').length + 1)}
         spellCheck={false}
-        placeholder={placeholder}
+        placeholder="Scrivi il testo…"
         className="code-area"
         style={{
           width: '100%',
@@ -276,17 +288,10 @@ export function MiniField({
 }
 
 /** L'avviso sotto un campo: un punto colorato e una riga. */
-export function FieldNotice({
-  tone,
-  children,
-}: {
-  tone: 'err' | 'warn' | 'info';
-  children: React.ReactNode;
-}) {
-  const colour = tone === 'err' ? 'var(--err)' : tone === 'warn' ? 'var(--warn)' : 'var(--blu-viz)';
-  const soft = tone === 'err' ? 'var(--err-soft)' : tone === 'warn' ? 'var(--warn-soft)' : 'var(--blu-soft)';
-  const line =
-    tone === 'err' ? 'rgba(219,52,52,.4)' : tone === 'warn' ? 'rgba(224,163,46,.4)' : 'rgba(63,163,212,.4)';
+export function FieldNotice({ tone, children }: { tone: 'err' | 'info'; children: React.ReactNode }) {
+  const colour = tone === 'err' ? 'var(--err)' : 'var(--blu-viz)';
+  const soft = tone === 'err' ? 'var(--err-soft)' : 'var(--blu-soft)';
+  const line = tone === 'err' ? 'rgba(219,52,52,.4)' : 'rgba(63,163,212,.4)';
   return (
     <div
       style={{

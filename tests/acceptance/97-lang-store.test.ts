@@ -20,6 +20,7 @@ import {
   UnknownBundle,
   UnknownKey,
   UnknownLanguage,
+  UnsafeClick,
   updateLanguage,
 } from '#src/lang/store.ts';
 import { fakeMetaverseMysql, publish, seededState } from '#tests/support/metaverse-mysql.ts';
@@ -162,6 +163,22 @@ describe('scrivere un testo', () => {
     ).rejects.toBeInstanceOf(UnknownLanguage);
     expect(my.state.messages).toHaveLength(5);
   });
+
+  it('un comando di click entra solo se una lingua lo ha gia` di suo', async () => {
+    const state = seededState();
+    const join = "<click:run_command:'/event join'>";
+    publish(state, 'duels.uhc', { en: { 'event.join': `${join}<yellow>Join` } });
+    const my = fakeMetaverseMysql(state);
+    const write = (value: string) =>
+      setValue(my, { ns: 'duels.uhc', key: 'event.join', code: 'it', value, author });
+
+    await write(`${join}<yellow>Entra`);
+    const planted = await write("<click:run_command:'/op tizio'><yellow>Entra").catch((e: unknown) => e);
+    expect(planted).toBeInstanceOf(UnsafeClick);
+    expect(planted).toMatchObject({ command: "<click:run_command:'/op tizio'>" });
+    // Il testo di prima resta.
+    expect(my.state.messages.find((r) => r.locale === 'it')?.custom).toBe(`${join}<yellow>Entra`);
+  });
 });
 
 describe('le lingue', () => {
@@ -214,5 +231,23 @@ describe('le lingue', () => {
     expect(my.state.languages.map((l) => l.position).sort()).toEqual([0, 1, 2]);
 
     await expect(moveLanguage(my, 'xx', 'up')).rejects.toBeInstanceOf(UnknownLanguage);
+  });
+
+  it('con buchi e doppioni nelle posizioni, spostare sposta di un posto solo', async () => {
+    const my = withDuels();
+    await createLanguage(my, { code: 'es', display: 'Español', author });
+    await createLanguage(my, { code: 'fr', display: 'Français', author });
+    // A mano, nel database: en 0, es 5, it 5, fr 9.
+    for (const [locale, position] of [
+      ['it', 5],
+      ['es', 5],
+      ['fr', 9],
+    ] as const) {
+      const row = my.state.languages.find((l) => l.locale === locale);
+      if (row !== undefined) row.position = position;
+    }
+    await moveLanguage(my, 'fr', 'up');
+    expect((await listLanguages(my)).map((l) => l.code)).toEqual(['en', 'es', 'fr', 'it']);
+    expect(my.state.languages.map((l) => l.position).sort()).toEqual([0, 1, 2, 3]);
   });
 });

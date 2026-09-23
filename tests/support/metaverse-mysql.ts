@@ -146,11 +146,11 @@ export function fakeMetaverseMysql(initial: LangState = seededState()): FakeMeta
           affectedRows: 0,
         };
       }
-      if (q.includes('AS value FROM metaverse_message WHERE namespace = ? AND message_key = ?')) {
+      if (q.includes('AS value, shipped FROM metaverse_message WHERE namespace = ? AND message_key = ?')) {
         return {
           rows: state.messages
             .filter((r) => r.namespace === p[0] && r.message_key === p[1])
-            .map((r) => ({ locale: r.locale, value: effective(r) })),
+            .map((r) => ({ locale: r.locale, value: effective(r), shipped: r.shipped })),
           affectedRows: 0,
         };
       }

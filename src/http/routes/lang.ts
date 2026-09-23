@@ -39,6 +39,7 @@ import {
   createLanguage,
   deleteLanguage,
   LanguageExists,
+  listLanguages,
   moveLanguage,
   readBundleKeys,
   readKey,
@@ -47,8 +48,10 @@ import {
   UnknownBundle,
   UnknownKey,
   UnknownLanguage,
+  UnsafeClick,
   updateLanguage,
 } from '#src/lang/store.ts';
+import { RateLimited } from '#src/ratelimit/limiter.ts';
 import { REFERENCE } from '#web/lib/lang.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
@@ -56,12 +59,24 @@ import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-co
 /** Un testo di gioco: una riga di chat, una lore, una scoreboard. 4 kB bastano. */
 const MAX_VALUE = 4096;
 
+/**
+ * Le tre forme che arrivano dal client, strette QUI e non solo nello store.
+ *
+ * NON E' PIGNOLERIA: le colonne di Metaverse sono `ascii_bin`, che in MariaDB
+ * ignora gli spazi in coda nei confronti. `en ` sarebbe uguale a `en` per il
+ * database e diverso per il controllo «l'inglese non si cancella»: cancellava
+ * l'inglese. Un codice e' `Locale.toString()` minuscolo — `en`, `pt_br`.
+ */
+const NS = { type: 'string', pattern: '^[a-z0-9_-]+\\.[a-z0-9_-]+$', maxLength: 64 } as const;
+const KEY = { type: 'string', pattern: '^[A-Za-z0-9_][A-Za-z0-9_.-]*$', maxLength: 255 } as const;
+const CODE = { type: 'string', pattern: '^[a-z]{2,3}(_[a-z0-9]{2,8})*$', maxLength: 16 } as const;
+
 const nsQuery = {
   querystring: {
     type: 'object',
     additionalProperties: false,
     required: ['ns'],
-    properties: { ns: { type: 'string', minLength: 3, maxLength: 64 } },
+    properties: { ns: NS },
   },
 } as const;
 
@@ -71,9 +86,9 @@ const valueBody = {
     additionalProperties: false,
     required: ['ns', 'key', 'code', 'value'],
     properties: {
-      ns: { type: 'string', minLength: 3, maxLength: 64 },
-      key: { type: 'string', minLength: 1, maxLength: 255 },
-      code: { type: 'string', minLength: 2, maxLength: 16 },
+      ns: NS,
+      key: KEY,
+      code: CODE,
       value: { type: 'string', maxLength: MAX_VALUE },
     },
   },
@@ -84,13 +99,28 @@ const translateBody = {
     type: 'object',
     additionalProperties: false,
     required: ['ns', 'key', 'code'],
-    properties: {
-      ns: { type: 'string', minLength: 3, maxLength: 64 },
-      key: { type: 'string', minLength: 1, maxLength: 255 },
-      code: { type: 'string', minLength: 2, maxLength: 16 },
-    },
+    properties: { ns: NS, key: KEY, code: CODE },
   },
 } as const;
+
+/** Traduzioni con l'AI in corso, per persona. */
+const MAX_IN_FLIGHT = 3;
+// ponytail: contatore del processo; con piu' istanze del pannello il tetto
+// vale per istanza — allora va spostato su Redis, come i limiti di frequenza.
+const inFlight = new Map<string, number>();
+
+function acquireSlot(userId: string): boolean {
+  const now = inFlight.get(userId) ?? 0;
+  if (now >= MAX_IN_FLIGHT) return false;
+  inFlight.set(userId, now + 1);
+  return true;
+}
+
+function releaseSlot(userId: string): void {
+  const left = (inFlight.get(userId) ?? 1) - 1;
+  if (left <= 0) inFlight.delete(userId);
+  else inFlight.set(userId, left);
+}
 
 const languageBody = {
   body: {
@@ -109,7 +139,7 @@ const languagePatch = {
     type: 'object',
     additionalProperties: false,
     required: ['code'],
-    properties: { code: { type: 'string', minLength: 2, maxLength: 16 } },
+    properties: { code: CODE },
   },
   body: {
     type: 'object',
@@ -127,6 +157,7 @@ function refuse(reply: FastifyReply, value: string): FastifyReply | null {
   if (value.trim() === '') {
     return reply.code(400).send({
       error: 'testo vuoto',
+      code: 'TESTO_VUOTO',
       detail: 'un testo vuoto non si salva: per un messaggio senza contenuto scrivi <reset>',
     });
   }
@@ -222,6 +253,13 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
       try {
         before = (await setValue(db, { ...body, author: actor.actorEmail })).before;
       } catch (err) {
+        if (err instanceof UnsafeClick) {
+          return reply.code(400).send({
+            error: 'comando non previsto',
+            code: 'COMANDO_NON_PREVISTO',
+            detail: err.command,
+          });
+        }
         if (err instanceof UnknownBundle || err instanceof UnknownKey) {
           return reply.code(404).send({ error: 'chiave sconosciuta', detail: `${body.ns} ${body.key}` });
         }
@@ -381,67 +419,82 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
         ['langAiUser', actor.userId],
         ['langAiGlobal', 'tutti'],
       ]);
-      const now = new Date();
-      if (await ai.spend.exhausted(now)) {
-        return reply.code(503).send({
-          error: 'tetto di spesa raggiunto',
-          code: 'tetto_di_spesa',
-          detail: 'il budget mensile dell’AI è esaurito: si traduce a mano fino al mese prossimo',
-        });
-      }
-
-      // L'inglese lo legge il server. Se lo mandasse il client, questa rotta
-      // sarebbe un traduttore gratuito per qualunque testo.
-      let source: string | undefined;
+      // Tre in corso per persona, come la traduzione in blocco. Il tetto di
+      // spesa si guarda PRIMA di ogni chiamata e si aggiorna DOPO: senza un
+      // limite alle chiamate contemporanee, una raffica le farebbe passare
+      // tutte sotto il tetto prima che la prima abbia pagato. Il posto si
+      // prende SUBITO, prima di qualunque attesa, e si lascia su ogni uscita.
+      if (!acquireSlot(actor.userId)) throw new RateLimited('langAiInFlight', 2000);
       try {
-        source = (await readKey(db, body.ns, body.key))[REFERENCE];
-      } catch (err) {
-        if (err instanceof UnknownBundle || err instanceof UnknownKey) {
-          return reply.code(404).send({ error: 'chiave sconosciuta', detail: `${body.ns} ${body.key}` });
+        const now = new Date();
+        if (await ai.spend.exhausted(now)) {
+          return reply.code(503).send({
+            error: 'tetto di spesa raggiunto',
+            code: 'tetto_di_spesa',
+            detail: 'il budget mensile dell’AI è esaurito: si traduce a mano fino al mese prossimo',
+          });
         }
-        throw err;
-      }
-      if (source === undefined || source.trim() === '') {
-        return reply.code(409).send({ error: 'niente da tradurre', code: 'niente_da_tradurre' });
-      }
 
-      const target = {
-        module: 'lingue' as const,
-        type: 'lang_value',
-        label: `${body.ns} ${body.key} [${body.code}]`,
-      };
-      const meta = { ns: body.ns, key: body.key, code: body.code, model: TRANSLATE_MODEL };
-      const charge = (usage: TokenUsage): Promise<void> =>
-        ai.spend.add(now, costUsdOn(TRANSLATE_MODEL, usage)).catch((err) => {
-          ctx.logger.error({ err }, 'lingue: spesa dell’AI NON contata');
-        });
+        // L'inglese lo legge il server. Se lo mandasse il client, questa rotta
+        // sarebbe un traduttore gratuito per qualunque testo.
+        let source: string | undefined;
+        try {
+          source = (await readKey(db, body.ns, body.key))[REFERENCE];
+        } catch (err) {
+          if (err instanceof UnknownBundle || err instanceof UnknownKey) {
+            return reply.code(404).send({ error: 'chiave sconosciuta', detail: `${body.ns} ${body.key}` });
+          }
+          throw err;
+        }
+        if (source === undefined || source.trim() === '') {
+          return reply.code(409).send({ error: 'niente da tradurre', code: 'niente_da_tradurre' });
+        }
+        // Una lingua che non c'e' non si traduce: il salvataggio poi la
+        // rifiuterebbe, e la chiamata sarebbe pagata per niente.
+        if (!(await listLanguages(db)).some((l) => l.code === body.code)) {
+          return reply.code(404).send({ error: 'lingua sconosciuta', detail: body.code });
+        }
 
-      try {
-        const result = await translateWithAi(ai.client, { ...body, source });
-        await charge(result.usage);
-        await audit(request, actor, AUDIT_ACTIONS.langAiTranslated, target, {
-          ...meta,
-          attempts: result.attempts,
-        });
-        return { text: result.text };
-      } catch (err) {
-        if (err instanceof AiTranslationFailed) {
-          await charge(err.usage);
-          await audit(
-            request,
-            actor,
-            AUDIT_ACTIONS.langAiTranslated,
-            target,
-            { ...meta, failure: err.code },
-            'failure',
-          );
-          return reply.code(422).send({ error: 'traduzione non riuscita', code: err.code });
+        const target = {
+          module: 'lingue' as const,
+          type: 'lang_value',
+          label: `${body.ns} ${body.key} [${body.code}]`,
+        };
+        const meta = { ns: body.ns, key: body.key, code: body.code, model: TRANSLATE_MODEL };
+        const charge = (usage: TokenUsage): Promise<void> =>
+          ai.spend.add(now, costUsdOn(TRANSLATE_MODEL, usage)).catch((err) => {
+            ctx.logger.error({ err }, 'lingue: spesa dell’AI NON contata');
+          });
+
+        try {
+          // La spesa si conta a ogni tentativo, appena arriva: anche quello che
+          // un guasto dell'API sul secondo farebbe altrimenti dimenticare.
+          const result = await translateWithAi(ai.client, { ...body, source }, charge);
+          await audit(request, actor, AUDIT_ACTIONS.langAiTranslated, target, {
+            ...meta,
+            attempts: result.attempts,
+          });
+          return { text: result.text };
+        } catch (err) {
+          if (err instanceof AiTranslationFailed) {
+            await audit(
+              request,
+              actor,
+              AUDIT_ACTIONS.langAiTranslated,
+              target,
+              { ...meta, failure: err.code },
+              'failure',
+            );
+            return reply.code(422).send({ error: 'traduzione non riuscita', code: err.code });
+          }
+          if (err instanceof Anthropic.APIError) {
+            ctx.logger.warn({ err, status: err.status }, 'lingue: AI non raggiungibile');
+            return reply.code(503).send({ error: 'AI non raggiungibile', code: 'ai_non_raggiungibile' });
+          }
+          throw err;
         }
-        if (err instanceof Anthropic.APIError) {
-          ctx.logger.warn({ err, status: err.status }, 'lingue: AI non raggiungibile');
-          return reply.code(503).send({ error: 'AI non raggiungibile', code: 'ai_non_raggiungibile' });
-        }
-        throw err;
+      } finally {
+        releaseSlot(actor.userId);
       }
     },
   );

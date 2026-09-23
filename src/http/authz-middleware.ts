@@ -17,7 +17,7 @@
 // risparmiare un round trip che nessuno misura.
 
 import type { Redis } from 'ioredis';
-import type { Auth } from '#src/auth/auth.ts';
+import { type Auth, forgetSessions } from '#src/auth/auth.ts';
 import type { AuthzContext, AuthzSnapshot } from '#src/authz/context.ts';
 import { type AuthzStore, readPermissions } from '#src/authz/store.ts';
 import type { Database } from '#src/db/pool.ts';
@@ -228,7 +228,15 @@ export class AuthzMiddleware {
   async revokeSession(sessionId: string, expiresAt: Date, now: Date = new Date()): Promise<void> {
     const ttl = Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / 1000));
     await this.#deps.redis.set(KEYS.sessionRevoked(sessionId), '1', 'EX', ttl);
-    await this.#deps.db.deleteFrom('auth.session').where('id', '=', sessionId).execute();
+    const gone = await this.#deps.db
+      .deleteFrom('auth.session')
+      .where('id', '=', sessionId)
+      .returning('token')
+      .execute();
+    await forgetSessions(
+      this.#deps.redis,
+      gone.map((s) => s.token),
+    );
   }
 
   /**
@@ -237,13 +245,17 @@ export class AuthzMiddleware {
    * con `createdAt < sessions_valid_from`, quindi basta spostare quella data.
    */
   async revokeAllSessions(userId: string, now: Date = new Date()): Promise<number> {
-    const { db, store } = this.#deps;
+    const { db, redis, store } = this.#deps;
     await db.updateTable('auth.user').set({ sessions_valid_from: now }).where('id', '=', userId).execute();
     const deleted = await db
       .deleteFrom('auth.session')
       .where('userId', '=', userId)
-      .returning('id')
+      .returning('token')
       .execute();
+    await forgetSessions(
+      redis,
+      deleted.map((s) => s.token),
+    );
     // Dopo il COMMIT: lo snapshot va riallineato, altrimenti il middleware
     // continuerebbe a confrontare contro la vecchia sessions_valid_from.
     await store.invalidate(userId);

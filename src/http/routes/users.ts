@@ -3,9 +3,11 @@
 // §7, §8.10, SEC-07, SEC-08, SEC-31, SEC-36
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { Transaction } from 'kysely';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction, writeAudit } from '#src/audit/log.ts';
+import { forgetSessions } from '#src/auth/auth.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import {
   canGrantLevel,
@@ -13,8 +15,10 @@ import {
   dominates,
   grantableRoles,
   isSystemRole,
+  leavesFewerThanTwoOwners,
 } from '#src/authz/dominance.ts';
 import { isLevel, isModuleKey } from '#src/authz/modules.ts';
+import type { DB } from '#src/db/types.ts';
 import { revokeInvitesBy } from '#src/invites/service.ts';
 import { BadRequest, NotFound } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
@@ -52,6 +56,11 @@ const permissionSchema = {
     },
   },
 } as const;
+
+/** §1.3 — vedi `leavesFewerThanTwoOwners`: dentro la transazione, sempre. */
+async function keepTwoOwners(trx: Transaction<DB>, leaving: string, roleId?: number): Promise<void> {
+  if (await leavesFewerThanTwoOwners(trx, leaving, roleId)) throw new BadRequest('SERVONO_DUE_OWNER');
+}
 
 export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   /**
@@ -341,6 +350,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
     const target = await requireDominatedTarget(request, id);
 
     await securityTransaction(ctx.db, async (trx) => {
+      await keepTwoOwners(trx, id, Number(roleId));
       const removed = await trx
         .deleteFrom('auth.user_roles')
         .where('user_id', '=', id)
@@ -386,6 +396,11 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       // rivalida contro la fonte di verita', perche' lo schema non sa quali
       // moduli esistono davvero.
       if (!isModuleKey(moduleKey) || !isLevel(level)) throw new BadRequest('MODULO_O_LIVELLO_NON_VALIDO');
+      // Nessuno tocca i propri override, come nessuno si assegna un ruolo. Qui
+      // non si puo' salire — non si concede piu' di quanto si ha — ma si puo'
+      // COPIARE: trasformare in override individuali i livelli che oggi arrivano
+      // dal ruolo, e tenerli quando il ruolo viene tolto o la matrice abbassata.
+      if (id === actor.userId) throw new BadRequest('AUTOASSEGNAZIONE');
 
       const target = await requireDominatedTarget(request, id);
       const moduleRow = await ctx.db
@@ -462,7 +477,8 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       if (id === actor.userId) throw new BadRequest('NON_PUOI_BANNARE_TE_STESSO');
       const target = await requireDominatedTarget(request, id);
 
-      await securityTransaction(ctx.db, async (trx) => {
+      const tokens = await securityTransaction(ctx.db, async (trx) => {
+        await keepTwoOwners(trx, id);
         await trx
           .updateTable('auth.user')
           .set({
@@ -473,10 +489,14 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
           })
           .where('id', '=', id)
           .execute();
-        await trx.deleteFrom('auth.session').where('userId', '=', id).execute();
+        const sessions = await trx
+          .deleteFrom('auth.session')
+          .where('userId', '=', id)
+          .returning('token')
+          .execute();
 
         return {
-          result: undefined,
+          result: sessions.map((s) => s.token),
           events: {
             action: AUDIT_ACTIONS.userBanned,
             outcome: 'success' as const,
@@ -494,6 +514,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       // test 3 — il ban ha effetto alla richiesta successiva ENTRO 1 SECONDO
       // perche' lo snapshot viene riscritto qui, subito dopo il COMMIT, e il
       // middleware lo rilegge a ogni richiesta.
+      await forgetSessions(ctx.redis, tokens);
       await ctx.store.invalidate(id);
       return reply.send({ ok: true });
     },
@@ -572,7 +593,8 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       if (id === actor.userId) throw new BadRequest('NON_PUOI_OFFBOARDARE_TE_STESSO');
       const target = await requireDominatedTarget(request, id);
 
-      const summary = await securityTransaction(ctx.db, async (trx) => {
+      const { summary, tokens } = await securityTransaction(ctx.db, async (trx) => {
+        await keepTwoOwners(trx, id);
         // 1-2. ban, disattivazione, logout globale
         await trx
           .updateTable('auth.user')
@@ -587,7 +609,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         const sessions = await trx
           .deleteFrom('auth.session')
           .where('userId', '=', id)
-          .returning('id')
+          .returning('token')
           .execute();
 
         // 3. il punto che si dimentica sempre quando lo si fa a mano: gli
@@ -600,7 +622,10 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         await trx.deleteFrom('auth.user_permissions').where('user_id', '=', id).execute();
 
         return {
-          result: { sessions: sessions.length, invites },
+          result: {
+            summary: { sessions: sessions.length, invites },
+            tokens: sessions.map((s) => s.token),
+          },
           events: {
             action: AUDIT_ACTIONS.userOffboarded,
             outcome: 'success' as const,
@@ -615,6 +640,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         };
       });
 
+      await forgetSessions(ctx.redis, tokens);
       await ctx.store.invalidate(id);
       return reply.send(summary);
     },
@@ -647,22 +673,8 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       if (id === actor.userId) throw new BadRequest('NON_PUOI_ELIMINARE_TE_STESSO');
       const target = await requireDominatedTarget(request, id);
 
-      // §1.3 — devono restare almeno due owner. Senza, la procedura di reset
-      // del secondo fattore a quattro occhi non esiste piu', e la prima
-      // persona che perde il telefono resta fuori per sempre.
-      const owners = await ctx.db
-        .selectFrom('auth.user_roles as ur')
-        .innerJoin('auth.roles as r', 'r.id', 'ur.role_id')
-        .innerJoin('auth.user as u', 'u.id', 'ur.user_id')
-        .select('ur.user_id')
-        .where('r.key', '=', 'owner')
-        .where('u.deleted_at', 'is', null)
-        .execute();
-      if (owners.some((o) => o.user_id === id) && owners.length <= 2) {
-        throw new BadRequest('SERVONO_DUE_OWNER');
-      }
-
-      const summary = await securityTransaction(ctx.db, async (trx) => {
+      const { summary, tokens } = await securityTransaction(ctx.db, async (trx) => {
+        await keepTwoOwners(trx, id);
         const before = await trx
           .selectFrom('auth.user')
           .select(['email', 'name', 'status'])
@@ -695,7 +707,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         const sessions = await trx
           .deleteFrom('auth.session')
           .where('userId', '=', id)
-          .returning('id')
+          .returning('token')
           .execute();
         const invites = await revokeInvitesBy(trx, id, actor.userId);
 
@@ -710,7 +722,10 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         await trx.deleteFrom('auth.verification').where('identifier', '=', `reset:${id}`).execute();
 
         return {
-          result: { sessions: sessions.length, invites },
+          result: {
+            summary: { sessions: sessions.length, invites },
+            tokens: sessions.map((s) => s.token),
+          },
           events: {
             action: AUDIT_ACTIONS.userDeleted,
             outcome: 'success' as const,
@@ -727,6 +742,7 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
         };
       });
 
+      await forgetSessions(ctx.redis, tokens);
       await ctx.store.invalidate(id);
       return reply.send(summary);
     },

@@ -13,6 +13,7 @@ import { betterAuth } from 'better-auth';
 import { twoFactor } from 'better-auth/plugins/two-factor';
 import type { Redis } from 'ioredis';
 import type pg from 'pg';
+import { AUTH_KEY_PREFIX, KEYS } from '#src/redis/client.ts';
 import type { PasswordService } from './password.ts';
 
 export type AuthDeps = {
@@ -37,7 +38,7 @@ export function createAuth(deps: AuthDeps) {
     // altrimenti la revoca per-utente non ha una tabella su cui agire, e un
     // FLUSHALL disconnetterebbe tutti senza lasciare traccia di chi era
     // collegato.
-    secondaryStorage: redisStorage({ client: deps.redis }),
+    secondaryStorage: redisStorage({ client: deps.redis, keyPrefix: AUTH_KEY_PREFIX }),
 
     session: {
       expiresIn: deps.sessionAbsoluteSeconds,
@@ -162,4 +163,27 @@ export function createAuth(deps: AuthDeps) {
  */
 export function absoluteCap(seconds: number, from: number = Date.now()): Date {
   return new Date(from + seconds * 1000);
+}
+
+/**
+ * Toglie da Redis le copie delle sessioni appena cancellate da Postgres.
+ *
+ * LA REVOCA ERA A META'. Ban, logout globale, offboarding, reset della
+ * password o del 2FA cancellavano la riga in `auth.session`, e il middleware
+ * del pannello — che la legge a ogni richiesta — rifiutava la sessione. Ma le
+ * rotte che better-auth serve da se' leggono PRIMA il secondary storage, e li'
+ * il blob restava fino alla sua scadenza: un cookie revocato continuava a
+ * valere su `/api/auth/*`. Il ponte oggi ne lascia passare due sole, nessuna
+ * delle quali usa una sessione esistente; questa e' la seconda meta' della
+ * stessa porta, perche' una revoca deve valere ovunque e non solo dove oggi
+ * qualcuno guarda.
+ *
+ * Si chiama DOPO il COMMIT: se la transazione tornasse indietro, la sessione
+ * resterebbe viva su Postgres e sparirebbe da Redis, e chi la usa verrebbe
+ * buttato fuori per una revoca che non e' avvenuta. L'elenco
+ * `active-sessions-<utente>` resta: e' solo un indice, e better-auth scarta da
+ * se' le voci il cui blob non c'e' piu'.
+ */
+export async function forgetSessions(redis: Redis, tokens: readonly string[]): Promise<void> {
+  if (tokens.length > 0) await redis.del(...tokens.map(KEYS.authSession));
 }

@@ -352,7 +352,7 @@ function UserDialog({
         return;
       }
       if (err instanceof ApiError && err.code === 'AUTOASSEGNAZIONE') {
-        setError('Un ruolo non si assegna a se stessi: chiedilo a chi sta più in alto.');
+        setError('Ruoli e permessi non si assegnano a se stessi: chiedilo a chi sta più in alto.');
         return;
       }
       if (err instanceof ApiError && err.code === 'SERVONO_DUE_OWNER') {

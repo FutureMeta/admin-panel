@@ -131,11 +131,8 @@ export function assertNoStateChangingGet(app: FastifyInstance): void {
    * token con una sessione di onboarding effimera (15 minuti, aal=0, nessun
    * permesso) e scrive una voce di audit osservativa. Il consumo vero e'
    * POST /api/invites/accept, ed e' li' che la UPDATE atomica decide.
-   *
-   * Il /api/auth/* di better-auth e' escluso perche' e' una rotta wildcard:
-   * i suoi metodi li governa la libreria, e il blocco SEC-14 lavora prima.
    */
-  const ALLOWED_GET = new Set(['/accept', '/api/auth/*', '/*']);
+  const ALLOWED_GET = new Set(['/accept', '/*']);
 
   app.addHook('onRoute', (route) => {
     const methods = Array.isArray(route.method) ? route.method : [route.method];

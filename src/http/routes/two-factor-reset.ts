@@ -23,6 +23,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction } from '#src/audit/log.ts';
+import { forgetSessions } from '#src/auth/auth.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import { BadRequest, Conflict, NotFound } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
@@ -280,7 +281,11 @@ export async function registerTwoFactorResetRoutes(app: FastifyInstance, ctx: Ap
           .where('id', '=', target.id)
           .execute();
         // Nessuna sessione sopravvive, e non se ne emette una nuova.
-        await trx.deleteFrom('auth.session').where('userId', '=', target.id).execute();
+        const sessions = await trx
+          .deleteFrom('auth.session')
+          .where('userId', '=', target.id)
+          .returning('token')
+          .execute();
 
         await trx
           .updateTable('auth.two_factor_reset')
@@ -289,7 +294,7 @@ export async function registerTwoFactorResetRoutes(app: FastifyInstance, ctx: Ap
           .execute();
 
         return {
-          result: { target },
+          result: { target, tokens: sessions.map((s) => s.token) },
           events: {
             action: AUDIT_ACTIONS.twoFactorResetExecuted,
             outcome: 'success' as const,
@@ -309,6 +314,7 @@ export async function registerTwoFactorResetRoutes(app: FastifyInstance, ctx: Ap
         };
       });
 
+      await forgetSessions(ctx.redis, done.tokens);
       await ctx.store.invalidate(done.target.id);
 
       return reply.send({

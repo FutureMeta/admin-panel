@@ -106,3 +106,44 @@ export async function isSystemRole(db: Database, roleId: number): Promise<boolea
     .executeTakeFirst();
   return row?.is_system === true;
 }
+
+/**
+ * §1.3 — togliere `leaving` lascerebbe meno di due owner in grado di agire?
+ * Senza due owner la procedura di reset del secondo fattore a quattro occhi
+ * non esiste piu', e la prima persona che perde il telefono resta fuori per
+ * sempre.
+ *
+ * LA REGOLA STAVA SOLO SULL'ELIMINAZIONE, e fuori dalla transazione: due
+ * eliminazioni contemporanee contavano tre owner ciascuna e ne lasciavano uno,
+ * e ban, offboarding e rimozione del ruolo non contavano affatto. Ora la
+ * chiama ogni operazione che toglie un owner, DENTRO la sua transazione e
+ * dopo un lock sulla riga del ruolo owner: chi toglie un owner si mette in
+ * fila, e il conto — una lettura nuova, fatta dopo il lock — vede cio' che
+ * l'altro ha appena fatto.
+ *
+ * Conta chi puo' AGIRE: un owner bannato o eliminato non approva un reset.
+ * `roleId` e' il ruolo che si sta togliendo, quando si toglie un ruolo solo:
+ * se non e' l'owner, nessun owner se ne va.
+ */
+export async function leavesFewerThanTwoOwners(
+  db: Database,
+  leaving: string,
+  roleId?: number,
+): Promise<boolean> {
+  const owner = await db
+    .selectFrom('auth.roles')
+    .select('id')
+    .where('key', '=', 'owner')
+    .forUpdate()
+    .executeTakeFirst();
+  if (!owner || (roleId !== undefined && roleId !== owner.id)) return false;
+  const owners = await db
+    .selectFrom('auth.user_roles as ur')
+    .innerJoin('auth.user as u', 'u.id', 'ur.user_id')
+    .select('ur.user_id')
+    .where('ur.role_id', '=', owner.id)
+    .where('u.deleted_at', 'is', null)
+    .where('u.banned', '=', false)
+    .execute();
+  return owners.some((o) => o.user_id === leaving) && owners.length <= 2;
+}

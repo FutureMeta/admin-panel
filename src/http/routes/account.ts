@@ -6,9 +6,10 @@ import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { securityTransaction, writeAudit } from '#src/audit/log.ts';
-import { absoluteCap } from '#src/auth/auth.ts';
+import { absoluteCap, forgetSessions } from '#src/auth/auth.ts';
 import { HibpUnavailable, PasswordCompromised } from '#src/auth/hibp.ts';
 import { PASSWORD_MAX, PASSWORD_MIN } from '#src/auth/password.ts';
+import { withPepperSubject } from '#src/auth/pepper-context.ts';
 import {
   consumeRecoveryCode,
   countOpenRecoveryCodes,
@@ -39,6 +40,45 @@ const EMAIL_CONFIRM_TTL_HOURS = 24;
 const EMAIL_CANCEL_TTL_HOURS = 72;
 
 export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
+  /**
+   * La password attuale e un codice TOTP nuovo, della persona collegata.
+   *
+   * La password passa dallo stesso `PasswordService` del login, con il pepper
+   * con cui e' nato l'hash (SEC-40). Il codice passa dalla guardia anti-replay
+   * (SEC-11) e poi da better-auth: con una sessione il cui secondo fattore e'
+   * gia' verificato, `verifyTOTP` controlla il codice e non tocca altro.
+   */
+  const passwordAndCodeHold = async (
+    userId: string,
+    password: string,
+    code: string,
+    cookie: string | undefined,
+  ): Promise<boolean> => {
+    const row = await ctx.db
+      .selectFrom('auth.account as a')
+      .innerJoin('auth.user as u', 'u.id', 'a.userId')
+      .select(['a.password', 'u.pepper_version'])
+      .where('a.userId', '=', userId)
+      .where('a.providerId', '=', 'credential')
+      .executeTakeFirst();
+    const hash = row?.password;
+    if (!row || !hash) return ctx.passwords.verifyDecoy(password);
+    const passwordOk = await withPepperSubject({ userId, pepperVersion: row.pepper_version }, () =>
+      ctx.passwords.verify(hash, password),
+    );
+    if (!passwordOk) return false;
+
+    if (!(await ctx.totpGuard.check(userId, code)).allowed) return false;
+    const headers = new Headers();
+    if (cookie) headers.set('cookie', cookie);
+    try {
+      await ctx.auth.api.verifyTOTP({ body: { code }, headers });
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   // -------------------------------------------------------------------------
   // §8.4 — login con recovery code.
   //
@@ -393,11 +433,15 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
           .execute();
 
         // §8.7.5 — revoca di TUTTE le sessioni e di tutti i reset pendenti.
-        await trx.deleteFrom('auth.session').where('userId', '=', userId).execute();
+        const sessions = await trx
+          .deleteFrom('auth.session')
+          .where('userId', '=', userId)
+          .returning('token')
+          .execute();
         await trx.deleteFrom('auth.verification').where('identifier', '=', `reset:${userId}`).execute();
 
         return {
-          result: u,
+          result: { ...u, tokens: sessions.map((s) => s.token) },
           events: {
             action: AUDIT_ACTIONS.userPasswordResetCompleted,
             outcome: 'success' as const,
@@ -411,6 +455,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
         };
       });
 
+      await forgetSessions(ctx.redis, user.tokens);
       await ctx.store.invalidate(userId);
 
       const tpl = passwordChangedNotice({ kind: 'reset-completed', at: new Date() });
@@ -433,6 +478,13 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
   // Conferma al NUOVO indirizzo (24h) e notifica al VECCHIO con link di
   // annullamento (72h). Nessun cambio previous della confirmToken. Al completamento,
   // revoca di tutte le sessioni.
+  //
+  // LA RICHIESTA VUOLE PASSWORD E CODICE, non solo la sessione. Con la sola
+  // sessione, un cookie rubato bastava a portare l'account su un indirizzo
+  // dell'attaccante, e da li' al reset della password: il controllo
+  // permanente dell'account a partire da un furto che il logout avrebbe
+  // dovuto chiudere. Chi ha la sessione ma non la password e il telefono si
+  // ferma qui.
   // -------------------------------------------------------------------------
   app.post(
     '/api/account/email',
@@ -442,17 +494,44 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
       schema: {
         body: {
           type: 'object',
-          required: ['email'],
+          required: ['email', 'password', 'code'],
           additionalProperties: false,
-          properties: { email: { type: 'string', format: 'email', maxLength: 320 } },
+          properties: {
+            email: { type: 'string', format: 'email', maxLength: 320 },
+            password: { type: 'string', minLength: 1, maxLength: PASSWORD_MAX },
+            code: { type: 'string', pattern: '^[0-9]{6}$' },
+          },
         },
       },
     },
     async (request, reply) => {
       const actor = actorOf(request);
       const ips = requestIps(request);
-      const { email } = request.body as { email: string };
+      const { email, password, code } = request.body as { email: string; password: string; code: string };
       const newEmail = email.trim().toLowerCase();
+
+      // Il secchio del secondo fattore: cinque tentativi in un quarto d'ora
+      // per persona, gli stessi del login.
+      await ctx.rateLimit.consume('twoFactorAccount', actor.userId);
+      if (!(await passwordAndCodeHold(actor.userId, password, code, request.headers.cookie))) {
+        await ctx.rateLimit.penalize('twoFactorAccount', actor.userId);
+        await writeAudit(ctx.db, {
+          action: AUDIT_ACTIONS.userEmailChangeRequested,
+          outcome: 'denied',
+          actor: auditActorOf(actor),
+          request: auditContextOf(request, ips),
+          moduleKey: 'utenti',
+          targetType: 'user',
+          targetId: actor.userId,
+          targetLabel: actor.actorEmail,
+          meta: { reason: 'verifica_non_riuscita' },
+        });
+        // Uno solo per password e codice: dire quale dei due era giusto
+        // aiuterebbe chi sta provando.
+        throw new BadRequest('VERIFICA_NON_RIUSCITA');
+      }
+      await ctx.totpGuard.markUsed(actor.userId, code);
+      await ctx.rateLimit.reward('twoFactorAccount', actor.userId);
 
       const taken = await ctx.db
         .selectFrom('auth.user')
@@ -564,7 +643,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
       const [, userId, , newEmail] = row.identifier.split(':');
       if (!userId || !newEmail) throw new BadRequest('TOKEN_NON_VALIDO');
 
-      const user = await securityTransaction(ctx.db, async (trx) => {
+      const tokens = await securityTransaction(ctx.db, async (trx) => {
         const spent = await trx
           .deleteFrom('auth.verification')
           .where('id', '=', row.id)
@@ -585,14 +664,18 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
           .where('id', '=', userId)
           .execute();
         // §8.9 — revoca di tutte le sessioni al completamento.
-        await trx.deleteFrom('auth.session').where('userId', '=', userId).execute();
+        const sessions = await trx
+          .deleteFrom('auth.session')
+          .where('userId', '=', userId)
+          .returning('token')
+          .execute();
         await trx
           .deleteFrom('auth.verification')
           .where('identifier', 'like', `email-change:${userId}%`)
           .execute();
 
         return {
-          result: previous,
+          result: sessions.map((s) => s.token),
           events: {
             action: AUDIT_ACTIONS.userEmailChanged,
             outcome: 'success' as const,
@@ -608,8 +691,8 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
         };
       });
 
+      await forgetSessions(ctx.redis, tokens);
       await ctx.store.invalidate(userId);
-      void user;
       return reply.send({ ok: true, next: '/login' });
     },
   );

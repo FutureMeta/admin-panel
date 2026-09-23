@@ -151,7 +151,10 @@ export async function buildServer(ctx: AppContext): Promise<FastifyInstance> {
   // registrazione delle rotte possa scavalcarlo.
   // ---------------------------------------------------------------------------
   app.addHook('onRequest', async (request, reply) => {
-    const path = (request.url.split('?')[0] ?? '').replace(/\/+$/, '');
+    // Normalizzato come lo vedra' better-auth: sull'URL grezzo
+    // `/two-factor/./verify-backup-code` passava. Il ponte oggi apre due sole
+    // rotte e questa non e' fra loro; il blocco resta come seconda porta.
+    const path = new URL(request.url, 'http://pannello').pathname.replace(/\/+$/, '');
     if (BLOCKED_AUTH_PATHS.includes(path)) {
       request.log.warn({ path }, 'SEC-14: rotta backup-code bloccata');
       return reply.code(404).send({ error: 'not_found' });

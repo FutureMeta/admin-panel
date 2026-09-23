@@ -10,9 +10,9 @@
 // secondi se nessuno lo marcasse.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { loginAs, seedUser, waitForNextTotpStep } from '#tests/support/actors.ts';
+import { enableTotp, loginAs, seedUser, waitForNextTotpStep } from '#tests/support/actors.ts';
 import { sameOriginHeaders, startTestApp, type TestApp } from '#tests/support/app.ts';
-import { currentStep, secretFromOtpauthUri, totpAt, totpNow } from '#tests/support/totp.ts';
+import { currentStep, totpAt, totpNow } from '#tests/support/totp.ts';
 
 let t: TestApp;
 
@@ -59,14 +59,7 @@ async function signInAndEnroll(user: { email: string; password: string }) {
   });
   let jar = cookies(signIn.headers['set-cookie']);
 
-  const enable = await t.app.inject({
-    method: 'POST',
-    url: '/api/auth/two-factor/enable',
-    headers: sameOriginHeaders({ cookie: header(jar), 'x-csrf-token': jar['__Host-metamc_csrf'] ?? '' }),
-    payload: { password: user.password },
-  });
-  jar = { ...jar, ...cookies(enable.headers['set-cookie']) };
-  const { totpURI } = enable.json() as { totpURI: string };
+  const secret = await enableTotp(t, header(jar), user.password);
 
   const verify = async (code: string) => {
     const res = await t.app.inject({
@@ -81,7 +74,7 @@ async function signInAndEnroll(user: { email: string; password: string }) {
   };
 
   return {
-    secret: secretFromOtpauthUri(totpURI),
+    secret,
     verify,
     jar: () => jar,
   };

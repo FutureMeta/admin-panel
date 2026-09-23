@@ -99,6 +99,20 @@ function collectCookies(setCookie: string | string[] | undefined): Record<string
 }
 
 /**
+ * L'attivazione del TOTP come la fa l'onboarding: dall'API interna di
+ * better-auth. Il ponte `/api/auth/*` non la espone — da fuori sostituirebbe
+ * il segreto di chi ha gia' il secondo fattore, senza registro ne' avviso.
+ */
+export async function enableTotp(t: TestApp, cookie: string, password: string): Promise<string> {
+  const enabled = (await t.ctx.auth.api.enableTwoFactor({
+    body: { password },
+    headers: new Headers({ cookie }),
+  })) as { totpURI?: string };
+  if (!enabled.totpURI) throw new Error('enableTwoFactor non ha restituito il segreto');
+  return secretFromOtpauthUri(enabled.totpURI);
+}
+
+/**
  * Primo accesso: sign-in, enrollment TOTP, prima verifica. Restituisce il
  * segreto, che le suite riusano per i login successivi.
  */
@@ -115,17 +129,7 @@ export async function enrollTotp(t: TestApp, user: SeededUser): Promise<string> 
   const cookies = collectCookies(signIn.headers['set-cookie']);
   const cookie = cookieHeader(cookies);
 
-  const enable = await t.app.inject({
-    method: 'POST',
-    url: '/api/auth/two-factor/enable',
-    headers: sameOriginHeaders({ cookie, 'x-csrf-token': cookies['__Host-metamc_csrf'] ?? '' }),
-    payload: { password: user.password },
-  });
-  if (enable.statusCode !== 200) {
-    throw new Error(`enableTwoFactor fallito: ${enable.statusCode} ${enable.body.slice(0, 300)}`);
-  }
-  const { totpURI } = enable.json() as { totpURI: string };
-  const secret = secretFromOtpauthUri(totpURI);
+  const secret = await enableTotp(t, cookie, user.password);
 
   const verify = await t.app.inject({
     method: 'POST',

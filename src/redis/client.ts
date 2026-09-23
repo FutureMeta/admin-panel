@@ -82,6 +82,9 @@ export function createRedisSubscriber(opts: RedisOptions): Redis {
   });
 }
 
+/** Il prefisso delle chiavi di better-auth nel secondary storage. */
+export const AUTH_KEY_PREFIX = 'better-auth:';
+
 /** Chiavi Redis del §9. Enumerate qui e in nessun altro posto. */
 export const KEYS = {
   /** Snapshot di autorizzazione, FUORI dal blob di sessione (SEC-02). */
@@ -97,6 +100,13 @@ export const KEYS = {
   totpUsed: (userId: string, codeHash: string) => `totp:used:${userId}:${codeHash}`,
   /** Dedupe dei webhook Resend. */
   webhookSeen: (svixId: string) => `swh:${svixId}`,
+  /**
+   * La copia di una sessione che better-auth tiene nel secondary storage
+   * (`@better-auth/redis-storage`, prefisso configurato in `src/auth/auth.ts`).
+   * Le rotte che better-auth serve da se' leggono QUESTA, non Postgres: una
+   * sessione revocata va tolta anche da qui (vedi `forgetSessions`).
+   */
+  authSession: (token: string) => `${AUTH_KEY_PREFIX}${token}`,
   /** Rate limit: il prefisso lo gestisce rate-limiter-flexible. */
   rateLimit: (scope: string, key: string) => `rl:${scope}:${key}`,
 } as const;

@@ -16,38 +16,32 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
-import { absoluteCap } from '#src/auth/auth.ts';
+import { absoluteCap, forgetSessions } from '#src/auth/auth.ts';
 import { withPepperSubject } from '#src/auth/pepper-context.ts';
 import { visibleModules } from '#src/authz/can.ts';
 import { issueCsrfCookie } from '../csrf.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditContextOf, rateLimitIpKey, requestIps, setAuthSubject } from '../request-context.ts';
 
-/** Rotte better-auth su cui si consuma il rate limit di login (SEC-25). */
-const LOGIN_PATHS = new Set(['/sign-in/email', '/forget-password', '/reset-password']);
-/** Rotte che finiscono in un hash o in una verifica Argon2 (SEC-28). */
-const HASHING_PATHS = new Set([
-  '/sign-in/email',
-  '/reset-password',
-  '/change-password',
-  '/two-factor/enable',
-  '/two-factor/disable',
-]);
+const LOGIN_PATH = '/sign-in/email';
 const TOTP_VERIFY_PATH = '/two-factor/verify-totp';
 
 /**
- * SEC-40 — le rotte che verificano una password GIA' MEMORIZZATA.
+ * Le SOLE rotte di better-auth raggiungibili da fuori: il login e la verifica
+ * del secondo fattore. Tutto il resto lo fa il pannello con rotte proprie
+ * (reset password, cambio email, codici di recupero, logout) o con l'API
+ * interna (`ctx.auth.api`, come l'enrollment TOTP dell'onboarding).
  *
- * Non tutte quelle che finiscono in Argon2: `/reset-password` ne calcola una
- * nuova a partire da un token e non confronta niente, quindi non ha bisogno di
- * sapere con quale pepper e' nato il vecchio hash.
+ * PRIMA IL PONTE INOLTRAVA QUALUNQUE SOTTO-PERCORSO, e le rotte che il
+ * pannello non usa restavano aperte a chi aveva una sessione: leggere il
+ * segreto TOTP (`/two-factor/get-totp-uri`), sostituirlo e rigenerare i
+ * codici di backup (`/two-factor/enable`), cambiare password senza HIBP,
+ * senza registro e senza avviso (`/change-password`), rinominarsi
+ * (`/update-user`). Ognuna scavalcava un controllo che il pannello fa
+ * altrove. Un elenco di cio' che si CHIUDE si dimentica la prossima rotta
+ * che better-auth aggiunge; un elenco di cio' che si APRE no.
  */
-const VERIFIES_STORED_PASSWORD = new Set([
-  '/sign-in/email',
-  '/change-password',
-  '/two-factor/enable',
-  '/two-factor/disable',
-]);
+const BRIDGED_PATHS = new Set([LOGIN_PATH, TOTP_VERIFY_PATH]);
 
 function headersFrom(request: FastifyRequest): Headers {
   const headers = new Headers();
@@ -91,11 +85,7 @@ async function auditSubjectOf(
 }
 
 /**
- * L'utente e la versione di pepper del suo hash.
- *
- * Sul login l'identita' arriva dal corpo, sulle altre dalla sessione — che
- * sulle rotte autenticate e' gia' stata risolta per il rate limit, quindi
- * questo non aggiunge un giro.
+ * L'utente e la versione di pepper del suo hash, dall'email del login.
  *
  * Restituisce `undefined` quando l'utente non si trova: il percorso
  * dell'account inesistente deve restare indistinguibile (SEC-30), e senza
@@ -104,47 +94,37 @@ async function auditSubjectOf(
 async function pepperSubjectOf(
   ctx: AppContext,
   request: FastifyRequest,
-  subPath: string,
-  knownUserId: string | undefined,
 ): Promise<{ userId: string; pepperVersion: number } | undefined> {
-  let userId = knownUserId;
-
-  if (!userId && subPath === '/sign-in/email') {
-    const email = accountKeyOf(request.body);
-    if (!email) return undefined;
-    const row = await ctx.db
-      .selectFrom('auth.user')
-      .select(['id', 'pepper_version'])
-      .where('email', '=', email)
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst();
-    return row ? { userId: row.id, pepperVersion: row.pepper_version } : undefined;
-  }
-
-  if (!userId) {
-    const session = await ctx.auth.api.getSession({ headers: headersFrom(request) });
-    userId = session?.session?.userId;
-  }
-  if (!userId) return undefined;
-
+  const email = accountKeyOf(request.body);
+  if (!email) return undefined;
   const row = await ctx.db
     .selectFrom('auth.user')
-    .select('pepper_version')
-    .where('id', '=', userId)
+    .select(['id', 'pepper_version'])
+    .where('email', '=', email)
+    .where('deleted_at', 'is', null)
     .executeTakeFirst();
-  return row ? { userId, pepperVersion: row.pepper_version } : undefined;
+  return row ? { userId: row.id, pepperVersion: row.pepper_version } : undefined;
 }
 
 export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   app.route({
-    method: ['GET', 'POST'],
+    method: 'POST',
     url: '/api/auth/*',
     // SEC-29 — 4 KB sulle rotte di autenticazione. Un body di autenticazione
     // legittimo sta in poche centinaia di byte; tutto il resto e' costo che
     // qualcuno vuole farci pagare.
     bodyLimit: 4_096,
     async handler(request: FastifyRequest, reply: FastifyReply) {
-      const subPath = request.url.replace(/^\/api\/auth/, '').split('?')[0] ?? '';
+      // IL PERCORSO SI LEGGE UNA VOLTA, NORMALIZZATO, ed e' lo stesso che
+      // better-auth ricevera'. Confrontato sull'URL grezzo, `/two-factor/./x`
+      // o `%2e` passavano i controlli come una rotta qualsiasi e arrivavano
+      // alla libreria gia' risolti nella rotta vera: il blocco dei codici di
+      // backup si scavalcava cosi', e allo stesso modo il rate limit del login.
+      const url = new URL(request.url, ctx.env.APP_ORIGIN);
+      const subPath = url.pathname.replace(/^\/api\/auth/, '');
+      if (!BRIDGED_PATHS.has(subPath)) {
+        return reply.code(404).send({ error: 'not_found' });
+      }
       const ips = requestIps(request);
       const ipKey = rateLimitIpKey(ips);
 
@@ -162,27 +142,12 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // prescrive non arriverebbe mai al client, e nessun proxy saprebbe
       // rallentare. Alla porta invece la risposta e' esatta.
       // ---------------------------------------------------------------------
-      if (HASHING_PATHS.has(subPath) && ctx.semaphore.saturated) {
+      if (subPath === LOGIN_PATH && ctx.semaphore.saturated) {
         reply.header('Retry-After', '1');
         return reply.code(503).send({ error: 'overloaded' });
       }
 
-      // SEC-25 — le rotte di hashing AUTENTICATE. Il consumo sta qui, prima
-      // che better-auth veda la richiesta e quindi prima di qualunque Argon2.
-      //
-      // `HASHING_PATHS` meno `LOGIN_PATHS`: le tre che restavano scoperte
-      // perche' il consumo viveva dentro il ramo del login. Sono autenticate,
-      // quindi il soggetto da limitare e' l'utente della sessione — chi ha
-      // rubato una sessione cambia indirizzo a piacere — e l'IP resta come
-      // secondo vincolo per chi prova molte sessioni da un posto solo.
-      if (HASHING_PATHS.has(subPath) && !LOGIN_PATHS.has(subPath)) {
-        await ctx.rateLimit.consume('hashingIp', ipKey);
-        const session = await ctx.auth.api.getSession({ headers: headersFrom(request) });
-        const userId = session?.session?.userId;
-        if (userId) await ctx.rateLimit.consume('hashingAccount', userId);
-      }
-
-      if (LOGIN_PATHS.has(subPath)) {
+      if (subPath === LOGIN_PATH) {
         const account = accountKeyOf(request.body);
         await ctx.rateLimit.consume('loginGlobal', 'rotta');
         await ctx.rateLimit.consume('loginIp', ipKey);
@@ -236,13 +201,10 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // aspetta (verificato dallo SPIKE-5); gli header della Response vanno
       // ricopiati uno a uno, altrimenti il Set-Cookie __Host- si perde.
       // ---------------------------------------------------------------------
-      const url = new URL(request.url, ctx.env.APP_ORIGIN);
       const proxied = new Request(url, {
         method: request.method,
         headers: headersFrom(request),
-        ...(request.body !== undefined && request.method !== 'GET'
-          ? { body: JSON.stringify(request.body) }
-          : {}),
+        ...(request.body !== undefined ? { body: JSON.stringify(request.body) } : {}),
       });
 
       // SEC-40 — di chi e' la password che better-auth sta per verificare.
@@ -252,11 +214,9 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // non c'e' modo di sapere con quale pepper quell'hash e' nato, e ruotare
       // il pepper equivarrebbe a invalidare tutte le password.
       //
-      // Si risolve solo sulle rotte che verificano una password ESISTENTE: sul
-      // resto sarebbe una query per niente.
-      const subject = VERIFIES_STORED_PASSWORD.has(subPath)
-        ? await pepperSubjectOf(ctx, request, subPath, totpUserId)
-        : undefined;
+      // Solo il login verifica una password ESISTENTE: sulla verifica TOTP
+      // sarebbe una query per niente.
+      const subject = subPath === LOGIN_PATH ? await pepperSubjectOf(ctx, request) : undefined;
 
       const res = subject
         ? await withPepperSubject(subject, () => ctx.auth.handler(proxied))
@@ -267,7 +227,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       // il pepper — ma registrarlo trasformerebbe il registro nell'elenco
       // degli indirizzi provati da chiunque, che e' esattamente cio' che il
       // commento dell'hook vuole evitare.
-      if (subPath === '/sign-in/email' && res.status < 400) {
+      if (subPath === LOGIN_PATH && res.status < 400) {
         if (subject) {
           setAuthSubject(request, await auditSubjectOf(ctx, subject.userId));
         } else {
@@ -315,7 +275,15 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
           const post = totpUserId ? { allowed: true as const } : await ctx.totpGuard.check(userId, totpCode);
           if (!post.allowed) {
             if (newSessionId) {
-              await ctx.db.deleteFrom('auth.session').where('id', '=', newSessionId).execute();
+              const gone = await ctx.db
+                .deleteFrom('auth.session')
+                .where('id', '=', newSessionId)
+                .returning('token')
+                .execute();
+              await forgetSessions(
+                ctx.redis,
+                gone.map((s) => s.token),
+              );
             }
             await writeAudit(ctx.db, {
               action: AUDIT_ACTIONS.twoFactorReplayBlocked,
@@ -350,7 +318,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
       }
 
       // Login riuscito: la sessione nuova riceve il tetto assoluto (SEC-05).
-      if (subPath === '/sign-in/email' && res.status < 400) {
+      if (subPath === LOGIN_PATH && res.status < 400) {
         const account = accountKeyOf(request.body);
         if (account) await ctx.rateLimit.reward('loginAccount', account);
       }

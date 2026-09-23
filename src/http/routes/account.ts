@@ -234,8 +234,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
       .where('id', '=', userId)
       .where('deleted_at', 'is', null)
       .executeTakeFirst();
-    if (!row || row.status !== 'pending_onboarding' || row.banned || row.twoFactorEnabled)
-      throw new NotFound();
+    if (row?.status !== 'pending_onboarding' || row.banned || row.twoFactorEnabled) throw new NotFound();
     return { userId, pepperVersion: row.pepper_version };
   };
 
@@ -307,6 +306,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
     '/api/account/recovery-codes/regenerate',
     { preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
+      // PERMESSO: basta la sessione — sono i codici di chi chiama, e di nessun altro.
       const actor = actorOf(request);
       const ips = requestIps(request);
 
@@ -337,6 +337,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
   );
 
   app.get('/api/account/recovery-codes/count', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
+    // PERMESSO: basta la sessione — quanti codici restano a chi chiama.
     const actor = actorOf(request);
     return reply.send({ remaining: await countOpenRecoveryCodes(ctx.db, actor.userId) });
   });
@@ -595,6 +596,7 @@ export async function registerAccountRoutes(app: FastifyInstance, ctx: AppContex
   app.post(
     '/api/account/email',
     {
+      // PERMESSO: basta la sessione — l'indirizzo di chi chiama, con password e codice.
       preHandler: [requireAuth(ctx)],
       bodyLimit: 4_096,
       schema: {

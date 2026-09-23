@@ -39,6 +39,27 @@ export class BadRequest extends Error {
   }
 }
 
+/**
+ * 503: la rotta esiste, ma questa installazione non puo' servirla — una
+ * variabile che manca, un budget esaurito, un servizio a valle che non
+ * risponde. Non 404, che manderebbe a cercare un errore di instradamento, e
+ * non 500, che manderebbe a cercare un difetto.
+ *
+ * Una classe sola, lanciata dalla rotta, al posto della stessa risposta
+ * scritta a mano in sei posti con sei forme diverse. `code` c'e' dove il
+ * client lo usa per scegliere il messaggio.
+ */
+export class ServiceUnavailable extends Error {
+  readonly detail: string | undefined;
+  readonly code: string | undefined;
+  constructor(message: string, detail?: string, code?: string) {
+    super(message);
+    this.name = 'ServiceUnavailable';
+    this.detail = detail;
+    this.code = code;
+  }
+}
+
 export class Conflict extends Error {
   readonly code: string;
   constructor(code: string, message = 'conflitto') {
@@ -82,6 +103,14 @@ export function installErrorHandler(app: {
 
     if (error instanceof NotFound) {
       return reply.code(404).send({ error: 'not_found' } satisfies ErrorBody);
+    }
+
+    if (error instanceof ServiceUnavailable) {
+      return reply.code(503).send({
+        error: error.message,
+        ...(error.code ? { code: error.code } : {}),
+        ...(error.detail ? { detail: error.detail } : {}),
+      });
     }
 
     if (error instanceof RateLimited) {

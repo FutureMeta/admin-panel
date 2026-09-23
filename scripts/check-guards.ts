@@ -224,6 +224,43 @@ function stripCommentsAndStrings(line: string): string {
   return line;
 }
 
+/**
+ * OGNI ROTTA AUTENTICATA CONTROLLA UN PERMESSO, o dice perche' non serve.
+ *
+ * `requireAuth` dice solo «c'e' una sessione a due fattori». Il livello sul
+ * modulo si controlla DENTRO l'handler, con `requireLevel` o `can`: e' una
+ * riga, e chi la dimentica lascia la rotta aperta a qualunque utente
+ * collegato — senza che niente si rompa, perche' la rotta funziona benissimo.
+ * Qui si pretende che ogni rotta con `requireAuth` contenga quella riga,
+ * oppure il marcatore `PERMESSO: basta la sessione`, seguito dal motivo, per
+ * le poche che riguardano solo chi le chiama (il proprio profilo, il proprio
+ * logout).
+ *
+ * E' una lettura del sorgente rotta per rotta, non un'analisi del codice: un
+ * helper definito fra due rotte finisce nel blocco della prima. Basta per la
+ * dimenticanza, che e' il difetto da fermare.
+ */
+const ROUTE_START = /^\s*app\.(get|post|put|patch|delete|route)\(/;
+const PERMISSION_CHECK = /\brequireLevel\(|\bcan(?:Read|Write|Delete)?\(|PERMESSO: basta la sessione/;
+
+function unguardedRoutes(rel: string, lines: string[]): Violation[] {
+  if (!rel.startsWith(join('src', 'http', 'routes'))) return [];
+  const starts = lines.flatMap((l, i) => (ROUTE_START.test(l) ? [i] : []));
+  const out: Violation[] = [];
+  starts.forEach((start, k) => {
+    const block = lines.slice(start, starts[k + 1] ?? lines.length).join('\n');
+    if (!block.includes('requireAuth(') || PERMISSION_CHECK.test(block)) return;
+    out.push({
+      file: rel,
+      line: start + 1,
+      text: (lines[start] ?? '').trim().slice(0, 120),
+      rule: 'http/authenticated-route-checks-a-permission',
+      why: "una rotta con `requireAuth` e nessun `requireLevel`/`can` e' aperta a chiunque abbia una sessione. Se e' voluto, lo si scrive: `// PERMESSO: basta la sessione — <perche'>`.",
+    });
+  });
+  return out;
+}
+
 function main(): void {
   const files: string[] = [];
   for (const d of SCANNED_DIRS) walk(join(ROOT, d), files);
@@ -239,6 +276,7 @@ function main(): void {
     const lines = readFileSync(file, 'utf8').split(/\r?\n/);
     /** Il file senza le righe di commento, ma con gli a capo al loro posto. */
     const body = lines.map(stripCommentsAndStrings).join('\n');
+    violations.push(...unguardedRoutes(rel, lines));
 
     for (const rule of RULES) {
       if (rule.exempt(rel)) continue;
@@ -277,7 +315,7 @@ function main(): void {
   }
 
   if (violations.length === 0) {
-    console.log(`guardie ok — ${files.length} file analizzati, ${RULES.length} regole.`);
+    console.log(`guardie ok — ${files.length} file analizzati, ${RULES.length + 1} regole.`);
     return;
   }
 

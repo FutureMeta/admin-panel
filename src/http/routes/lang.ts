@@ -53,6 +53,7 @@ import {
 } from '#src/lang/store.ts';
 import { RateLimited } from '#src/ratelimit/limiter.ts';
 import { REFERENCE } from '#web/lib/lang.ts';
+import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
@@ -172,13 +173,12 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
    * al database di Metaverse. Un 404 manderebbe a cercare un errore di
    * instradamento.
    */
-  const gameDb = (reply: FastifyReply): DuelsMysql | null => {
+  const gameDb = (): DuelsMysql => {
     if (ctx.metaverseMysql) return ctx.metaverseMysql;
-    reply.code(503).send({
-      error: 'lingue non disponibili',
-      detail: 'manca METAVERSE_MYSQL_URL: il pannello non ha una connessione al database di Metaverse',
-    });
-    return null;
+    throw new ServiceUnavailable(
+      'lingue non disponibili',
+      'manca METAVERSE_MYSQL_URL: il pannello non ha una connessione al database di Metaverse',
+    );
   };
 
   /**
@@ -215,16 +215,14 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     // lingue e quanto sono complete. Basta uno dei due moduli.
     const actor = actorOf(request);
     if (!can(actor, 'lingue', 1)) requireLevel(actor, 'lingue_elenco', 1);
-    const db = gameDb(reply);
-    if (db === null) return reply;
+    const db = gameDb();
     reply.header('Cache-Control', 'private, no-store');
     return readOverview(db);
   });
 
   app.get('/api/lang/keys', { schema: nsQuery, preHandler: [requireAuth(ctx)] }, async (request, reply) => {
     requireLevel(actorOf(request), 'lingue', 1);
-    const db = gameDb(reply);
-    if (db === null) return reply;
+    const db = gameDb();
     const { ns } = request.query as { ns: string };
     reply.header('Cache-Control', 'private, no-store');
     try {
@@ -242,8 +240,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'lingue', 2);
-      const db = gameDb(reply);
-      if (db === null) return reply;
+      const db = gameDb();
       const body = request.body as { ns: string; key: string; code: string; value: string };
 
       const refused = refuse(reply, body.value);
@@ -287,8 +284,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'lingue_elenco', 3);
-      const db = gameDb(reply);
-      if (db === null) return reply;
+      const db = gameDb();
       const body = request.body as { code: string; display: string };
 
       const refused = refuse(reply, body.display);
@@ -322,8 +318,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'lingue_elenco', 3);
-      const db = gameDb(reply);
-      if (db === null) return reply;
+      const db = gameDb();
       const { code } = request.params as { code: string };
       // L'inglese e' il ripiego di tutto: senza, un giocatore con una lingua
       // incompleta non avrebbe piu' niente da leggere.
@@ -358,8 +353,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'lingue_elenco', 3);
-      const db = gameDb(reply);
-      if (db === null) return reply;
+      const db = gameDb();
       const { code } = request.params as { code: string };
       const body = request.body as { display?: string; active?: boolean; move?: 'up' | 'down' };
 
@@ -400,15 +394,14 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
     async (request, reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'lingue', 2);
-      const db = gameDb(reply);
-      if (db === null) return reply;
+      const db = gameDb();
       const ai = ctx.assistant;
       if (ai === null) {
-        return reply.code(503).send({
-          error: 'AI non configurata',
-          code: 'ai_non_configurata',
-          detail: 'manca ANTHROPIC_API_KEY nell’ambiente del processo',
-        });
+        throw new ServiceUnavailable(
+          'AI non configurata',
+          'manca ANTHROPIC_API_KEY nell’ambiente del processo',
+          'ai_non_configurata',
+        );
       }
       const body = request.body as { ns: string; key: string; code: string };
       if (body.code === REFERENCE) {
@@ -428,11 +421,11 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
       try {
         const now = new Date();
         if (await ai.spend.exhausted(now)) {
-          return reply.code(503).send({
-            error: 'tetto di spesa raggiunto',
-            code: 'tetto_di_spesa',
-            detail: 'il budget mensile dell’AI è esaurito: si traduce a mano fino al mese prossimo',
-          });
+          throw new ServiceUnavailable(
+            'tetto di spesa raggiunto',
+            'il budget mensile dell’AI è esaurito: si traduce a mano fino al mese prossimo',
+            'tetto_di_spesa',
+          );
         }
 
         // L'inglese lo legge il server. Se lo mandasse il client, questa rotta
@@ -489,7 +482,7 @@ export async function registerLangRoutes(app: FastifyInstance, ctx: AppContext):
           }
           if (err instanceof Anthropic.APIError) {
             ctx.logger.warn({ err, status: err.status }, 'lingue: AI non raggiungibile');
-            return reply.code(503).send({ error: 'AI non raggiungibile', code: 'ai_non_raggiungibile' });
+            throw new ServiceUnavailable('AI non raggiungibile', undefined, 'ai_non_raggiungibile');
           }
           throw err;
         }

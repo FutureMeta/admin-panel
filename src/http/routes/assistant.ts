@@ -29,6 +29,7 @@ import { AUDIT_ACTIONS, AUDIT_VIA_ASSISTANT } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import { RANGES } from '#src/stats/contract.ts';
+import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
@@ -82,14 +83,13 @@ function sseLine(event: AssistantEvent): string {
 }
 
 export function registerAssistantRoutes(app: FastifyInstance, ctx: AppContext): void {
-  const notConfigured = (reply: FastifyReply) =>
-    // 503 e non 404: la rotta esiste, e' l'installazione che non ha una
-    // chiave. Un 404 manderebbe a cercare un errore di instradamento.
-    reply.code(503).send({
-      error: 'assistente non configurato',
-      code: 'non_configurato',
-      detail: 'manca ANTHROPIC_API_KEY nell`ambiente del processo',
-    });
+  // L'installazione non ha una chiave.
+  const notConfigured = () =>
+    new ServiceUnavailable(
+      'assistente non configurato',
+      'manca ANTHROPIC_API_KEY nell`ambiente del processo',
+      'non_configurato',
+    );
 
   app.post(
     '/api/stream/assistant',
@@ -99,7 +99,7 @@ export function registerAssistantRoutes(app: FastifyInstance, ctx: AppContext): 
       requireLevel(actor, 'assistente', 1);
 
       const assistant = ctx.assistant;
-      if (!assistant) return notConfigured(reply);
+      if (!assistant) throw notConfigured();
 
       const body = request.body as ChatBody;
       const now = new Date();
@@ -121,13 +121,12 @@ export function registerAssistantRoutes(app: FastifyInstance, ctx: AppContext): 
           { spentUsd: assistant.spend.lastSeenUsd, capUsd: assistant.spend.capUsd },
           'assistente: tetto di spesa del mese raggiunto, messaggi rifiutati',
         );
-        return reply.code(503).send({
-          error: 'tetto di spesa raggiunto',
-          code: 'tetto_di_spesa',
-          detail:
-            'il budget mensile dell`assistente e` esaurito: Svetlana resta spenta ' +
+        throw new ServiceUnavailable(
+          'tetto di spesa raggiunto',
+          'il budget mensile dell`assistente e` esaurito: Svetlana resta spenta ' +
             'fino al mese prossimo, o finche` qualcuno non alza il tetto',
-        });
+          'tetto_di_spesa',
+        );
       }
 
       const conversationId = body.conversationId ?? crypto.randomUUID();

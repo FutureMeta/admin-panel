@@ -16,54 +16,23 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import type {
+  LiveMatch,
+  LiveMode,
+  LiveRoster,
+  LiveRosterPlayer,
+  LiveServer,
+  LiveSnapshot,
+} from '#src/duels/payload.ts';
 import { PageHeader, Panel } from '../components/page.tsx';
 import { Avatar } from '../components/ui.tsx';
 import { api } from '../lib/api.ts';
 import { numberFmt } from '../lib/format.ts';
 
-type LiveServer = {
-  id: string;
-  type: string;
-  players: number;
-  active: boolean;
-  matches: number;
-  tps: number | null;
-  mspt: number | null;
-  cpu: number | null;
-};
+// I tipi del server, non una copia: vedi `src/duels/payload.ts`.
+type RosterPlayer = LiveRosterPlayer;
+type Roster = LiveRoster;
 
-type LiveMatch = {
-  id: string;
-  context: string;
-  server: string | null;
-  modeId: number;
-  mode: string | null;
-  mapId: number;
-  map: string | null;
-  createdAt: number;
-  players: number;
-};
-
-type LiveMode = {
-  modeId: number;
-  name: string;
-  active: number;
-  queued: number;
-  context: string;
-};
-
-type LiveSnapshot = {
-  at: number;
-  servers: LiveServer[];
-  matches: LiveMatch[];
-  modes: LiveMode[];
-  truncated: boolean;
-};
-
-type RosterPlayer = { name: string; server: string | null; ping: number | null };
-type Roster = { matchId: string; players: RosterPlayer[]; truncated: boolean };
-
-/** Ogni quanto si rilegge. Cinque secondi: e' una schermata di operativita'. */
 const TICK_MS = 5_000;
 
 /**

@@ -17,10 +17,12 @@
 // dice CHI sta giocando adesso, per nome, con server e ping — vedi la
 // migration 020.
 
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
 import { readLiveRoster, readLiveSnapshot } from '#src/duels/live.ts';
+import type { LiveRoster } from '#src/duels/payload.ts';
+import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf } from '../request-context.ts';
 
@@ -36,20 +38,19 @@ const rosterSchema = {
   },
 } as const;
 
-function notConfigured(reply: FastifyReply): FastifyReply {
-  // 503 e non 500: non e' un guasto, e' una funzione che questa installazione
-  // non ha acceso. La differenza conta per chi legge i log.
-  return reply.code(503).send({
-    error: 'non disponibile',
-    detail: 'il collegamento al Redis di gioco non e` configurato su questa installazione',
-  });
+/** Non e' un guasto: e' una funzione che questa installazione non ha acceso. */
+function notConfigured(): ServiceUnavailable {
+  return new ServiceUnavailable(
+    'non disponibile',
+    'il collegamento al Redis di gioco non e` configurato su questa installazione',
+  );
 }
 
 export async function registerDuelsLiveRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   app.get('/api/duels/live', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
     requireLevel(actorOf(request), 'duels_live', 1);
     const redis = ctx.gameRedis;
-    if (!redis) return notConfigured(reply);
+    if (!redis) throw notConfigured();
 
     reply.header('Cache-Control', 'private, no-store');
     return readLiveSnapshot(redis, ctx.duelsMysql, new Date());
@@ -61,12 +62,12 @@ export async function registerDuelsLiveRoutes(app: FastifyInstance, ctx: AppCont
     async (request, reply) => {
       requireLevel(actorOf(request), 'duels_live', 1);
       const redis = ctx.gameRedis;
-      if (!redis) return notConfigured(reply);
+      if (!redis) throw notConfigured();
 
       const { id } = request.params as { id: string };
       reply.header('Cache-Control', 'private, no-store');
       const roster = await readLiveRoster(redis, id);
-      return { matchId: id, ...roster };
+      return { matchId: id, ...roster } satisfies LiveRoster;
     },
   );
 }

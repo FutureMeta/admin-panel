@@ -363,6 +363,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.get(
     '/api/me',
+    // PERMESSO: basta la sessione — chi sei e cosa puoi, per il guscio.
     { preHandler: requireAuth(ctx) },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const actor = actorOf(request);
@@ -384,6 +385,7 @@ export async function registerAuthRoutes(app: FastifyInstance, ctx: AppContext):
   // -------------------------------------------------------------------------
   app.post(
     '/api/session/logout-all',
+    // PERMESSO: basta la sessione — si chiudono le proprie sessioni.
     { preHandler: requireAuth(ctx) },
     async (request: FastifyRequest, reply: FastifyReply) => {
       const actor = actorOf(request);

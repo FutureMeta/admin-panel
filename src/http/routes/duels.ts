@@ -18,7 +18,7 @@
 // e non ha senso conservarla. `no-store`, e la protezione del carico e'
 // l'indice, non la cache.
 
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
 import { writeAudit } from '#src/audit/log.ts';
@@ -29,6 +29,7 @@ import { markDuelsHot } from '#src/duels/warm.ts';
 import { isRange } from '#src/stats/contract.ts';
 import { ttlOf } from '#src/stats/warm.ts';
 import { sendEnvelope } from '../envelope.ts';
+import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
@@ -90,14 +91,12 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
     return allowlist.has(mode);
   };
 
-  const notConfigured = (reply: FastifyReply) =>
-    // 503 e non 404: la rotta esiste, e' l'installazione che non ha ancora il
-    // ruolo di lettura. Un 404 manderebbe a cercare un errore di
-    // instradamento che non c'e'.
-    reply.code(503).send({
-      error: 'duels non configurati',
-      detail: 'manca DATABASE_STATS_URL (ruolo metamc_stats, sola lettura)',
-    });
+  // L'installazione non ha ancora il ruolo di lettura.
+  const notConfigured = () =>
+    new ServiceUnavailable(
+      'duels non configurati',
+      'manca DATABASE_STATS_URL (ruolo metamc_stats, sola lettura)',
+    );
 
   app.get(
     '/api/duels/trends',
@@ -105,7 +104,7 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
     async (request, reply) => {
       requireLevel(actorOf(request), 'duels', 1);
       const provider = ctx.duels;
-      if (!provider) return notConfigured(reply);
+      if (!provider) throw notConfigured();
 
       const q = request.query as { range?: string };
       const range: Range = isRange(q.range) ? q.range : '24h';
@@ -128,7 +127,7 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
     async (request, reply) => {
       requireLevel(actorOf(request), 'duels_feedback', 1);
       const provider = ctx.duels;
-      if (!provider) return notConfigured(reply);
+      if (!provider) throw notConfigured();
 
       const q = request.query as { range?: string; mode?: number };
       const range: Range = isRange(q.range) ? q.range : '24h';
@@ -167,7 +166,7 @@ export async function registerDuelsRoutes(app: FastifyInstance, ctx: AppContext)
     async (request, reply) => {
       requireLevel(actorOf(request), 'duels_feedback', 1);
       const provider = ctx.duels;
-      if (!provider) return notConfigured(reply);
+      if (!provider) throw notConfigured();
 
       const q = request.query as {
         range?: string;

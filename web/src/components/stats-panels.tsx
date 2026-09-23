@@ -13,6 +13,11 @@
 // stessa cosa detta a due livelli diversi.
 
 import type React from 'react';
+// I TIPI SONO QUELLI DEL SERVER, non una copia. Una copia a mano restava
+// indietro in silenzio: un campo aggiunto al payload non arrivava qui, uno
+// rinominato diventava `undefined` a runtime. `import type` sparisce dal
+// bundle: nel browser non arriva una riga del server.
+import type { Kpi, OverviewPayload as Overview, Series } from '#src/stats/contract.ts';
 import { gaps, liveSplit, niceScale, readingsAt, segments } from '../lib/chart.ts';
 import type { Slice } from '../lib/distribution.ts';
 import { arc } from '../lib/donut.ts';
@@ -21,52 +26,8 @@ import { CHART, ChartFrame } from './chart-frame.tsx';
 import { HeatGrid, HeatLegend } from './heat-grid.tsx';
 import { HoverTip, useHoverTip } from './hover-tip.tsx';
 
-export type Series = {
-  t: number[];
-  total: (number | null)[];
-  peak: (number | null)[];
-  series: Record<string, (number | null)[]>;
-  coverage: number[];
-};
+export type { Kpi, Overview, Series };
 
-export type Kpi = {
-  avg: number | null;
-  peak: number | null;
-  peakAt: number | null;
-  peakCoverage: number;
-  uniques: number | null;
-  coverage: number;
-};
-
-export type Overview = {
-  v: 3;
-  range: '24h' | '7d' | '30d' | '90d' | '1y';
-  tz: string;
-  bucketSec: number;
-  generatedAt: number;
-  closedThrough: number;
-  liveTail: boolean;
-  deltas: number[];
-  modes: string[];
-  /** TUTTE le modalità conosciute, non solo quelle presenti in `modes`. */
-  labels: Record<string, string>;
-  /** I colori decisi dall'operatore. Assente = ripiego, su ordine stabile. */
-  colors: Record<string, string>;
-  /** Serie da non accendere all'apertura. Nessun totale cambia. */
-  hidden: string[];
-  /** Modalità che non sono una fetta della ripartizione. */
-  outOfBreakdown: string[];
-  online: Series;
-  kpi: Kpi;
-  heatmap: { v: number[]; w: number[]; n: number[] };
-  uniques: { t: number[]; v: (number | null)[]; final: boolean[] };
-  geo: { cc: string[]; v: number[]; asOf: number; exact: boolean } | null;
-  current: { at: number; byMode: Record<string, number> } | null;
-  geoEnabled: boolean;
-  record: { players: number; at: number | null; since: number } | null;
-};
-
-/** I colori delle serie li decide l'operatore; questi sono i ripieghi. */
 export const FALLBACK = ['#78c1df', '#62dab6', '#d09439', '#af7ee1', '#d65179', '#85d039'];
 
 const ROME = new Intl.DateTimeFormat('it-IT', {

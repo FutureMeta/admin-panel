@@ -41,6 +41,7 @@ import {
   setConfigLinks,
   UnknownPath,
 } from '#src/duels/config-store.ts';
+import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
@@ -227,7 +228,7 @@ export async function registerDuelsConfigFileRoutes(app: FastifyInstance, ctx: A
   app.put(
     '/api/duels/config/draft',
     { schema: draftBody, preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
+    async (request, _reply) => {
       const actor = actorOf(request);
       requireLevel(actor, 'duels_config', 2);
       const body = request.body as { versionId: number; content: string };
@@ -348,10 +349,10 @@ export async function registerDuelsConfigFileRoutes(app: FastifyInstance, ctx: A
   app.get('/api/duels/config/bundle', { schema: bundleQuery }, async (request, reply) => {
     const expected = ctx.env.DUELS_CONFIG_TOKEN;
     if (!expected) {
-      return reply.code(503).send({
-        error: 'non disponibile',
-        detail: 'DUELS_CONFIG_TOKEN non è configurato su questa installazione',
-      });
+      throw new ServiceUnavailable(
+        'non disponibile',
+        'DUELS_CONFIG_TOKEN non è configurato su questa installazione',
+      );
     }
 
     const given = request.headers['x-duels-token'];

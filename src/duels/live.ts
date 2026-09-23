@@ -37,6 +37,7 @@
 
 import type { Redis } from 'ioredis';
 import type { DuelsMysql } from './mysql.ts';
+import type { LiveMatch, LiveMode, LiveRosterPlayer, LiveServer, LiveSnapshot } from './payload.ts';
 
 /** Le chiavi del plugin. Scritte da lui: qui si leggono e basta. */
 export const LIVE_KEYS = {
@@ -63,86 +64,6 @@ const SCAN_COUNT = 250;
  * Redis di gioco. Qui si smette, e chi legge lo viene a sapere.
  */
 const SCAN_CEILING = 5_000;
-
-export type LiveServer = {
-  id: string;
-  type: string;
-  players: number;
-  active: boolean;
-  matches: number;
-  /** Media dei campioni. `null` quando il server non ne ha pubblicato nessuno. */
-  tps: number | null;
-  mspt: number | null;
-  /**
-   * Il valore che spark pubblica. VA MOLTIPLICATO PER DIECI per leggerlo in
-   * percentuale — non per cento, e nemmeno lasciato com'e'.
-   *
-   * NON E' UNA DEDUZIONE, E' UNA MISURA. Sullo stesso server, nello stesso
-   * momento: Redis porta `0.34, 0.42435, 0.3525` e `spark cpu` in console
-   * scrive `3% 4% 3%`. Tre campioni, due fonti, la stessa risposta —
-   * `0,34 × 10 = 3,4%`. Il plugin campiona `spark.cpuSystem()` sulle finestre
-   * a 10 secondi, 1 minuto e 15 minuti, e questa e' la scala con cui arriva
-   * qui.
-   *
-   * DUE MODI DI SBAGLIARLA, e ci sono cascato in tutti e due:
-   *
-   *   * per cento — il mockup lo fa, perche' i suoi dati finti erano `0.41` su
-   *     una convenzione diversa. Un server al 3% diventa al 34%;
-   *   * per uno — e' quello che faceva il VECCHIO pannello, con
-   *     `formatPercent(s.cpu)`. Su `0.34` scriveva `0%`, cioe' mostrava zero
-   *     su ogni server di ogni giorno, e nessuno se n'e' mai accorto perche'
-   *     uno zero non stona. Il suo `deriveScore` divideva per cento per la
-   *     stessa ragione, e quindi non misurava niente.
-   *
-   * La seconda e' la lezione: quel codice sembrava una prova ed era un
-   * difetto. Il numero giusto e' venuto dal confronto con la console, non da
-   * un'altra riga di codice.
-   *
-   * COME RIVERIFICARLO, se un giorno i numeri sembrano strani: `spark cpu` sul
-   * server, e `HGET duels:servers:<id> cpu` su Redis, nello stesso minuto.
-   */
-  cpu: number | null;
-};
-
-export type LiveMatch = {
-  id: string;
-  context: string;
-  server: string | null;
-  modeId: number;
-  /** Il nome leggibile, o `null` se il catalogo non conosce quell'id. */
-  mode: string | null;
-  mapId: number;
-  map: string | null;
-  /** Millisecondi dall'epoca, come li scrive il plugin. */
-  createdAt: number;
-  players: number;
-};
-
-export type LiveMode = {
-  modeId: number;
-  name: string;
-  active: number;
-  queued: number;
-  /** `EVENT` oppure `NORMAL`: decide il colore del pallino nel grafico. */
-  context: string;
-};
-
-export type LiveSnapshot = {
-  /** Quando e' stato letto, in millisecondi. Serve a dire «di quando e'». */
-  at: number;
-  servers: LiveServer[];
-  matches: LiveMatch[];
-  modes: LiveMode[];
-  /** `true` se una scansione ha incontrato il fusibile: i numeri sono parziali. */
-  truncated: boolean;
-};
-
-export type LiveRosterPlayer = {
-  name: string;
-  /** Il server su cui il profilo dice che si trova. */
-  server: string | null;
-  ping: number | null;
-};
 
 /** La media dei campioni CSV che il plugin pubblica, o `null` se non ce ne sono. */
 function meanOf(csv: string | undefined): number | null {

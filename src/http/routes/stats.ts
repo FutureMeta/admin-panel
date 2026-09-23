@@ -24,7 +24,7 @@
 // giorno il payload dovesse variare per ruolo, il test fallisce prima della
 // fuga.
 
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { sql } from 'kysely';
 import type { AppContext } from '#src/app-context.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
@@ -32,6 +32,7 @@ import { assertPayload, isRange, RANGES, type Range } from '#src/stats/contract.
 import { buildAll } from '#src/stats/read.ts';
 import { K, markHot, ttlOf } from '#src/stats/warm.ts';
 import { sendEnvelope } from '../envelope.ts';
+import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf } from '../request-context.ts';
 
@@ -109,14 +110,12 @@ export async function registerStatsRoutes(app: FastifyInstance, ctx: AppContext)
     return (await refreshAllowlist()).has(mode);
   };
 
-  const notConfigured = (reply: FastifyReply) =>
-    // 503 e non 404: la rotta esiste, e' l'installazione che non ha ancora il
-    // ruolo di lettura. Un 404 manderebbe a cercare un errore di
-    // instradamento che non c'e'.
-    reply.code(503).send({
-      error: 'statistiche non configurate',
-      detail: 'manca DATABASE_STATS_URL (ruolo metamc_stats, sola lettura)',
-    });
+  // L'installazione non ha ancora il ruolo di lettura.
+  const notConfigured = () =>
+    new ServiceUnavailable(
+      'statistiche non configurate',
+      'manca DATABASE_STATS_URL (ruolo metamc_stats, sola lettura)',
+    );
 
   app.get(
     '/api/stats/overview',
@@ -124,7 +123,7 @@ export async function registerStatsRoutes(app: FastifyInstance, ctx: AppContext)
     async (request, reply) => {
       requireLevel(actorOf(request), 'statistiche', 1);
       const db = ctx.statsDb;
-      if (!db) return notConfigured(reply);
+      if (!db) throw notConfigured();
 
       const q = request.query as { range?: string };
       const range: Range = isRange(q.range) ? q.range : '24h';
@@ -161,7 +160,7 @@ export async function registerStatsRoutes(app: FastifyInstance, ctx: AppContext)
     async (request, reply) => {
       requireLevel(actorOf(request), 'statistiche', 1);
       const db = ctx.statsDb;
-      if (!db) return notConfigured(reply);
+      if (!db) throw notConfigured();
 
       const q = request.query as { range?: string; mode: string };
       const range: Range = isRange(q.range) ? q.range : '24h';

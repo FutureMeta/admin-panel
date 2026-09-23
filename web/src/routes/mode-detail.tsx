@@ -31,6 +31,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate, useParams } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
 import { useEffect, useMemo, useState } from 'react';
+import type { ModePayload } from '#src/stats/contract.ts';
 import { type Dictionary, EditModeDialog, NewModeDialog } from '../components/mode-editor.tsx';
 import { ModePicker } from '../components/mode-picker.tsx';
 import {
@@ -44,7 +45,6 @@ import {
   NotYet,
   numberFmt,
   OnlineChart,
-  type Overview,
   StatsPanelsSkeleton,
   StatsSkeleton,
 } from '../components/stats-panels.tsx';
@@ -55,11 +55,7 @@ import { slicesOf } from '../lib/distribution.ts';
 import { labelOf, type Range, useRange } from '../lib/range.ts';
 import { axisLabel } from '../lib/when.ts';
 
-type ModeStats = Overview & {
-  mode: string;
-  serverMix: { at: number; byServer: Record<string, number> } | null;
-  byServer: { keys: string[]; series: Record<string, (number | null)[]> } | null;
-};
+type ModeStats = ModePayload;
 
 /** Un solo server: si disegna il totale e basta. Vedi `ModePayload.byServer`. */
 const NO_PARTS = { keys: [], series: {} };

@@ -6,45 +6,45 @@
 // pari merito — e in un componente sarebbero verificabili solo aprendo la
 // pagina e guardandola.
 
+import type {
+  DialogTurn,
+  DuelsBucket,
+  DuelsCombo,
+  DuelsCommentFilter,
+  DuelsMapRow,
+  DuelsModeRow,
+  DuelsModeScore,
+  DuelsOthers,
+  DuelsRatingRow,
+  DuelsRatings,
+  DuelsRecent,
+  DuelsRecentSort,
+  DuelsTrends,
+} from '#src/duels/payload.ts';
+
+// I TIPI SONO QUELLI DEL SERVER (`src/duels/payload.ts`), non una copia: la
+// copia si era gia' allargata — `range: string`, `v: number` — e un campo
+// rinominato la' sarebbe diventato `undefined` qui senza un errore.
+export type {
+  DialogTurn,
+  DuelsBucket,
+  DuelsCombo,
+  DuelsMapRow,
+  DuelsModeRow,
+  DuelsModeScore,
+  DuelsOthers,
+  DuelsRatingRow,
+  DuelsRatings,
+  DuelsRecent,
+  DuelsTrends,
+};
+
+export type CommentFilter = DuelsCommentFilter;
+export type RecentSort = DuelsRecentSort;
+
 /** Deve restare uguale a `DUELS_CONTRACT_VERSION` del server. */
 export const DUELS_V = 1;
 
-export type DuelsBucket = 'hour' | 'day' | 'week';
-
-export type DuelsCombo = { type: string; context: string; v: (number | null)[] };
-
-export type DuelsModeRow = {
-  id: number;
-  name: string;
-  ranking: string | null;
-  type: string | null;
-  color: string | null;
-  matches: number;
-};
-
-export type DuelsMapRow = { id: number; name: string | null; type: string | null; matches: number };
-
-export type DuelsOthers = { n: number; matches: number };
-
-export type DuelsTrends = {
-  v: number;
-  range: string;
-  bucket: DuelsBucket;
-  t: number[];
-  combos: DuelsCombo[];
-  heatmap: { cells: (number | null)[]; p95: number };
-  untimed: number;
-  modes: DuelsModeRow[];
-  modesOthers: DuelsOthers;
-  maps: DuelsMapRow[];
-  mapsOthers: DuelsOthers;
-  totals: { matches: number };
-  since: string | null;
-  liveTail: boolean;
-  builtAt: number;
-};
-
-/** Il valore che le due barre dei filtri usano per «nessun filtro». */
 export const ALL = '__all__';
 
 /**
@@ -150,50 +150,6 @@ export function ranked<T extends { matches: number }>(
 // Ratings
 // ---------------------------------------------------------------------------
 
-export type DuelsModeScore = { id: number; name: string; count: number; average: number };
-
-export type DuelsRatings = {
-  v: number;
-  range: string;
-  mode: number | null;
-  total: number;
-  average: number;
-  withComment: number;
-  distribution: [number, number, number, number, number];
-  trend: { t: number[]; avg: (number | null)[]; n: (number | null)[] };
-  mostRated: DuelsModeScore | null;
-  bestRated: DuelsModeScore | null;
-  bestRatedMinSample: number;
-  since: string | null;
-  builtAt: number;
-};
-
-/** Come arriva sul filo: il pannello non parla di «role». */
-export type DialogTurn = { speaker: string; text: string };
-
-export type DuelsRatingRow = {
-  id: string;
-  at: number;
-  player: string | null;
-  playerUuid: string | null;
-  mode: number | null;
-  modeName: string | null;
-  rating: number;
-  comment: string | null;
-  dialog: DialogTurn[] | null;
-};
-
-export type DuelsRecent = {
-  v: number;
-  rows: DuelsRatingRow[];
-  cursor: string | null;
-  total: number | null;
-  pageSize: number;
-};
-
-export type CommentFilter = 'all' | 'with' | 'without';
-export type RecentSort = 'recent' | 'worst' | 'best';
-
 /**
  * La scala semaforica dei voti, DAI TOKEN.
  *
@@ -287,12 +243,12 @@ export type RatingsSearch = {
  */
 export function ratingsSearch(search: Record<string, unknown>): RatingsSearch {
   const out: RatingsSearch = {};
-  const mode = Number(search['mode']);
+  const mode = Number(search.mode);
   if (Number.isInteger(mode) && mode >= 0 && mode <= 32_767) out.mode = mode;
-  const q = search['q'];
+  const q = search.q;
   if (typeof q === 'string' && q.trim() !== '') out.q = q.slice(0, 120);
-  if (isCommentFilter(search['comment']) && search['comment'] !== 'all') out.comment = search['comment'];
-  if (isRecentSort(search['sort']) && search['sort'] !== 'recent') out.sort = search['sort'];
+  if (isCommentFilter(search.comment) && search.comment !== 'all') out.comment = search.comment;
+  if (isRecentSort(search.sort) && search.sort !== 'recent') out.sort = search.sort;
   return out;
 }
 

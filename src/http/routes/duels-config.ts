@@ -42,6 +42,7 @@ import {
   vocabulary,
 } from '#src/duels/config.ts';
 import type { DuelsMysql } from '#src/duels/mysql.ts';
+import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
@@ -96,13 +97,12 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
    * 503 e non 404: la rotta c'e', e' l'installazione che non ha la connessione
    * al gioco. Un 404 manderebbe a cercare un errore di instradamento.
    */
-  const gameDb = (reply: FastifyReply): DuelsMysql | null => {
+  const gameDb = (): DuelsMysql => {
     if (ctx.duelsMysql) return ctx.duelsMysql;
-    reply.code(503).send({
-      error: 'configurazione duels non disponibile',
-      detail: 'manca DUELS_MYSQL_URL: il pannello non ha una connessione al database del gioco',
-    });
-    return null;
+    throw new ServiceUnavailable(
+      'configurazione duels non disponibile',
+      'manca DUELS_MYSQL_URL: il pannello non ha una connessione al database del gioco',
+    );
   };
 
   // TRE LIVELLI DISTINTI, ed e il vocabolario del pannello applicato a queste
@@ -171,11 +171,11 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
         { err, privilege: missing.privilege, table: missing.table },
         'privilegio mancante sul database del gioco: la configurazione non e` scrivibile',
       );
-      return reply.code(503).send({
-        error: 'privilegi mancanti',
-        code: 'privilegi_mancanti',
-        detail: `Al pannello manca il privilegio ${missing.privilege} sulla tabella ${missing.table}.`,
-      });
+      throw new ServiceUnavailable(
+        'privilegi mancanti',
+        `Al pannello manca il privilegio ${missing.privilege} sulla tabella ${missing.table}.`,
+        'privilegi_mancanti',
+      );
     }
     if (err instanceof NotFound) {
       // 404 e non un salvataggio a vuoto: qualcuno ha eliminato la riga mentre
@@ -192,15 +192,13 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
 
   app.get('/api/duels/config/vocabulary', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
     canRead(request, 'duels_modes');
-    const my = gameDb(reply);
-    if (!my) return reply;
+    const my = gameDb();
     return reply.send(await vocabulary(my));
   });
 
   app.get('/api/duels/config/modes', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
     canRead(request, 'duels_modes');
-    const my = gameDb(reply);
-    if (!my) return reply;
+    const my = gameDb();
     return reply.send({ modes: await listModes(my) });
   });
 
@@ -209,8 +207,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       canRead(request, 'duels_modes');
-      const my = gameDb(reply);
-      if (!my) return reply;
+      const my = gameDb();
       const { id } = request.params as { id: number };
       const detail = await modeDetail(my, id);
       if (!detail) return reply.code(404).send({ error: 'modalita` non trovata' });
@@ -220,8 +217,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
 
   app.get('/api/duels/config/maps', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
     canRead(request, 'duels_maps');
-    const my = gameDb(reply);
-    if (!my) return reply;
+    const my = gameDb();
     return reply.send({ maps: await listMaps(my) });
   });
 
@@ -230,8 +226,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       canRead(request, 'duels_maps');
-      const my = gameDb(reply);
-      if (!my) return reply;
+      const my = gameDb();
       const { id } = request.params as { id: number };
       const detail = await mapDetail(my, id);
       if (!detail) return reply.code(404).send({ error: 'mappa non trovata' });
@@ -246,8 +241,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     { schema: { params: idParams, body: modeBody }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       canWrite(request, 'duels_modes');
-      const my = gameDb(reply);
-      if (!my) return reply;
+      const my = gameDb();
       const { id } = request.params as { id: number };
 
       try {
@@ -281,8 +275,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       canDelete(request, 'duels_modes');
-      const my = gameDb(reply);
-      if (!my) return reply;
+      const my = gameDb();
       const { id } = request.params as { id: number };
 
       try {
@@ -302,8 +295,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     { schema: { params: idParams, body: mapBody }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       canWrite(request, 'duels_maps');
-      const my = gameDb(reply);
-      if (!my) return reply;
+      const my = gameDb();
       const { id } = request.params as { id: number };
 
       try {
@@ -333,8 +325,7 @@ export function registerDuelsConfigRoutes(app: FastifyInstance, ctx: AppContext)
     { schema: { params: idParams }, preHandler: [requireAuth(ctx)] },
     async (request, reply) => {
       canDelete(request, 'duels_maps');
-      const my = gameDb(reply);
-      if (!my) return reply;
+      const my = gameDb();
       const { id } = request.params as { id: number };
 
       try {

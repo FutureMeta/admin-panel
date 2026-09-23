@@ -443,16 +443,44 @@ async function distinctPlayersByMode(
   from: Date,
   to: Date,
   only: ModeFilter,
+  seen: boolean,
 ): Promise<Map<string, number>> {
-  const res = await sql<{ mode_key: string; n: string }>`
-    SELECT sm.mode_key, count(DISTINCT pds.player_id)::bigint::text AS n
-      FROM stats.player_day_server pds
-      JOIN stats.v_server_mode sm USING (server_id)
-     WHERE pds.day >= stats.civil_day(${from}) AND pds.day < stats.civil_day(${to})
-       AND (${sql.lit(only.all)} OR sm.mode_key = ANY(${only.keys}::text[]))
-     GROUP BY sm.mode_key
-  `.execute(db);
+  const res = seen
+    ? await sql<{ mode_key: string; n: string }>`
+        SELECT sm.mode_key, count(DISTINCT ps.player_id)::bigint::text AS n
+          FROM stats.player_server_seen ps
+          JOIN stats.v_server_mode sm USING (server_id)
+         WHERE ps.last_day >= stats.civil_day(${from})
+           AND (${sql.lit(only.all)} OR sm.mode_key = ANY(${only.keys}::text[]))
+         GROUP BY sm.mode_key
+      `.execute(db)
+    : await sql<{ mode_key: string; n: string }>`
+        SELECT sm.mode_key, count(DISTINCT pds.player_id)::bigint::text AS n
+          FROM stats.player_day_server pds
+          JOIN stats.v_server_mode sm USING (server_id)
+         WHERE pds.day >= stats.civil_day(${from}) AND pds.day < stats.civil_day(${to})
+           AND (${sql.lit(only.all)} OR sm.mode_key = ANY(${only.keys}::text[]))
+         GROUP BY sm.mode_key
+      `.execute(db);
   return new Map(res.rows.map((r) => [r.mode_key, Number(r.n)]));
+}
+
+/**
+ * Se `player_seen` e `player_server_seen` possono rispondere al posto dei
+ * giorni (migration 025).
+ *
+ * Dicono «visto dal giorno X in poi», quindi valgono per una finestra che
+ * arriva fino a oggi — e solo se dopo oggi non c'e' niente. In produzione e'
+ * sempre cosi'; non lo e' per una costruzione con un `now` nel passato su
+ * dati che vanno oltre, e li' si torna a contare i giorni: piu' lento, esatto.
+ * Due sonde sull'indice, meno di un millisecondo.
+ */
+async function seenIsCurrent(db: Database, now: Date): Promise<boolean> {
+  const res = await sql<{ ok: boolean }>`
+    SELECT NOT EXISTS (SELECT 1 FROM stats.player_day WHERE day > stats.civil_day(${now}))
+       AND NOT EXISTS (SELECT 1 FROM stats.player_day_server WHERE day > stats.civil_day(${now})) AS ok
+  `.execute(db);
+  return res.rows[0]?.ok === true;
 }
 
 /** Le cadenze presenti nel periodo: due periodi con cadenze diverse non sono confrontabili sul massimo. */
@@ -520,12 +548,16 @@ async function uniquesRows(
  * «giocatori», non «giocatori-giorno», e le due differiscono di un fattore che
  * cresce con la lunghezza del periodo.
  */
-async function distinctPlayers(db: Database, from: Date, to: Date): Promise<number | null> {
-  const res = await sql<{ n: string }>`
-    SELECT count(DISTINCT player_id)::bigint::text AS n
-      FROM stats.player_day
-     WHERE day >= stats.civil_day(${from}) AND day < stats.civil_day(${to})
-  `.execute(db);
+async function distinctPlayers(db: Database, from: Date, to: Date, seen: boolean): Promise<number | null> {
+  const res = seen
+    ? await sql<{ n: string }>`
+        SELECT count(*)::bigint::text AS n FROM stats.player_seen WHERE last_day >= stats.civil_day(${from})
+      `.execute(db)
+    : await sql<{ n: string }>`
+        SELECT count(DISTINCT player_id)::bigint::text AS n
+          FROM stats.player_day
+         WHERE day >= stats.civil_day(${from}) AND day < stats.civil_day(${to})
+      `.execute(db);
   const n = res.rows[0]?.n;
   return n === undefined ? null : Number(n);
 }
@@ -572,26 +604,40 @@ async function geoRows(
   from: Date,
   now: Date,
   only: ModeFilter,
+  seen: boolean,
 ): Promise<Array<{ mode_key: string; cc: string | null; uniques: number }>> {
+  // UNA RIGA PER PERSONA, con il suo paese. Prima un paese NOTO, poi il
+  // giorno piu' recente: chi e' stato visto oggi in un momento in cui la
+  // geolocalizzazione era spenta non deve perdere il paese che aveva ieri.
+  //
+  // Da `player_seen` la regola e' gia' fatta: l'ultimo paese noto, se cade
+  // dentro la finestra. Dai giorni serve il DISTINCT ON, perche' su piu'
+  // giorni un giocatore ha piu' righe e la domanda e' «quante PERSONE».
+  const ranged = seen
+    ? sql`
+        SELECT player_id, CASE WHEN country_day >= stats.civil_day(${from}) THEN country END AS cc
+          FROM stats.player_seen
+         WHERE last_day >= stats.civil_day(${from})`
+    : sql`
+        SELECT DISTINCT ON (d.player_id) d.player_id, d.country AS cc
+          FROM stats.player_day d
+         WHERE d.day >= stats.civil_day(${from}) AND d.day <= stats.civil_day(${now})
+         ORDER BY d.player_id, (d.country IS NULL), d.day DESC`;
+  const played = seen
+    ? sql`
+        SELECT ps.server_id, ps.player_id FROM stats.player_server_seen ps
+         WHERE ps.last_day >= stats.civil_day(${from})`
+    : sql`
+        SELECT pds.server_id, pds.player_id FROM stats.player_day_server pds
+         WHERE pds.day >= stats.civil_day(${from}) AND pds.day <= stats.civil_day(${now})`;
   const res = await sql<{ mode_key: string; cc: string | null; uniques: string }>`
-    WITH ranged AS (
-      -- DISTINCT ON perche' su piu' giorni un giocatore ha piu' righe, e la
-      -- domanda e' «quante PERSONE», non «quante presenze giornaliere».
-      SELECT DISTINCT ON (d.player_id) d.player_id, d.country AS cc
-        FROM stats.player_day d
-       WHERE d.day >= stats.civil_day(${from}) AND d.day <= stats.civil_day(${now})
-       -- Prima un paese NOTO, poi il giorno piu' recente: chi e' stato visto
-       -- oggi in un momento in cui la geolocalizzazione era spenta non deve
-       -- perdere il paese che aveva ieri.
-       ORDER BY d.player_id, (d.country IS NULL), d.day DESC
-    ),
+    WITH ranged AS (${ranged}),
     per_mode AS (
-      SELECT DISTINCT sm.mode_key, pds.player_id
-        FROM stats.player_day_server pds
+      SELECT DISTINCT sm.mode_key, p.player_id
+        FROM (${played}) p
         JOIN stats.v_server_mode sm USING (server_id)
        WHERE ${sql.lit(only.wanted)}
          AND (${sql.lit(only.all)} OR sm.mode_key = ANY(${only.keys}::text[]))
-         AND pds.day >= stats.civil_day(${from}) AND pds.day <= stats.civil_day(${now})
     )
     SELECT '__network__' AS mode_key, t.cc, count(*)::bigint::text AS uniques
       FROM ranged t GROUP BY 1, 2
@@ -664,11 +710,19 @@ async function networkFacts(db: Database): Promise<NetworkFacts> {
  * vicina a «adesso» che i rollup sappiano dare. Il denominatore resta quello
  * della riga di rete, come ovunque: preso per modalita' darebbe il tempo in
  * cui quella modalita' era aperta, non quello osservato.
+ *
+ * L'ULTIMO BUCKET SI CHIEDE ALL'INDICE, sulla riga di rete. `max(bucket)`
+ * attraverso la vista — che porta il join con `v_server_mode` — leggeva TUTTA
+ * `rollup_5m` a ogni costruzione: 45 ms con un mese e mezzo di dati, 160 con
+ * un anno, sulla macchina di sviluppo — e la tabella tiene 400 giorni. `ORDER BY bucket DESC LIMIT 1` sulla riga 0
+ * scende la chiave primaria dalla fine e si ferma alla prima: 0,2 ms. Ogni
+ * bucket con righe di server ha anche la riga di rete, che viene dallo stesso
+ * ciclo, quindi il bucket e' lo stesso.
  */
 async function currentMix(db: Database): Promise<{ at: number; byMode: Record<string, number> } | null> {
   const res = await sql<{ mode_key: string; players: number | null; at: string }>`
     WITH latest AS (
-      SELECT max(bucket) AS b FROM stats.v_online_5m
+      SELECT bucket AS b FROM stats.v_online_5m WHERE server_id = 0 ORDER BY bucket DESC LIMIT 1
     ),
     src AS (
       SELECT v.mode_key, v.player_seconds, v.covered_s
@@ -716,7 +770,7 @@ async function serverMix(
 ): Promise<Map<string, { at: number; byServer: Record<string, number> }>> {
   const res = await sql<{ mode_key: string; server_key: string; players: number | null; at: string }>`
     WITH latest AS (
-      SELECT max(bucket) AS b FROM stats.v_online_5m
+      SELECT bucket AS b FROM stats.v_online_5m WHERE server_id = 0 ORDER BY bucket DESC LIMIT 1
     ),
     src AS (
       SELECT v.mode_key, v.server_key, v.player_seconds
@@ -1382,6 +1436,14 @@ export async function buildAll(
     }
   };
 
+  // CHI SI E' VISTO NEL PERIODO, da una riga per giocatore invece che da una
+  // per giocatore e giorno (vedi `seenIsCurrent`). I distinti del 24h no: la
+  // sua finestra finisce a un istante di oggi, e sui giorni civili quel conto
+  // si ferma a ieri, che `player_seen` — «visto dal giorno X in poi» — non sa
+  // dire. Per lui restano i giorni, che sono due.
+  const seen = await timed('seen', seenIsCurrent(db, now));
+  const seenDays = seen && ROME_YMD.format(w.curTo) > ROME_YMD.format(now);
+
   const [
     rows,
     heat,
@@ -1408,12 +1470,12 @@ export async function buildAll(
     timed('labels', modeLabels(db)),
     timed('uniques', uniquesRows(db, now, daysOf(range))),
     timed('uniquesMode', anyMode ? uniquesByModeRows(db, now, daysOf(range), only) : []),
-    timed('distinct', distinctPlayers(db, w.curFrom, w.curTo)),
+    timed('distinct', distinctPlayers(db, w.curFrom, w.curTo, seenDays)),
     timed(
       'distinctMode',
-      anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo, only) : new Map<string, number>(),
+      anyMode ? distinctPlayersByMode(db, w.curFrom, w.curTo, only, seenDays) : new Map<string, number>(),
     ),
-    timed('geo', geoRows(db, w.curFrom, now, only)),
+    timed('geo', geoRows(db, w.curFrom, now, only, seen)),
     timed('facts', networkFacts(db)),
     timed('current', currentMix(db)),
     timed('liveUniques', liveDayUniques(db, now)),

@@ -91,6 +91,9 @@ export function areaOfModule(key: string): string {
 /** Quanto in alto puo' arrivare un permesso. 0 = nessun accesso. */
 export type Level = 0 | 1 | 2 | 3;
 
+/** Il nome di ogni livello, nell'ordine del numero. */
+export const LEVEL_LABELS = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
+
 /**
  * Questa persona puo' aprire questa schermata?
  *

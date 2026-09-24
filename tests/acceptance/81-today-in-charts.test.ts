@@ -21,8 +21,9 @@ import type pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
 import { PgDuelsProvider } from '#src/duels/pg.ts';
+import { romeMidnight } from '#src/stats/calendar.ts';
 import { assertPayload, RANGES, type Range } from '#src/stats/contract.ts';
-import { buildAll, romeMidnight } from '#src/stats/read.ts';
+import { buildAll } from '#src/stats/read.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 
 let testDb: TestDatabase;

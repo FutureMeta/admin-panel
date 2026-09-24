@@ -22,8 +22,8 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { romeMidnight } from '#src/stats/calendar.ts';
 import type { OnlinePlayer } from '#src/stats/game-redis.ts';
-import { romeMidnight } from '#src/stats/read.ts';
 import { dailyClose } from '#src/stats/rollup.ts';
 import { SessionTracker } from '#src/stats/sessions.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';

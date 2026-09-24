@@ -22,7 +22,7 @@
 import { sql } from 'kysely';
 import type { Database } from '#src/db/pool.ts';
 // Lo stesso `romeMidnight` delle statistiche: ce n'e' uno solo apposta.
-import { romeMidnight as romeMidnightOf } from '#src/stats/read.ts';
+import { romeMidnight as romeMidnightOf } from '#src/stats/calendar.ts';
 import {
   BEST_RATED_MIN_SAMPLE,
   type DialogTurn,

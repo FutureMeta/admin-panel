@@ -45,8 +45,9 @@ import { ModeDetailPage } from './routes/mode-detail.tsx';
 import { ModeEntryPage } from './routes/mode-entry.tsx';
 import { OverviewPage } from './routes/overview.tsx';
 import { ForgotPasswordPage, ResetPasswordPage } from './routes/password.tsx';
+import { RolesPage } from './routes/roles.tsx';
 import { ForbiddenPage, NotFoundPage } from './routes/states.tsx';
-import { RolesPage, UsersPage } from './routes/users.tsx';
+import { UsersPage } from './routes/users.tsx';
 
 const queryClient = new QueryClient({
   defaultOptions: {

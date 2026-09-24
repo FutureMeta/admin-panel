@@ -20,8 +20,8 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
+import { romeMidnight, shiftDays } from '#src/stats/calendar.ts';
 import { type CycleRow, writeCycle } from '#src/stats/ingest.ts';
-import { romeMidnight, shiftDays } from '#src/stats/read.ts';
 import { runRollup } from '#src/stats/rollup.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 

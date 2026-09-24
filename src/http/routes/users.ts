@@ -1,106 +1,65 @@
-// Rotte utenti: elenco, dettaglio, ruoli, override, ban, sessioni, offboarding,
-// eliminazione.
-// §7, §8.10, SEC-07, SEC-08, SEC-31, SEC-36
+// Rotte utenti: elenco, dettaglio, ruoli concedibili. Il resto sta in
+// `users-access.ts` (ruoli, override) e `users-lifecycle.ts` (ban,
+// sessioni, offboarding, eliminazione).
+// §7, SEC-08, SEC-31
 
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Transaction } from 'kysely';
 import type { AppContext } from '#src/app-context.ts';
 import { AUDIT_ACTIONS } from '#src/audit/actions.ts';
-import { securityTransaction, writeAudit } from '#src/audit/log.ts';
-import { forgetSessions } from '#src/auth/auth.ts';
+import { writeAudit } from '#src/audit/log.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
-import {
-  canGrantLevel,
-  canGrantRole,
-  dominates,
-  grantableRoles,
-  isSystemRole,
-  leavesFewerThanTwoOwners,
-} from '#src/authz/dominance.ts';
-import { isLevel, isModuleKey } from '#src/authz/modules.ts';
+import { dominates, grantableRoles, leavesFewerThanTwoOwners } from '#src/authz/dominance.ts';
 import type { DB } from '#src/db/types.ts';
-import { revokeInvitesBy } from '#src/invites/service.ts';
 import { BadRequest, NotFound } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
 import { actorOf, auditActorOf, auditContextOf, requestIps } from '../request-context.ts';
 
-const banSchema = {
-  body: {
-    type: 'object',
-    required: ['reason'],
-    additionalProperties: false,
-    properties: {
-      reason: { type: 'string', minLength: 3, maxLength: 500 },
-      expiresAt: { type: 'string', format: 'date-time' },
-    },
-  },
-} as const;
-
-const roleSchema = {
-  body: {
-    type: 'object',
-    required: ['roleId'],
-    additionalProperties: false,
-    properties: { roleId: { type: 'integer', minimum: 1 } },
-  },
-} as const;
-
-const permissionSchema = {
-  body: {
-    type: 'object',
-    required: ['moduleKey', 'level'],
-    additionalProperties: false,
-    properties: {
-      moduleKey: { type: 'string', maxLength: 32 },
-      level: { type: 'integer', minimum: 0, maximum: 3 },
-    },
-  },
-} as const;
-
 /** §1.3 — vedi `leavesFewerThanTwoOwners`: dentro la transazione, sempre. */
-async function keepTwoOwners(trx: Transaction<DB>, leaving: string, roleId?: number): Promise<void> {
+export async function keepTwoOwners(trx: Transaction<DB>, leaving: string, roleId?: number): Promise<void> {
   if (await leavesFewerThanTwoOwners(trx, leaving, roleId)) throw new BadRequest('SERVONO_DUE_OWNER');
 }
 
-export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
-  /**
-   * SEC-08 — nessuna operazione su un altro utente senza dominanza.
-   *
-   * SEC-31 — se il bersaglio non esiste OPPURE l'attore non lo domina, la
-   * risposta e' la stessa: 404. Un 403 direbbe "questa persona esiste ma non
-   * puoi toccarla", che e' informazione che non deve uscire.
-   */
-  async function requireDominatedTarget(
-    request: FastifyRequest,
-    targetId: string,
-  ): Promise<{ id: string; email: string; name: string }> {
-    const actor = actorOf(request);
-    const target = await ctx.db
-      .selectFrom('auth.user')
-      .select(['id', 'email', 'name'])
-      .where('id', '=', targetId)
-      // Un utente eliminato non e' piu' un bersaglio: risponde 404 come uno
-      // che non e' mai esistito (SEC-31).
-      .where('deleted_at', 'is', null)
-      .executeTakeFirst();
-    if (!target) throw new NotFound();
-    if (!(await dominates(ctx.db, actor.userId, targetId))) {
-      await writeAudit(ctx.db, {
-        action: AUDIT_ACTIONS.roleGranted,
-        outcome: 'denied',
-        actor: auditActorOf(actor),
-        request: auditContextOf(request, requestIps(request)),
-        moduleKey: 'utenti',
-        targetType: 'user',
-        targetId,
-        targetLabel: target.email,
-        meta: { reason: 'dominanza', severita: 'alta' },
-      });
-      throw new NotFound();
-    }
-    return target;
+/**
+ * SEC-08 — nessuna operazione su un altro utente senza dominanza.
+ *
+ * SEC-31 — se il bersaglio non esiste OPPURE l'attore non lo domina, la
+ * risposta e' la stessa: 404. Un 403 direbbe "questa persona esiste ma non
+ * puoi toccarla", che e' informazione che non deve uscire.
+ */
+export async function requireDominatedTarget(
+  ctx: AppContext,
+  request: FastifyRequest,
+  targetId: string,
+): Promise<{ id: string; email: string; name: string }> {
+  const actor = actorOf(request);
+  const target = await ctx.db
+    .selectFrom('auth.user')
+    .select(['id', 'email', 'name'])
+    .where('id', '=', targetId)
+    // Un utente eliminato non e' piu' un bersaglio: risponde 404 come uno
+    // che non e' mai esistito (SEC-31).
+    .where('deleted_at', 'is', null)
+    .executeTakeFirst();
+  if (!target) throw new NotFound();
+  if (!(await dominates(ctx.db, actor.userId, targetId))) {
+    await writeAudit(ctx.db, {
+      action: AUDIT_ACTIONS.roleGranted,
+      outcome: 'denied',
+      actor: auditActorOf(actor),
+      request: auditContextOf(request, requestIps(request)),
+      moduleKey: 'utenti',
+      targetType: 'user',
+      targetId,
+      targetLabel: target.email,
+      meta: { reason: 'dominanza', severita: 'alta' },
+    });
+    throw new NotFound();
   }
+  return target;
+}
 
+export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
   // -------------------------------------------------------------------------
   // GET /api/users
   // -------------------------------------------------------------------------
@@ -256,497 +215,6 @@ export async function registerUserRoutes(app: FastifyInstance, ctx: AppContext):
       canManage: await dominates(ctx.db, actor.userId, id),
     });
   });
-
-  // -------------------------------------------------------------------------
-  // POST /api/users/:id/roles — assegnazione di un ruolo.
-  //
-  // SEC-07 (nessuno concede cio' che non ha) e SEC-08 (nessuno tocca chi lo
-  // domina) sono i due rifiuti possibili, e rispondono in modo diverso di
-  // proposito: il primo e' un 400 con codice, il secondo un 404 identico a
-  // quello di un utente inesistente — distinguerli direbbe a un admin quali
-  // account esistono sopra di lui (§14 test 9).
-  // -------------------------------------------------------------------------
-  app.post(
-    '/api/users/:id/roles',
-    { schema: roleSchema, preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'ruoli', 2);
-      const { id } = request.params as { id: string };
-      const { roleId } = request.body as { roleId: number };
-      const ips = requestIps(request);
-
-      // Nessuno si assegna un ruolo da solo. Un ruolo che oggi non da' niente
-      // — uno appena creato — e' concedibile da chiunque, e prenderselo
-      // vorrebbe dire ricevere in silenzio tutto cio' che gli verra' dato poi.
-      if (id === actor.userId) throw new BadRequest('AUTOASSEGNAZIONE');
-
-      const target = await requireDominatedTarget(request, id);
-
-      // SEC-09 — il ruolo di sistema non e' assegnabile via UI.
-      if (await isSystemRole(ctx.db, roleId)) throw new BadRequest('RUOLO_NON_ASSEGNABILE');
-      // SEC-07 — nessuno concede cio' che non ha.
-      if (!(await canGrantRole(ctx.db, actor.userId, roleId))) {
-        await writeAudit(ctx.db, {
-          action: AUDIT_ACTIONS.roleGranted,
-          outcome: 'denied',
-          actor: auditActorOf(actor),
-          request: auditContextOf(request, ips),
-          moduleKey: 'ruoli',
-          targetType: 'user',
-          targetId: id,
-          targetLabel: target.email,
-          meta: { roleId, reason: 'concedibilita`', severita: 'alta' },
-        });
-        throw new BadRequest('RUOLO_NON_CONCEDIBILE');
-      }
-
-      await securityTransaction(ctx.db, async (trx) => {
-        // FOR SHARE, e poi di nuovo la concedibilita': una matrice alzata
-        // mentre si assegna finisce prima o dopo, mai in mezzo al controllo.
-        const role = await trx
-          .selectFrom('auth.roles')
-          .select(['key', 'name'])
-          .where('id', '=', roleId)
-          .forShare()
-          .executeTakeFirst();
-        if (!role) throw new NotFound();
-        if (!(await canGrantRole(trx, actor.userId, roleId))) throw new BadRequest('RUOLO_NON_CONCEDIBILE');
-
-        await trx
-          .insertInto('auth.user_roles')
-          .values({ user_id: id, role_id: roleId, granted_by: actor.userId })
-          .onConflict((oc) => oc.columns(['user_id', 'role_id']).doNothing())
-          .execute();
-
-        return {
-          result: undefined,
-          events: {
-            action: AUDIT_ACTIONS.roleGranted,
-            outcome: 'success' as const,
-            actor: auditActorOf(actor),
-            request: auditContextOf(request, ips),
-            moduleKey: 'ruoli',
-            targetType: 'user',
-            targetId: id,
-            targetLabel: target.email,
-            after: { role: role.key },
-          },
-        };
-      });
-
-      // Dopo il COMMIT: lo snapshot va riallineato, altrimenti il middleware
-      // continuerebbe a decidere sui permessi vecchi fino al prossimo miss.
-      await ctx.store.invalidate(id);
-      return reply.send({ ok: true });
-    },
-  );
-
-  app.delete('/api/users/:id/roles/:roleId', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
-    const actor = actorOf(request);
-    requireLevel(actor, 'ruoli', 2);
-    const { id, roleId } = request.params as { id: string; roleId: string };
-    const ips = requestIps(request);
-    const target = await requireDominatedTarget(request, id);
-
-    await securityTransaction(ctx.db, async (trx) => {
-      await keepTwoOwners(trx, id, Number(roleId));
-      const removed = await trx
-        .deleteFrom('auth.user_roles')
-        .where('user_id', '=', id)
-        .where('role_id', '=', Number(roleId))
-        .returning('role_id')
-        .executeTakeFirst();
-      if (!removed) throw new NotFound();
-
-      return {
-        result: undefined,
-        events: {
-          action: AUDIT_ACTIONS.roleRevoked,
-          outcome: 'success' as const,
-          actor: auditActorOf(actor),
-          request: auditContextOf(request, ips),
-          moduleKey: 'ruoli',
-          targetType: 'user',
-          targetId: id,
-          targetLabel: target.email,
-          before: { roleId: Number(roleId) },
-        },
-      };
-    });
-
-    await ctx.store.invalidate(id);
-    return reply.send({ ok: true });
-  });
-
-  // -------------------------------------------------------------------------
-  // PUT /api/users/:id/permissions — override individuale, SOLO in aumento
-  // -------------------------------------------------------------------------
-  app.put(
-    '/api/users/:id/permissions',
-    { schema: permissionSchema, preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'ruoli', 2);
-      const { id } = request.params as { id: string };
-      const { moduleKey, level } = request.body as { moduleKey: string; level: number };
-      const ips = requestIps(request);
-
-      // SEC-38 — lo schema ha gia' validato tipo e intervallo; qui si
-      // rivalida contro la fonte di verita', perche' lo schema non sa quali
-      // moduli esistono davvero.
-      if (!isModuleKey(moduleKey) || !isLevel(level)) throw new BadRequest('MODULO_O_LIVELLO_NON_VALIDO');
-      // Nessuno tocca i propri override, come nessuno si assegna un ruolo. Qui
-      // non si puo' salire — non si concede piu' di quanto si ha — ma si puo'
-      // COPIARE: trasformare in override individuali i livelli che oggi arrivano
-      // dal ruolo, e tenerli quando il ruolo viene tolto o la matrice abbassata.
-      if (id === actor.userId) throw new BadRequest('AUTOASSEGNAZIONE');
-
-      const target = await requireDominatedTarget(request, id);
-      const moduleRow = await ctx.db
-        .selectFrom('auth.modules')
-        .select('id')
-        .where('key', '=', moduleKey)
-        .executeTakeFirst();
-      if (!moduleRow) throw new NotFound();
-
-      // SEC-07 — nessuno concede un livello superiore al proprio.
-      if (!(await canGrantLevel(ctx.db, actor.userId, moduleRow.id, level))) {
-        throw new BadRequest('LIVELLO_NON_CONCEDIBILE');
-      }
-
-      await securityTransaction(ctx.db, async (trx) => {
-        const before = await trx
-          .selectFrom('auth.user_permissions')
-          .select('level')
-          .where('user_id', '=', id)
-          .where('module_id', '=', moduleRow.id)
-          .executeTakeFirst();
-
-        if (level === 0) {
-          await trx
-            .deleteFrom('auth.user_permissions')
-            .where('user_id', '=', id)
-            .where('module_id', '=', moduleRow.id)
-            .execute();
-        } else {
-          await trx
-            .insertInto('auth.user_permissions')
-            .values({ user_id: id, module_id: moduleRow.id, level, granted_by: actor.userId })
-            .onConflict((oc) =>
-              oc.columns(['user_id', 'module_id']).doUpdateSet({ level, granted_by: actor.userId }),
-            )
-            .execute();
-        }
-
-        return {
-          result: undefined,
-          events: {
-            action: level === 0 ? AUDIT_ACTIONS.permissionRevoked : AUDIT_ACTIONS.permissionGranted,
-            outcome: 'success' as const,
-            actor: auditActorOf(actor),
-            request: auditContextOf(request, ips),
-            moduleKey,
-            targetType: 'user',
-            targetId: id,
-            targetLabel: target.email,
-            before: before ? { level: before.level } : null,
-            after: { level },
-          },
-        };
-      });
-
-      await ctx.store.invalidate(id);
-      return reply.send({ ok: true });
-    },
-  );
-
-  // -------------------------------------------------------------------------
-  // POST /api/users/:id/ban — SEC-08 + step-up
-  // -------------------------------------------------------------------------
-  app.post(
-    '/api/users/:id/ban',
-    { schema: banSchema, preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'utenti', 3);
-      const { id } = request.params as { id: string };
-      const body = request.body as { reason: string; expiresAt?: string };
-      const ips = requestIps(request);
-
-      if (id === actor.userId) throw new BadRequest('NON_PUOI_BANNARE_TE_STESSO');
-      const target = await requireDominatedTarget(request, id);
-
-      const tokens = await securityTransaction(ctx.db, async (trx) => {
-        await keepTwoOwners(trx, id);
-        await trx
-          .updateTable('auth.user')
-          .set({
-            banned: true,
-            ban_reason: body.reason,
-            ban_expires: body.expiresAt ? new Date(body.expiresAt) : null,
-            sessions_valid_from: new Date(),
-          })
-          .where('id', '=', id)
-          .execute();
-        const sessions = await trx
-          .deleteFrom('auth.session')
-          .where('userId', '=', id)
-          .returning('token')
-          .execute();
-
-        return {
-          result: sessions.map((s) => s.token),
-          events: {
-            action: AUDIT_ACTIONS.userBanned,
-            outcome: 'success' as const,
-            actor: auditActorOf(actor),
-            request: auditContextOf(request, ips),
-            moduleKey: 'utenti',
-            targetType: 'user',
-            targetId: id,
-            targetLabel: target.email,
-            after: { reason: body.reason, expiresAt: body.expiresAt ?? null },
-          },
-        };
-      });
-
-      // test 3 — il ban ha effetto alla richiesta successiva ENTRO 1 SECONDO
-      // perche' lo snapshot viene riscritto qui, subito dopo il COMMIT, e il
-      // middleware lo rilegge a ogni richiesta.
-      await forgetSessions(ctx.redis, tokens);
-      await ctx.store.invalidate(id);
-      return reply.send({ ok: true });
-    },
-  );
-
-  app.post('/api/users/:id/unban', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
-    const actor = actorOf(request);
-    requireLevel(actor, 'utenti', 3);
-    const { id } = request.params as { id: string };
-    const ips = requestIps(request);
-    const target = await requireDominatedTarget(request, id);
-
-    await securityTransaction(ctx.db, async (trx) => {
-      await trx
-        .updateTable('auth.user')
-        .set({ banned: false, ban_reason: null, ban_expires: null })
-        .where('id', '=', id)
-        .execute();
-      return {
-        result: undefined,
-        events: {
-          action: AUDIT_ACTIONS.userUnbanned,
-          outcome: 'success' as const,
-          actor: auditActorOf(actor),
-          request: auditContextOf(request, ips),
-          moduleKey: 'utenti',
-          targetType: 'user',
-          targetId: id,
-          targetLabel: target.email,
-        },
-      };
-    });
-
-    await ctx.store.invalidate(id);
-    return reply.send({ ok: true });
-  });
-
-  // -------------------------------------------------------------------------
-  // POST /api/users/:id/revoke-sessions
-  // -------------------------------------------------------------------------
-  app.post('/api/users/:id/revoke-sessions', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
-    const actor = actorOf(request);
-    requireLevel(actor, 'sessioni', 2);
-    const { id } = request.params as { id: string };
-    const ips = requestIps(request);
-    const target = await requireDominatedTarget(request, id);
-
-    const revoked = await ctx.authz.revokeAllSessions(id);
-    await writeAudit(ctx.db, {
-      action: AUDIT_ACTIONS.sessionsRevokedAll,
-      outcome: 'success',
-      actor: auditActorOf(actor),
-      request: auditContextOf(request, ips),
-      moduleKey: 'sessioni',
-      targetType: 'user',
-      targetId: id,
-      targetLabel: target.email,
-      meta: { revoked },
-    });
-    return reply.send({ revoked });
-  });
-
-  // -------------------------------------------------------------------------
-  // POST /api/users/:id/offboard — §8.10, operazione unica in UNA transazione
-  // -------------------------------------------------------------------------
-  app.post(
-    '/api/users/:id/offboard',
-    { schema: banSchema, preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'utenti', 3);
-      const { id } = request.params as { id: string };
-      const body = request.body as { reason: string };
-      const ips = requestIps(request);
-
-      if (id === actor.userId) throw new BadRequest('NON_PUOI_OFFBOARDARE_TE_STESSO');
-      const target = await requireDominatedTarget(request, id);
-
-      const { summary, tokens } = await securityTransaction(ctx.db, async (trx) => {
-        await keepTwoOwners(trx, id);
-        // 1-2. ban, disattivazione, logout globale
-        await trx
-          .updateTable('auth.user')
-          .set({
-            banned: true,
-            status: 'disabled',
-            ban_reason: body.reason,
-            sessions_valid_from: new Date(),
-          })
-          .where('id', '=', id)
-          .execute();
-        const sessions = await trx
-          .deleteFrom('auth.session')
-          .where('userId', '=', id)
-          .returning('token')
-          .execute();
-
-        // 3. il punto che si dimentica sempre quando lo si fa a mano: gli
-        //    inviti pendenti EMESSI da quella persona restano validi, e
-        //    chiunque li abbia ricevuti entra dopo che lei e' uscita.
-        const invites = await revokeInvitesBy(trx, id, actor.userId);
-
-        // 4-5. permessi via, versione alzata
-        await trx.deleteFrom('auth.user_roles').where('user_id', '=', id).execute();
-        await trx.deleteFrom('auth.user_permissions').where('user_id', '=', id).execute();
-
-        return {
-          result: {
-            summary: { sessions: sessions.length, invites },
-            tokens: sessions.map((s) => s.token),
-          },
-          events: {
-            action: AUDIT_ACTIONS.userOffboarded,
-            outcome: 'success' as const,
-            actor: auditActorOf(actor),
-            request: auditContextOf(request, ips),
-            moduleKey: 'utenti',
-            targetType: 'user',
-            targetId: id,
-            targetLabel: target.email,
-            after: { reason: body.reason, sessioniRevocate: sessions.length, invitiRevocati: invites },
-          },
-        };
-      });
-
-      await forgetSessions(ctx.redis, tokens);
-      await ctx.store.invalidate(id);
-      return reply.send(summary);
-    },
-  );
-
-  // -------------------------------------------------------------------------
-  // POST /api/users/:id/delete — eliminazione. Step-up, dominanza, §8.10
-  //
-  // Fa tutto quello che fa l'offboarding, piu' la distruzione delle
-  // credenziali: password, secondo fattore, codici di recupero, passkey. Da
-  // qui non si torna indietro, ed e' la differenza che giustifica due
-  // operazioni invece di una.
-  //
-  // La riga di auth."user" resta. Non e' un ripiego: `auth.invitation.
-  // invited_by` e' NOT NULL verso quella tabella, e un DELETE vero
-  // richiederebbe di rendere nullabile «chi ha fatto entrare chi» — che in un
-  // pannello ad accesso solo su invito e' la storia da non perdere. La riga
-  // sopravvive come identita' per il registro, e sparisce dall'elenco.
-  // -------------------------------------------------------------------------
-  app.post(
-    '/api/users/:id/delete',
-    { schema: banSchema, preHandler: [requireAuth(ctx)] },
-    async (request, reply) => {
-      const actor = actorOf(request);
-      requireLevel(actor, 'utenti', 3);
-      const { id } = request.params as { id: string };
-      const body = request.body as { reason: string };
-      const ips = requestIps(request);
-
-      if (id === actor.userId) throw new BadRequest('NON_PUOI_ELIMINARE_TE_STESSO');
-      const target = await requireDominatedTarget(request, id);
-
-      const { summary, tokens } = await securityTransaction(ctx.db, async (trx) => {
-        await keepTwoOwners(trx, id);
-        const before = await trx
-          .selectFrom('auth.user')
-          .select(['email', 'name', 'status'])
-          .where('id', '=', id)
-          .where('deleted_at', 'is', null)
-          .executeTakeFirst();
-        // Gia' eliminato: il trigger lo impedirebbe comunque, ma un 404 e'
-        // una risposta piu' onesta di un errore del database.
-        if (!before) throw new NotFound();
-
-        await trx
-          .updateTable('auth.user')
-          .set({
-            deleted_at: new Date(),
-            banned: true,
-            status: 'disabled',
-            ban_reason: body.reason,
-            twoFactorEnabled: false,
-            sessions_valid_from: new Date(),
-            // L'indirizzo torna libero: senza, quella casella resterebbe
-            // bruciata per sempre — la persona non potrebbe rientrare e
-            // nessun altro potrebbe usarla. L'email vera resta nel registro,
-            // qui sotto in `before`.
-            email: `deleted+${id}@invalid.local`,
-            emailVerified: false,
-          })
-          .where('id', '=', id)
-          .execute();
-
-        const sessions = await trx
-          .deleteFrom('auth.session')
-          .where('userId', '=', id)
-          .returning('token')
-          .execute();
-        const invites = await revokeInvitesBy(trx, id, actor.userId);
-
-        await trx.deleteFrom('auth.user_roles').where('user_id', '=', id).execute();
-        await trx.deleteFrom('auth.user_permissions').where('user_id', '=', id).execute();
-
-        // Le credenziali. E' questo che rende l'operazione definitiva.
-        await trx.deleteFrom('auth.account').where('userId', '=', id).execute();
-        await trx.deleteFrom('auth.twoFactor').where('userId', '=', id).execute();
-        await trx.deleteFrom('auth.recovery_code').where('user_id', '=', id).execute();
-        await trx.deleteFrom('auth.webauthn_credential').where('user_id', '=', id).execute();
-        await trx.deleteFrom('auth.verification').where('identifier', '=', `reset:${id}`).execute();
-
-        return {
-          result: {
-            summary: { sessions: sessions.length, invites },
-            tokens: sessions.map((s) => s.token),
-          },
-          events: {
-            action: AUDIT_ACTIONS.userDeleted,
-            outcome: 'success' as const,
-            actor: auditActorOf(actor),
-            request: auditContextOf(request, ips),
-            moduleKey: 'utenti',
-            targetType: 'user',
-            targetId: id,
-            targetLabel: target.email,
-            // Chi era, scritto nel registro prima di sparire dall'elenco.
-            before: { email: before.email, name: before.name, status: before.status },
-            after: { reason: body.reason, sessioniRevocate: sessions.length, invitiRevocati: invites },
-          },
-        };
-      });
-
-      await forgetSessions(ctx.redis, tokens);
-      await ctx.store.invalidate(id);
-      return reply.send(summary);
-    },
-  );
 
   // -------------------------------------------------------------------------
   // GET /api/users/grantable-roles — alimenta la UI dell'invito

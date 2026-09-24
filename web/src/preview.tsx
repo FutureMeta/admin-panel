@@ -34,7 +34,8 @@ import { LangKeysPage } from './routes/lang-keys.tsx';
 import { LangLanguagesPage } from './routes/lang-languages.tsx';
 import { LangOverviewPage } from './routes/lang-overview.tsx';
 import { LangTranslatePage } from './routes/lang-translate.tsx';
-import { RolesPage, UsersPage } from './routes/users.tsx';
+import { RolesPage } from './routes/roles.tsx';
+import { UsersPage } from './routes/users.tsx';
 
 const screen = new URLSearchParams(window.location.search).get('screen') ?? 'utenti';
 

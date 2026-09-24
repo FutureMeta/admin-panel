@@ -15,7 +15,7 @@
 import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
-import { romeMidnight } from '#src/stats/read.ts';
+import { romeMidnight } from '#src/stats/calendar.ts';
 import { CHECK_NAMES, runSelfcheck } from '#src/stats/selfcheck.ts';
 import { connect, createTestDatabase, type TestDatabase } from '#tests/support/postgres.ts';
 

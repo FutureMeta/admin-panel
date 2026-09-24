@@ -30,6 +30,7 @@ import { HexField } from '../components/hex-field.tsx';
 import { TotpSetup } from '../components/totp-setup.tsx';
 import { Button, Field, Notice, StrengthMeter } from '../components/ui.tsx';
 import { ApiError, api } from '../lib/api.ts';
+import { LEVEL_LABELS } from '../lib/modules.ts';
 
 type OnboardingModule = { key: string; name: string; level: number };
 type Onboarding = {
@@ -42,7 +43,6 @@ type Onboarding = {
 };
 type Phase = 'caricamento' | 'scaduto' | 'attiva';
 
-const LEVEL_LABEL = ['Nessuno', 'Lettura', 'Scrittura', 'Gestione'] as const;
 const LEVEL_TONE = [
   { color: 'var(--tx-muted)', soft: 'var(--s-inset)' },
   { color: 'var(--info)', soft: 'var(--info-soft)' },
@@ -293,7 +293,7 @@ export function AcceptPage() {
                         color: tone.color,
                       }}
                     >
-                      {LEVEL_LABEL[m.level] ?? m.level}
+                      {LEVEL_LABELS[m.level] ?? m.level}
                     </span>
                   </div>
                 );

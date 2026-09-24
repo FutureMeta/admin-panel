@@ -107,6 +107,13 @@ export const KEYS = {
    * sessione revocata va tolta anche da qui (vedi `forgetSessions`).
    */
   authSession: (token: string) => `${AUTH_KEY_PREFIX}${token}`,
-  /** Rate limit: il prefisso lo gestisce rate-limiter-flexible. */
-  rateLimit: (scope: string, key: string) => `rl:${scope}:${key}`,
+  /** La sessione di onboarding di un invito, fra il link e la 2FA. */
+  onboarding: (token: string) => `onb:${token}`,
+  /** Una conversazione con Svetlana. L'utente nella chiave: vedi `src/assistant/store.ts`. */
+  assistantConversation: (userId: string, conversationId: string) =>
+    `svetlana:conv:${userId}:${conversationId}`,
+  /** La spesa AI del mese (assistente e Lingue insieme), in dollari. */
+  assistantSpend: (month: string) => `svetlana:spend:${month}`,
+  // `rl:<limite>:*` — le scrive rate-limiter-flexible, con il prefisso dato
+  // in `src/ratelimit/limiter.ts`.
 } as const;

@@ -73,7 +73,7 @@ export function inviteEmail(input: InviteEmailInput): EmailTemplate {
          ? `<div style="margin-top:16px;padding-top:14px;border-top:1px solid ${EMAIL_COLORS.border};">${boxLabel('Moduli inclusi')}</div>
             <div style="padding-top:6px;">${rows(input.modules.map((m) => ({ label: m.name, value: m.level })))}</div>`
          : ''
-}`,
+     }`,
   );
 
   const html = render({

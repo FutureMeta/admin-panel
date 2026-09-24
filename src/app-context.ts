@@ -16,7 +16,6 @@ import { PasswordService } from '#src/auth/password.ts';
 import { HashSemaphore } from '#src/auth/semaphore.ts';
 import { TotpReplayGuard } from '#src/auth/totp.ts';
 import { AuthzStore } from '#src/authz/store.ts';
-import type { CacheService } from '#src/cache/service.ts';
 import type { Env } from '#src/config/env.ts';
 import { type DerivedKeys, deriveKeys, pepperRing } from '#src/crypto/keys.ts';
 import { createKysely, createPool, type Database } from '#src/db/pool.ts';
@@ -128,8 +127,6 @@ export type AppContext = {
   assistant: AssistantRuntime | null;
   totpGuard: TotpReplayGuard;
   mailer: Mailer;
-  /** Fase 2: la cache vera si scrive dietro questa interfaccia (§16.4). */
-  cache: CacheService;
   indexHtml: IndexHtml;
   startedAt: Date;
   /** Diventa true su SIGTERM: /health/ready risponde 503 immediatamente. */
@@ -447,10 +444,6 @@ export async function buildContext(opts: BuildOptions): Promise<AppContext> {
     assistant,
     totpGuard,
     mailer: opts.mailer,
-    // La cache generica del §16.4 e quella delle statistiche sono lo STESSO
-    // oggetto: l'interfaccia era stata scritta in fase 1 esattamente perche'
-    // la fase 2 potesse infilarcisi dentro senza toccare i chiamanti.
-    cache: statsCache,
     indexHtml: opts.indexHtml,
     startedAt: new Date(),
     shuttingDown,

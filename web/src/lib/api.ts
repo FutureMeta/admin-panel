@@ -21,7 +21,7 @@ export class ApiError extends Error {
     this.code = code;
   }
 
-  /** Serve uno step-up: il chiamante apre la challenge TOTP e ritenta. */
+  /** Nessuna sessione valida: scaduta, revocata o mai aperta. Si torna al login. */
   get isUnauthorized(): boolean {
     return this.status === 401;
   }

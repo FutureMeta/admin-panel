@@ -20,6 +20,7 @@ import {
   hashInviteToken,
   ONBOARDING_TTL_SECONDS,
 } from '#src/invites/service.ts';
+import { KEYS } from '#src/redis/client.ts';
 import { issueCsrfCookie } from '../csrf.ts';
 import { BadRequest, Conflict, Unauthorized } from '../errors.ts';
 import { auditContextOf, rateLimitIpKey, requestIps } from '../request-context.ts';
@@ -59,7 +60,7 @@ const completeSchema = {
 } as const;
 
 export async function registerOnboardingRoutes(app: FastifyInstance, ctx: AppContext): Promise<void> {
-  const onboardingKey = (token: string) => `onb:${token}`;
+  const onboardingKey = KEYS.onboarding;
 
   async function readOnboarding(request: FastifyRequest): Promise<{ token: string; state: OnboardingState }> {
     const token = request.cookies[ONBOARDING_COOKIE];

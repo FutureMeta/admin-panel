@@ -18,6 +18,7 @@
 
 import type { Anthropic } from '@anthropic-ai/sdk';
 import type { Redis } from 'ioredis';
+import { KEYS } from '#src/redis/client.ts';
 import { CONVERSATION_TTL_SECONDS, MAX_STORED_TURNS } from './config.ts';
 
 export type Turn = Anthropic.Beta.Messages.BetaMessageParam;
@@ -30,9 +31,7 @@ export type Turn = Anthropic.Beta.Messages.BetaMessageParam;
  * sarebbe un identificativo segreto a proteggere la conversazione di qualcun
  * altro, che e' una difesa sola e per giunta indovinabile.
  */
-function key(userId: string, conversationId: string): string {
-  return `svetlana:conv:${userId}:${conversationId}`;
-}
+const key = KEYS.assistantConversation;
 
 export class ConversationStore {
   readonly #redis: Redis;
@@ -120,7 +119,7 @@ export class SpendLedger {
   }
 
   async spentThisMonth(now: Date): Promise<number> {
-    const raw = await this.#redis.get(`svetlana:spend:${monthKey(now)}`);
+    const raw = await this.#redis.get(KEYS.assistantSpend(monthKey(now)));
     const value = raw === null ? 0 : Number.parseFloat(raw);
     this.#lastSeen = Number.isFinite(value) ? value : 0;
     return this.#lastSeen;
@@ -141,7 +140,7 @@ export class SpendLedger {
    */
   async add(now: Date, usd: number): Promise<void> {
     if (usd <= 0) return;
-    const k = `svetlana:spend:${monthKey(now)}`;
+    const k = KEYS.assistantSpend(monthKey(now));
     const total = await this.#redis.incrbyfloat(k, usd);
     await this.#redis.expire(k, 70 * 24 * 60 * 60);
     const value = Number.parseFloat(String(total));

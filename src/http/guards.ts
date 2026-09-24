@@ -3,14 +3,16 @@
 // Sono l'unico modo in cui una rotta ottiene un AuthzContext. Una rotta che
 // dimentica `requireAuth` non riceve un attore parziale: riceve un'eccezione
 // alla prima chiamata di `actorOf()`.
+//
+// Nessuna decorazione globale: le guardie si applicano per rotta, cosi' una
+// rotta non protetta si vede leggendo la rotta e non un file lontano. Il
+// livello richiesto lo controlla l'handler, e `check-guards` fallisce se una
+// rotta autenticata non lo fa.
 
-import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
-import { require as requireLevel } from '#src/authz/can.ts';
-import type { ModuleKey, RequiredLevel } from '#src/authz/modules.ts';
 import { issueCsrfCookie } from './csrf.ts';
-import { Unauthorized } from './errors.ts';
-import { actorOf, rateLimitIpKey, requestIps, setAuthz } from './request-context.ts';
+import { rateLimitIpKey, requestIps, setAuthz } from './request-context.ts';
 
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
@@ -54,13 +56,6 @@ export function requireAuth(ctx: AppContext): PreHandler {
   };
 }
 
-/** `can(actor, module, level)`, applicato prima dell'handler. */
-export function requirePermission(module: ModuleKey, level: RequiredLevel): PreHandler {
-  return async (request) => {
-    requireLevel(actorOf(request), module, level);
-  };
-}
-
 /*
  * LO STEP-UP NON C'E' PIU'. §8.5, rimosso su richiesta del committente.
  *
@@ -78,22 +73,3 @@ export function requirePermission(module: ModuleKey, level: RequiredLevel): PreH
  * Se un giorno lo si rimette, il posto e' questo e l'elenco delle operazioni
  * va tenuto qui dentro: sparso nelle rotte non sarebbe un elenco.
  */
-
-/** Sessione di onboarding (aal=0): solo per il percorso invito → enrollment. */
-export function requireOnboarding(ctx: AppContext): PreHandler {
-  return async (request) => {
-    const headers = new Headers();
-    for (const [k, v] of Object.entries(request.headers)) {
-      if (typeof v === 'string') headers.set(k, v);
-    }
-    const raw = await ctx.auth.api.getSession({ headers });
-    if (!raw?.session) throw new Unauthorized();
-    // La sessione di onboarding NON diventa un AuthzContext: non ha permessi,
-    // e non deve poterne acquisire per errore di plumbing.
-  };
-}
-
-export function registerGuards(_app: FastifyInstance): void {
-  // Nessuna decorazione globale: le guardie si applicano per rotta, cosi' una
-  // rotta non protetta e' visibile leggendo la rotta e non un file lontano.
-}

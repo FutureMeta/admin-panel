@@ -101,7 +101,7 @@ export async function registerAuditRoutes(app: FastifyInstance, ctx: AppContext)
     for (const key of Object.keys(FILTERABLE) as FilterKey[]) {
       const value = q[key];
       if (typeof value === 'string' && value.length > 0) {
-        // La colonna viene from FILTERABLE, cioe' from una costante di questo
+        // La colonna viene da FILTERABLE, cioe' da una costante di questo
         // file. Il valore e' un parametro. Nessuna concatenazione.
         query = query.where(FILTERABLE[key], '=', value);
       }
@@ -148,9 +148,9 @@ export async function registerAuditRoutes(app: FastifyInstance, ctx: AppContext)
   // -------------------------------------------------------------------------
   // GET /api/audit/actions — vocabolario per i filtri della UI.
   //
-  // Serve dal catalogo in codice, non from un DISTINCT sulla tabella piu' grande
+  // Serve dal catalogo in codice, non da un DISTINCT sulla tabella piu' grande
   // del sistema: un DISTINCT su audit_log e' una scansione completa mascherata
-  // from menu to tendina.
+  // da menu a tendina.
   // -------------------------------------------------------------------------
   app.get('/api/audit/actions', { preHandler: [requireAuth(ctx)] }, async (request, reply) => {
     requireLevel(actorOf(request), 'audit', 1);

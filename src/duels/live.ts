@@ -36,7 +36,8 @@
 // costa una `SCAN` in piu' e si paga solo quando qualcuno apre una partita.
 
 import type { Redis } from 'ioredis';
-import type { DuelsMysql } from './mysql.ts';
+import { sql } from 'kysely';
+import type { Database } from '#src/db/pool.ts';
 import type { LiveMatch, LiveMode, LiveRosterPlayer, LiveServer, LiveSnapshot } from './payload.ts';
 
 /** Le chiavi del plugin. Scritte da lui: qui si leggono e basta. */
@@ -265,28 +266,44 @@ async function readModes(
     .sort((a, b) => b.active - a.active || b.queued - a.queued || a.name.localeCompare(b.name));
 }
 
-/**
- * Il catalogo delle modalita' e delle mappe, da MySQL.
- *
- * SENZA CATALOGO LA SCHERMATA VIVE LO STESSO. Redis conosce solo gli id
- * numerici; i nomi stanno nel database del gioco, che e' un'altra macchina e
- * puo' non rispondere. In quel caso i nomi restano `null` e la schermata mostra
- * l'id — che e' meno leggibile ma vero. Far fallire tutta la pagina perche' un
- * nome non si e' potuto tradurre sarebbe scambiare un'etichetta per un dato.
- */
-async function readCatalogue(my: DuelsMysql | null): Promise<{
+/** I nomi che Redis non ha: modalita' (con il contesto) e mappe, per id. */
+export type LiveCatalogue = {
   modes: Map<number, { name: string; context: string }>;
   maps: Map<number, string>;
-}> {
+};
+
+/**
+ * Il catalogo delle modalita' e delle mappe, dalla copia su Postgres.
+ *
+ * NON DAL DATABASE DEL GIOCO. Ci passava a ogni aggiornamento di ogni vista
+ * aperta — due query ogni cinque secondi, su un pool da quattro connessioni
+ * diviso con l'ingestione: con tre persone sulla schermata le code si
+ * riempivano e i nomi diventavano id. La copia la tiene l'ingestione, ogni
+ * trenta secondi: un nome cambiato si vede mezzo minuto dopo, che per
+ * un'etichetta va benissimo.
+ *
+ * SENZA CATALOGO LA SCHERMATA VIVE LO STESSO. Redis conosce solo gli id
+ * numerici; se i nomi non si possono leggere restano `null` e la schermata
+ * mostra l'id — che e' meno leggibile ma vero. Far fallire tutta la pagina
+ * perche' un nome non si e' potuto tradurre sarebbe scambiare un'etichetta per
+ * un dato.
+ */
+export async function readLiveCatalogue(stats: Database | null): Promise<LiveCatalogue> {
   const modes = new Map<number, { name: string; context: string }>();
   const maps = new Map<number, string>();
-  if (!my) return { modes, maps };
+  if (!stats) return { modes, maps };
 
   const [modeRows, mapRows] = await Promise.all([
-    my.rows<{ id: number; display_name: string; type: string }>(
-      `SELECT id, display_name, type FROM duels_mode ORDER BY id`,
-    ),
-    my.rows<{ id: number; display_name: string }>(`SELECT id, display_name FROM duels_map ORDER BY id`),
+    sql<{ id: number; display_name: string; type: string }>`
+      SELECT mode_id AS id, display_name, mode_type AS type FROM stats.v_duels_mode
+    `
+      .execute(stats)
+      .then((r) => r.rows),
+    sql<{ id: number; display_name: string }>`
+      SELECT map_id AS id, display_name FROM stats.v_duels_map
+    `
+      .execute(stats)
+      .then((r) => r.rows),
   ]);
 
   for (const row of modeRows) {
@@ -339,13 +356,15 @@ async function countPlayersPerMatch(
 /** La fotografia completa: server, partite, modalita'. Una sola per richiesta. */
 export async function readLiveSnapshot(
   redis: Redis,
-  my: DuelsMysql | null,
+  // Una funzione e non il catalogo: parte insieme alle letture di Redis,
+  // dentro lo stesso `Promise.all`.
+  catalogueOf: () => Promise<LiveCatalogue>,
   now: Date,
 ): Promise<LiveSnapshot> {
   // Il catalogo e Redis in parallelo: sono due macchine diverse, e aspettare
   // l'una prima di interrogare l'altra raddoppia l'attesa per niente.
   const [catalogue, { servers, owner, hidden }, roster] = await Promise.all([
-    readCatalogue(my).catch(() => ({
+    catalogueOf().catch(() => ({
       modes: new Map<number, { name: string; context: string }>(),
       maps: new Map<number, string>(),
     })),

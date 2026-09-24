@@ -36,6 +36,7 @@ import {
   FieldNotice,
   invalidateLang,
   overviewQuery,
+  patchValue,
   putValue,
   RetryBanner,
   saveErrorText,
@@ -181,9 +182,9 @@ export function LangTranslatePage(_props: { me: Me }) {
   const save = useMutation({
     mutationFn: (v: { key: string; value: string }) => putValue({ ns, code, ...v }),
     onMutate: () => setSaveError(null),
-    onSuccess: async (_res, v) => {
+    onSuccess: (_res, v) => {
       forgetSaved({ [v.key]: v.value });
-      await invalidateLang(queryClient, ns);
+      patchValue(queryClient, { ns, code, ...v });
     },
     onError: (err, v) => setSaveError({ key: v.key, text: saveErrorText(err) }),
   });
@@ -254,7 +255,7 @@ export function LangTranslatePage(_props: { me: Me }) {
     );
     forgetSaved(saved);
     setSaving(final.failed.length === 0 && final.stopped === null ? null : { state: final, running: false });
-    await invalidateLang(queryClient, ns);
+    await invalidateLang(queryClient, ns, 'later');
   };
 
   return (

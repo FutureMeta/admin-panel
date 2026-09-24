@@ -3,7 +3,7 @@
 
 import { sql } from 'kysely';
 import type { Database } from '#src/db/pool.ts';
-import { PLAN, ROME, type Window } from './calendar.ts';
+import { PLAN, ROME, ROME_YMD, romeMidnight, shiftDays, type Window } from './calendar.ts';
 import { type Range, round1 } from './contract.ts';
 
 export type SeriesRow = {
@@ -271,15 +271,76 @@ export async function seenIsCurrent(db: Database, now: Date): Promise<boolean> {
   return res.rows[0]?.ok === true;
 }
 
+/** Quanto indietro guardano le cadenze, qualunque sia il periodo. */
+const CADENCE_DAYS = 90;
+
+/**
+ * Le cadenze dei giorni CHIUSI, per database e giorno civile.
+ *
+ * Un giorno chiuso non cambia piu', e rileggerne novanta a ogni costruzione —
+ * cinque periodi per giro, oltre duecento giorni di `poll_cycle` al minuto —
+ * era lo stesso lavoro rifatto identico. Si legge dal vivo solo cio' che puo'
+ * ancora muoversi: oggi, e i pezzi di giorno agli estremi della finestra.
+ */
+const closedCadences = new WeakMap<Database, Map<string, number[]>>();
+
 /** Le cadenze presenti nel periodo: due periodi con cadenze diverse non sono confrontabili sul massimo. */
 export async function deltasIn(db: Database, w: Window): Promise<number[]> {
-  const res = await sql<{ delta_s: number }>`
-    SELECT DISTINCT delta_s FROM stats.v_cadence
-     WHERE tick_at >= GREATEST(${w.curFrom}::timestamptz, now() - interval '90 days')
-       AND tick_at < ${w.curTo}
-     ORDER BY 1
-  `.execute(db);
-  return res.rows.map((r) => Number(r.delta_s));
+  const clock = new Date();
+  const from = new Date(Math.max(w.curFrom.getTime(), clock.getTime() - CADENCE_DAYS * 86_400_000));
+  const to = w.curTo;
+  if (from >= to) return [];
+
+  // I giorni interi e chiusi dentro [from, to).
+  let first = romeMidnight(from);
+  if (first < from) first = shiftDays(first, 1);
+  const today = romeMidnight(clock);
+  const end = to < today ? romeMidnight(to) : today;
+  const days: Date[] = [];
+  for (let d = first; d < end; d = shiftDays(d, 1)) days.push(d);
+
+  const live: Array<[Date, Date]> =
+    days.length === 0
+      ? [[from, to]]
+      : [
+          ...(from < first ? [[from, first] as [Date, Date]] : []),
+          ...(end < to ? [[end, to] as [Date, Date]] : []),
+        ];
+
+  let memo = closedCadences.get(db);
+  if (!memo) {
+    memo = new Map();
+    closedCadences.set(db, memo);
+  }
+  const missing = days.filter((d) => !memo.has(ROME_YMD.format(d)));
+  const lastMissing = missing[missing.length - 1];
+  if (missing[0] && lastMissing) {
+    const res = await sql<{ day: string; deltas: number[] }>`
+      SELECT stats.civil_day(tick_at)::text AS day, array_agg(DISTINCT delta_s) AS deltas
+        FROM stats.v_cadence
+       WHERE tick_at >= ${missing[0]} AND tick_at < ${shiftDays(lastMissing, 1)}
+       GROUP BY 1
+    `.execute(db);
+    const found = new Map(res.rows.map((r) => [r.day, r.deltas.map(Number)]));
+    for (const d of missing) memo.set(ROME_YMD.format(d), found.get(ROME_YMD.format(d)) ?? []);
+    // I giorni usciti dalla finestra non li chiedera' piu' nessuno.
+    const oldest = ROME_YMD.format(shiftDays(today, -CADENCE_DAYS - 1));
+    for (const k of memo.keys()) if (k < oldest) memo.delete(k);
+  }
+
+  const out = new Set<number>();
+  for (const d of days) for (const v of memo.get(ROME_YMD.format(d)) ?? []) out.add(v);
+  if (live.length > 0) {
+    const res = await sql<{ delta_s: number }>`
+      SELECT DISTINCT delta_s FROM stats.v_cadence
+       WHERE ${sql.join(
+         live.map(([a, b]) => sql`(tick_at >= ${a} AND tick_at < ${b})`),
+         sql` OR `,
+       )}
+    `.execute(db);
+    for (const r of res.rows) out.add(Number(r.delta_s));
+  }
+  return [...out].sort((a, b) => a - b);
 }
 
 /**

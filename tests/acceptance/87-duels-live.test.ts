@@ -19,9 +19,23 @@
 // pagina va a cercare un guasto che non esiste.
 
 import { describe, expect, it } from 'vitest';
-import { readLiveRoster, readLiveSnapshot } from '#src/duels/live.ts';
+import { type LiveCatalogue, readLiveRoster, readLiveSnapshot } from '#src/duels/live.ts';
 
 type Hash = Record<string, string>;
+
+/** Nessun nome: il catalogo non si e' potuto leggere. */
+const noCatalogue = async (): Promise<LiveCatalogue> => ({ modes: new Map(), maps: new Map() });
+
+/** Un catalogo con le righe date, nella forma delle viste `v_duels_mode` e `v_duels_map`. */
+function catalogueOf(
+  modes: Array<{ id: number; display_name: string; type: string }>,
+  maps: Array<{ id: number; display_name: string }>,
+): () => Promise<LiveCatalogue> {
+  return async () => ({
+    modes: new Map(modes.map((m) => [m.id, { name: m.display_name, context: m.type }])),
+    maps: new Map(maps.map((m) => [m.id, m.display_name])),
+  });
+}
 
 /**
  * Il doppio: un Redis di gioco finto, con dentro quello che gli si mette.
@@ -188,7 +202,7 @@ function seed() {
 
 describe('la fotografia: server, partite, modalita`', () => {
   it('i campioni CSV diventano medie, e il server senza campioni resta ignoto', async () => {
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     const one = snap.servers.find((s) => s.id === 'duels_1');
     const two = snap.servers.find((s) => s.id === 'duels_2');
 
@@ -208,7 +222,7 @@ describe('la fotografia: server, partite, modalita`', () => {
     // L'hash della partita NON dice il server: si ricava dall'elenco `matches`
     // dell'hash del server. E' l'unica strada, ed e' il pezzo che si romperebbe
     // in silenzio — le partite comparirebbero tutte senza server.
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     const byId = new Map(snap.matches.map((m) => [m.id, m]));
     expect(byId.get('m-1')?.server).toBe('duels_1');
     expect(byId.get('m-2')?.server).toBe('duels_1');
@@ -219,7 +233,7 @@ describe('la fotografia: server, partite, modalita`', () => {
   });
 
   it('le partite arrivano dalla piu` recente', async () => {
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     expect(snap.matches.map((m) => m.id)).toEqual(['m-2', 'm-1', 'm-3']);
   });
 
@@ -228,7 +242,7 @@ describe('la fotografia: server, partite, modalita`', () => {
     // inverso — una chiave per giocatore — e cercarlo partita per partita
     // sarebbe una scansione per ognuna, a ogni aggiornamento della schermata.
     const redis = fakeRedis(seed());
-    const snap = await readLiveSnapshot(redis, null, NOW);
+    const snap = await readLiveSnapshot(redis, noCatalogue, NOW);
 
     const byId = new Map(snap.matches.map((m) => [m.id, m]));
     expect(byId.get('m-1')?.players).toBe(2);
@@ -240,10 +254,10 @@ describe('la fotografia: server, partite, modalita`', () => {
   });
 
   it('senza catalogo i nomi restano nulli, e la schermata vive lo stesso', async () => {
-    // Il MySQL del gioco e' un'altra macchina e puo' non rispondere. Far
+    // Il catalogo puo' mancare (niente DATABASE_STATS_URL) o non rispondere. Far
     // fallire tutta la pagina perche' un'etichetta non si e' potuta tradurre
     // sarebbe scambiare un nome per un dato.
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     expect(snap.matches.every((m) => m.mode === null && m.map === null)).toBe(true);
     expect(snap.matches.every((m) => m.modeId > 0 && m.mapId > 0)).toBe(true);
   });
@@ -251,25 +265,17 @@ describe('la fotografia: server, partite, modalita`', () => {
 
 describe('le modalita`: quelle ferme non si mostrano', () => {
   it('conta le partite in corso e i giocatori in coda, e scarta le modalita` a zero', async () => {
-    const catalogue = {
-      rows: async <T>(sql: string): Promise<T[]> => {
-        if (sql.includes('duels_mode')) {
-          return [
-            { id: 1, display_name: 'NoDebuff', type: 'NORMAL' },
-            { id: 2, display_name: 'Sumo', type: 'NORMAL' },
-            // Una modalita' senza partite E senza coda: non deve comparire.
-            { id: 3, display_name: 'Gapple', type: 'NORMAL' },
-            { id: 9, display_name: 'Crystal Royale', type: 'EVENT' },
-          ] as T[];
-        }
-        return [{ id: 10, display_name: 'Ancient Ashes' }] as T[];
-      },
-    };
-    const snap = await readLiveSnapshot(
-      fakeRedis(seed()),
-      catalogue as unknown as Parameters<typeof readLiveSnapshot>[1],
-      NOW,
+    const catalogue = catalogueOf(
+      [
+        { id: 1, display_name: 'NoDebuff', type: 'NORMAL' },
+        { id: 2, display_name: 'Sumo', type: 'NORMAL' },
+        // Una modalita' senza partite E senza coda: non deve comparire.
+        { id: 3, display_name: 'Gapple', type: 'NORMAL' },
+        { id: 9, display_name: 'Crystal Royale', type: 'EVENT' },
+      ],
+      [{ id: 10, display_name: 'Ancient Ashes' }],
     );
+    const snap = await readLiveSnapshot(fakeRedis(seed()), catalogue, NOW);
 
     // `Sumo` ha zero partite e zero in coda: fuori. `Gapple` idem. Un elenco
     // di trenta righe a zero nasconde le tre che stanno girando.
@@ -285,17 +291,11 @@ describe('le modalita`: quelle ferme non si mostrano', () => {
   });
 
   it('e con il catalogo i nomi compaiono', async () => {
-    const catalogue = {
-      rows: async <T>(sql: string): Promise<T[]> =>
-        (sql.includes('duels_mode')
-          ? [{ id: 1, display_name: 'NoDebuff', type: 'NORMAL' }]
-          : [{ id: 10, display_name: 'Ancient Ashes' }]) as T[],
-    };
-    const snap = await readLiveSnapshot(
-      fakeRedis(seed()),
-      catalogue as unknown as Parameters<typeof readLiveSnapshot>[1],
-      NOW,
+    const catalogue = catalogueOf(
+      [{ id: 1, display_name: 'NoDebuff', type: 'NORMAL' }],
+      [{ id: 10, display_name: 'Ancient Ashes' }],
     );
+    const snap = await readLiveSnapshot(fakeRedis(seed()), catalogue, NOW);
     const m1 = snap.matches.find((m) => m.id === 'm-1');
     expect(m1?.mode).toBe('NoDebuff');
     expect(m1?.map).toBe('Ancient Ashes');
@@ -332,7 +332,7 @@ describe('il roster: solo la partita chiesta', () => {
 
 describe('i server che non sono DUEL ne` EVENT non esistono, qui', () => {
   it('un server FFA non compare fra i server', async () => {
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     expect(snap.servers.map((s) => s.id)).toEqual(['duels_1', 'duels_2', 'duels_event_1']);
     expect(snap.servers.some((s) => s.type === 'FFA')).toBe(false);
   });
@@ -342,7 +342,7 @@ describe('i server che non sono DUEL ne` EVENT non esistono, qui', () => {
     // `m-4` fra le partite attive: comparirebbe nella griglia senza appartenere
     // a nessuno dei riquadri sotto, e il numerone in alto conterebbe una
     // partita che nessuna riga spiega.
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     expect(snap.matches.map((m) => m.id)).toEqual(['m-2', 'm-1', 'm-3']);
     expect(snap.matches.some((m) => m.server === 'duels_ffa_1')).toBe(false);
   });
@@ -351,17 +351,11 @@ describe('i server che non sono DUEL ne` EVENT non esistono, qui', () => {
     // `m-4` e` sulla modalita` 1, la stessa di `m-1` e `m-2`. Se sopravvivesse
     // al filtro, «NoDebuff» direbbe tre partite invece di due — un numero
     // sbagliato che nessuno saprebbe da dove viene.
-    const catalogue = {
-      rows: async <T>(sql: string): Promise<T[]> =>
-        (sql.includes('duels_mode')
-          ? [{ id: 1, display_name: 'NoDebuff', type: 'NORMAL' }]
-          : [{ id: 10, display_name: 'Ancient Ashes' }]) as T[],
-    };
-    const snap = await readLiveSnapshot(
-      fakeRedis(seed()),
-      catalogue as unknown as Parameters<typeof readLiveSnapshot>[1],
-      NOW,
+    const catalogue = catalogueOf(
+      [{ id: 1, display_name: 'NoDebuff', type: 'NORMAL' }],
+      [{ id: 10, display_name: 'Ancient Ashes' }],
     );
+    const snap = await readLiveSnapshot(fakeRedis(seed()), catalogue, NOW);
     expect(snap.modes.find((m) => m.name === 'NoDebuff')?.active).toBe(2);
   });
 
@@ -384,7 +378,7 @@ describe('i server che non sono DUEL ne` EVENT non esistono, qui', () => {
         },
       },
     };
-    const snap = await readLiveSnapshot(fakeRedis(orfana), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(orfana), noCatalogue, NOW);
     expect(snap.matches.find((m) => m.id === 'm-orfana')?.server).toBeNull();
   });
 });
@@ -394,7 +388,7 @@ describe('la CPU: il lettore non tocca la scala, e la scala e` per DIECI', () =>
     // LA MISURA, non una deduzione: sullo stesso server, nello stesso minuto,
     // Redis porta `0.34, 0.42435, 0.3525` e `spark cpu` in console scrive
     // `3% 4% 3%`. La fixture usa quei valori veri.
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     const one = snap.servers.find((s) => s.id === 'duels_1');
     expect(one?.cpu).toBeCloseTo((0.34 + 0.42435) / 2, 6);
   });
@@ -410,7 +404,7 @@ describe('la CPU: il lettore non tocca la scala, e la scala e` per DIECI', () =>
     // server di ogni giorno — e nessuno se n'e` mai accorto, perche` uno zero
     // non stona. E` la ragione per cui quel codice non era una prova: era un
     // difetto che sembrava una convenzione.
-    const snap = await readLiveSnapshot(fakeRedis(seed()), null, NOW);
+    const snap = await readLiveSnapshot(fakeRedis(seed()), noCatalogue, NOW);
     const one = snap.servers.find((s) => s.id === 'duels_1');
     const percent = Math.round((one?.cpu ?? 0) * 10);
     expect(percent).toBe(4);

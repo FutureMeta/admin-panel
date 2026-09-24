@@ -155,7 +155,7 @@ export function LangKeysPage({ me }: { me: Me }) {
     onError: (err) => setSaveError(saveErrorText(err)),
     // Anche dopo un errore: le lingue salvate prima di quella che ha fallito
     // sono nel database, e la schermata deve vederle.
-    onSettled: () => invalidateLang(queryClient, ns),
+    onSettled: () => invalidateLang(queryClient, ns, 'later'),
   });
 
   return (

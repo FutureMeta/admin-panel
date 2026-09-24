@@ -23,10 +23,47 @@ export const bundleQuery = (ns: string) => ({
 export const putValue = (body: { ns: string; key: string; code: string; value: string }) =>
   api<{ ok: true }>('/api/lang/value', { method: 'PUT', body });
 
-/** Dopo una scrittura: il bundle e la panoramica, che ne conta i testi. */
-export async function invalidateLang(queryClient: QueryClient, ns?: string): Promise<void> {
+/**
+ * Dopo una scrittura: il bundle e la panoramica, che ne conta i testi.
+ *
+ * `counts: 'later'` dove i conteggi non si vedono — la traduzione e le
+ * chiavi usano la panoramica solo per l'elenco delle lingue. La si segna
+ * vecchia e si rilegge quando la si riapre, invece di rifare a ogni testo
+ * salvato due GROUP BY su tutti i messaggi del database di gioco.
+ */
+export async function invalidateLang(
+  queryClient: QueryClient,
+  ns?: string,
+  counts: 'now' | 'later' = 'now',
+): Promise<void> {
   if (ns !== undefined) await queryClient.invalidateQueries({ queryKey: ['lang-keys', ns] });
-  await queryClient.invalidateQueries({ queryKey: ['lang'] });
+  await queryClient.invalidateQueries({
+    queryKey: ['lang'],
+    ...(counts === 'later' ? { refetchType: 'none' } : {}),
+  });
+}
+
+/**
+ * Un testo appena salvato, scritto nella cache del bundle invece di rileggere
+ * il bundle intero: nella traduzione si salva una chiave dopo l'altra, e ogni
+ * salvataggio ricaricava tutte le chiavi in tutte le lingue. Il server salva
+ * il testo com'e', quindi la copia locale e' quella vera.
+ */
+export function patchValue(
+  queryClient: QueryClient,
+  v: { ns: string; key: string; code: string; value: string },
+): void {
+  queryClient.setQueryData<BundleKeys>(['lang-keys', v.ns], (old) =>
+    old
+      ? {
+          ...old,
+          keys: old.keys.map((k) =>
+            k.key === v.key ? { ...k, values: { ...k.values, [v.code]: v.value } } : k,
+          ),
+        }
+      : old,
+  );
+  void queryClient.invalidateQueries({ queryKey: ['lang'], refetchType: 'none' });
 }
 
 /**

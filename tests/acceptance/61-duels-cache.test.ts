@@ -23,6 +23,7 @@ import type pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { DK, duelsQuality } from '#src/duels/contract.ts';
 import { startDuelsIngest } from '#src/duels/keeper.ts';
+import { readLiveCatalogue } from '#src/duels/live.ts';
 import { type DuelsWarmDeps, markDuelsHot, warmDuelsAllClosed, warmDuelsLive } from '#src/duels/warm.ts';
 import { decode } from '#src/stats/cache.ts';
 import { loginAs, seedUser } from '#tests/support/actors.ts';
@@ -178,6 +179,10 @@ describe('i periodi chiusi stanno sul giro che esisteva gia`', () => {
       expect(await etagOf(DK.tr(range)), range).toBeTruthy();
     }
     expect(await etagOf(DK.tr('24h')), 'la fetta viva non e` di questo giro').toBeNull();
+
+    // Il giro dopo non rifa' niente: le finestre finiscono a mezzanotte, e i
+    // payload appena scritti sono freschi per altri undici minuti.
+    expect(await warmDuelsAllClosed(warm)).toBe(0);
   });
 });
 
@@ -222,5 +227,18 @@ describe('la qualita` di compressione la decide il periodo, non chi scrive', () 
     for (const range of ['7d', '30d', '90d', '1y'] as const) {
       expect(duelsQuality(range), range).toBe(11);
     }
+  });
+});
+
+describe('il catalogo del Live viene dalla copia su Postgres', () => {
+  it('nomi e contesto dalle viste, con il ruolo di sola lettura', async () => {
+    await seedMatches(1);
+    await sql.query(
+      `INSERT INTO stats.duels_map (map_id, name, display_name, map_type)
+       VALUES (10, 'arena', 'Arena', 'DUEL') ON CONFLICT DO NOTHING`,
+    );
+    const catalogue = await readLiveCatalogue(t.ctx.statsDb);
+    expect(catalogue.modes.get(1)).toEqual({ name: 'Classic', context: 'DUEL' });
+    expect(catalogue.maps.get(10)).toBe('Arena');
   });
 });

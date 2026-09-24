@@ -347,10 +347,21 @@ async function rollup1d(db: Database, from: Date, to: Date): Promise<number> {
         FROM stats.rollup_1h
        WHERE bucket >= ${from} AND bucket < ${to}
     ),
+    -- I confini di quei giorni come ISTANTI. Il join sul giorno civile non
+    -- puo' usare la chiave, e senza questo filtro ogni passata rileggeva
+    -- tutta \`rollup_1h\` — la storia intera, una volta all'ora — per rifarne
+    -- uno o due giorni.
+    limiti AS (
+      SELECT (min(day)::timestamp AT TIME ZONE 'Europe/Rome')       AS lo,
+             ((max(day) + 1)::timestamp AT TIME ZONE 'Europe/Rome') AS hi
+        FROM giorni
+    ),
     ore AS (
       SELECT r.*, stats.civil_day(r.bucket) AS day
         FROM stats.rollup_1h r
         JOIN giorni g ON g.day = stats.civil_day(r.bucket)
+       WHERE r.bucket >= (SELECT lo FROM limiti)
+         AND r.bucket <  (SELECT hi FROM limiti)
     ),
     cov AS (
       SELECT day,

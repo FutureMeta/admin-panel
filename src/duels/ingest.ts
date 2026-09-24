@@ -192,6 +192,14 @@ export async function syncCatalogs(db: Database, my: DuelsMysql): Promise<{ mode
         -- ingestione non deve poterlo cancellare. Il giorno in cui la
         -- configurazione lo lascera' scegliere, sopravvivera' ai giri.
         seen_at = EXCLUDED.seen_at
+      -- SI RISCRIVE SOLO CIO' CHE E' CAMBIATO. Ogni giro da trenta secondi
+      -- aggiornava tutte le righe per il solo seen_at, e ogni UPDATE lascia
+      -- una versione morta: centinaia a giro, per un'ora che non legge
+      -- nessuno. seen_at ora e' esatto all'ora.
+      WHERE (stats.duels_mode.name, stats.duels_mode.display_name,
+             stats.duels_mode.ranking, stats.duels_mode.mode_type)
+            IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.display_name, EXCLUDED.ranking, EXCLUDED.mode_type)
+         OR stats.duels_mode.seen_at < now() - interval '1 hour'
     `.execute(db);
   }
 
@@ -208,6 +216,10 @@ export async function syncCatalogs(db: Database, my: DuelsMysql): Promise<{ mode
       ON CONFLICT (map_id) DO UPDATE SET
         name = EXCLUDED.name, display_name = EXCLUDED.display_name,
         map_type = EXCLUDED.map_type, seen_at = EXCLUDED.seen_at
+      -- Come le modalita': solo cio' che e' cambiato, e seen_at all'ora.
+      WHERE (stats.duels_map.name, stats.duels_map.display_name, stats.duels_map.map_type)
+            IS DISTINCT FROM (EXCLUDED.name, EXCLUDED.display_name, EXCLUDED.map_type)
+         OR stats.duels_map.seen_at < now() - interval '1 hour'
     `.execute(db);
   }
 
@@ -425,6 +437,10 @@ export async function ingestRatingBatch(
 async function recomputeRatingDays(db: Database, localAt: string[], tz: string): Promise<void> {
   if (localAt.length === 0) return;
   await sql`
+    WITH giorni AS (
+      SELECT DISTINCT stats.civil_day(x AT TIME ZONE ${tz}) AS day
+        FROM unnest(${localAt}::timestamp[]) AS x
+    )
     INSERT INTO stats.duels_rating_day
       (day, mode_id, n, sum_rating, with_comment, r1, r2, r3, r4, r5)
     SELECT stats.civil_day(created_at) AS day,
@@ -445,10 +461,12 @@ async function recomputeRatingDays(db: Database, localAt: string[], tz: string):
      -- I GIORNI SI RICAVANO DAGLI ISTANTI, non dalle date della sorgente:
      -- quelle sono ore di parete del server di gioco, e il giorno civile di
      -- Roma lo decide la funzione civil_day, dopo la conversione.
-     WHERE stats.civil_day(created_at) IN (
-             SELECT DISTINCT stats.civil_day(x AT TIME ZONE ${tz})
-               FROM unnest(${localAt}::timestamp[]) AS x
-           )
+     WHERE stats.civil_day(created_at) IN (SELECT day FROM giorni)
+       -- Gli stessi giorni come ISTANTI: sul solo giorno civile le partizioni
+       -- non si potano, e ogni lotto di valutazioni rileggeva la tabella
+       -- intera per ricalcolarne uno.
+       AND created_at >= (SELECT min(day)::timestamp AT TIME ZONE 'Europe/Rome' FROM giorni)
+       AND created_at <  (SELECT (max(day) + 1)::timestamp AT TIME ZONE 'Europe/Rome' FROM giorni)
      GROUP BY 1, 2
     ON CONFLICT (day, mode_id) DO UPDATE SET
       n = EXCLUDED.n, sum_rating = EXCLUDED.sum_rating,

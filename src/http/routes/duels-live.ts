@@ -20,7 +20,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { AppContext } from '#src/app-context.ts';
 import { require as requireLevel } from '#src/authz/can.ts';
-import { readLiveRoster, readLiveSnapshot } from '#src/duels/live.ts';
+import { readLiveCatalogue, readLiveRoster, readLiveSnapshot } from '#src/duels/live.ts';
 import type { LiveRoster } from '#src/duels/payload.ts';
 import { ServiceUnavailable } from '../errors.ts';
 import { requireAuth } from '../guards.ts';
@@ -53,7 +53,7 @@ export async function registerDuelsLiveRoutes(app: FastifyInstance, ctx: AppCont
     if (!redis) throw notConfigured();
 
     reply.header('Cache-Control', 'private, no-store');
-    return readLiveSnapshot(redis, ctx.duelsMysql, new Date());
+    return readLiveSnapshot(redis, () => readLiveCatalogue(ctx.statsDb), new Date());
   });
 
   app.get(

@@ -330,6 +330,16 @@ export class StatsCache implements CacheService {
     return this.#seal(key, await factory(), ttl, quality);
   }
 
+  /** Quanti millisecondi di freschezza restano a una chiave. Zero se non c'e', o se Redis non risponde. */
+  async freshFor(key: string, now = Date.now()): Promise<number> {
+    try {
+      const env = decode(await this.#redis.getBuffer(key));
+      return env ? Math.max(0, env.freshUntil - now) : 0;
+    } catch {
+      return 0;
+    }
+  }
+
   /**
    * Il percorso di LETTURA: singleflight piu' stale-while-revalidate.
    *

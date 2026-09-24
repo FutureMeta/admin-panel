@@ -193,11 +193,22 @@ export function createDuelsMysql(url: string, maxExecutionMs = MAX_EXECUTION_MS)
 
   const cap = createExecutionCap(maxExecutionMs);
 
+  // Il tetto e' una variabile di SESSIONE: vale quanto la connessione, e il
+  // pool la riusa. Si imposta una volta per connessione fisica e non prima di
+  // ogni query, che erano due giri di rete per ogni lettura. La chiave e' la
+  // connessione sotto: l'involucro promise cambia a ogni `getConnection`.
+  const capped = new WeakSet<object>();
+  const ready = async (conn: mysql.PoolConnection): Promise<void> => {
+    if (capped.has(conn.connection)) return;
+    await cap.apply((statement) => conn.query(statement));
+    capped.add(conn.connection);
+  };
+
   return {
     rows: async <T>(sql: string, params: unknown[] = []): Promise<T[]> => {
       const conn = await pool.getConnection();
       try {
-        await cap.apply((statement) => conn.query(statement));
+        await ready(conn);
         const [result] = await conn.query(sql, params);
         return result as T[];
       } finally {
@@ -207,7 +218,7 @@ export function createDuelsMysql(url: string, maxExecutionMs = MAX_EXECUTION_MS)
     tx: async <T>(fn: (t: DuelsTx) => Promise<T>): Promise<T> => {
       const conn = await pool.getConnection();
       try {
-        await cap.apply((statement) => conn.query(statement));
+        await ready(conn);
         await conn.beginTransaction();
         try {
           const out = await fn({

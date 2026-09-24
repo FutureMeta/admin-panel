@@ -26,13 +26,30 @@
 
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
-import type { StatsCache } from '#src/stats/cache.ts';
+import type { StatsCache, Ttl } from '#src/stats/cache.ts';
 import { hotOf, markHotAt, ttlOf } from '#src/stats/warm.ts';
 import { DK, DUELS_LIVE_RANGE, DUELS_SLOW_RANGES, duelsQuality, type Range } from './contract.ts';
 import type { DuelsProvider } from './provider.ts';
 
 /** Quanto puo' durare la parte «modalita' calde» di un giro. */
 export const DUELS_WARM_BUDGET_MS = 250;
+
+/**
+ * I periodi CHIUSI si rifanno ogni dieci minuti circa, non a ogni giro.
+ *
+ * Le loro finestre finiscono a mezzanotte: fino a domani il payload e' lo
+ * stesso, salvo un recupero dell'ingestione su giorni passati — che cosi' si
+ * vede entro dieci minuti. Rifarli a ogni giro voleva dire rileggere fino a un
+ * anno di `duels_match_hour`, quattro scansioni per periodo, ogni minuto, per
+ * riscrivere gli stessi numeri.
+ *
+ * Si sigillano freschi per undici minuti e si rifanno quando ne restano meno
+ * di due: con un giro al minuto chi apre la schermata trova sempre un payload
+ * fresco. La chiave porta il giorno, quindi a mezzanotte il periodo nuovo non
+ * c'e' ancora e si costruisce al primo giro.
+ */
+export const CLOSED_TTL: Ttl = { fresh: 11 * 60_000, stale: 10 * 60_000 };
+const CLOSED_REBUILD_UNDER_MS = 2 * 60_000;
 
 export type DuelsWarmDeps = {
   provider: DuelsProvider;
@@ -70,9 +87,12 @@ function bytes(payload: unknown): Buffer {
  * commento e poi scriveva le modalita' calde a q5, cioe' contraddiceva se
  * stessa. Adesso la qualita' la decide il periodo, in un posto solo.
  */
-export async function warmDuelsRange(deps: DuelsWarmDeps, range: Range): Promise<DuelsWarmResult> {
+export async function warmDuelsRange(
+  deps: DuelsWarmDeps,
+  range: Range,
+  ttl: Ttl = ttlOf(),
+): Promise<DuelsWarmResult> {
   const t0 = Date.now();
-  const ttl = ttlOf();
   const quality = duelsQuality(range);
   const now = new Date();
 
@@ -139,7 +159,8 @@ export async function warmDuelsAllClosed(deps: DuelsWarmDeps): Promise<number> {
   let payloads = 0;
   for (const range of DUELS_SLOW_RANGES) {
     try {
-      payloads += (await warmDuelsRange(deps, range)).payloads;
+      if ((await deps.cache.freshFor(DK.tr(range))) > CLOSED_REBUILD_UNDER_MS) continue;
+      payloads += (await warmDuelsRange(deps, range, CLOSED_TTL)).payloads;
     } catch (err) {
       deps.logger.warn(
         { err, range },

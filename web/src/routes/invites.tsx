@@ -10,10 +10,10 @@ import { useState } from 'react';
 import { Chip, PageHeader, Panel, PanelBar, PanelFooter } from '../components/page.tsx';
 import {
   Avatar,
-  Banner,
   Button,
   DateTime,
   EmptyState,
+  Notice,
   RelativeTime,
   SkeletonRows,
 } from '../components/ui.tsx';
@@ -51,7 +51,7 @@ export function InvitesPage({ me }: { me: Me }) {
         sub="Il link vale 12 ore e funziona una volta sola. Non è recuperabile da qui: esiste solo nell'email."
       />
 
-      {error ? <Banner tone="err" title={error} /> : null}
+      {error ? <Notice tone="err" title={error} /> : null}
 
       <Panel>
         <PanelBar>
@@ -65,7 +65,7 @@ export function InvitesPage({ me }: { me: Me }) {
           <SkeletonRows />
         ) : invites.isError ? (
           <div style={{ padding: 16 }}>
-            <Banner
+            <Notice
               tone="err"
               title="Non è stato possibile caricare gli inviti"
               action={

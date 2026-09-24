@@ -8,7 +8,7 @@
 // e il pannello non ha la lista: un tag e' un tag, grigio, e il testo dopo
 // prende lo stile che il parser gli da'.
 
-import { PLACEHOLDER, paint, renderMiniMessage } from './minimessage.ts';
+import { PLACEHOLDER, renderMiniMessage, styleCss } from './minimessage.ts';
 
 /** Lo stile come coppie chiave-valore: chi disegna lo passa a React. */
 export type SpanStyle = Record<string, string | number>;
@@ -32,23 +32,7 @@ export function lineSpans(line: string, size: number, tags = true): Span[] {
       continue;
     }
 
-    const base: SpanStyle = {
-      ...(piece.style.colour === undefined ? { color: 'var(--tx-primary)' } : paint(piece.style.colour)),
-      ...(piece.style.bold === true ? { WebkitTextStroke: '0.25px' } : {}),
-      ...(piece.style.italic === true ? { fontStyle: 'italic' } : {}),
-      // Una proprieta' sola per tutte e due: scritte separate, la seconda
-      // cancellava la prima.
-      ...(piece.style.underlined === true || piece.style.strikethrough === true
-        ? {
-            textDecoration: [
-              piece.style.underlined === true ? 'underline' : '',
-              piece.style.strikethrough === true ? 'line-through' : '',
-            ]
-              .filter(Boolean)
-              .join(' '),
-          }
-        : {}),
-    };
+    const base: SpanStyle = styleCss(piece.style, 'var(--tx-primary)');
 
     // I segnaposto si staccano dal testo che li circonda e tengono il peso
     // del testo — sono dentro la frase — ma prendono il loro fondo.

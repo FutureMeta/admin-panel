@@ -7,7 +7,7 @@
 
 import { Link } from '@tanstack/react-router';
 import type { ReactNode } from 'react';
-import { Notice as Banner, Button } from '../components/ui.tsx';
+import { Button, Notice } from '../components/ui.tsx';
 
 function SystemState({
   code,
@@ -115,7 +115,7 @@ export function MaintenancePage() {
 /** Banner non bloccante: il resto della pagina continua a funzionare. */
 export function FeedDisconnectedBanner({ onRetry }: { onRetry: () => void }) {
   return (
-    <Banner
+    <Notice
       tone="warn"
       title="Feed in tempo reale disconnesso"
       description="I dati mostrati potrebbero non essere aggiornati. Il pannello resta utilizzabile."

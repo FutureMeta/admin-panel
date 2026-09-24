@@ -25,7 +25,7 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { api } from '../lib/api.ts';
 import { SelectField } from './page.tsx';
-import { Banner, Button, Field } from './ui.tsx';
+import { Button, Field, Notice } from './ui.tsx';
 
 type MatchKind = 'server' | 'prefix' | 'suffix' | 'contains';
 type Alias = { matchKind: MatchKind; matchValue: string };
@@ -374,7 +374,7 @@ function ServerSource({
 function PreviewResult({ preview }: { preview: Preview }) {
   if (preview.changes.length === 0) {
     return (
-      <Banner
+      <Notice
         tone="info"
         title="Questa regola non sposterebbe nessun server"
         description="O non ne cattura nessuno, o quelli che tocca sono già assegnati da una regola più specifica."
@@ -609,7 +609,7 @@ export function NewModeDialog({
         </>
       }
     >
-      {error ? <Banner tone="err" title={error} /> : null}
+      {error ? <Notice tone="err" title={error} /> : null}
 
       <NameField
         id="nuova-modalita-nome"
@@ -737,7 +737,7 @@ function ModeRules({ mode, available, canManage }: { mode: Mode; available: stri
 
   return (
     <div style={{ display: 'grid', gap: 14, padding: '16px 20px 20px' }}>
-      {error ? <Banner tone="err" title={error} /> : null}
+      {error ? <Notice tone="err" title={error} /> : null}
 
       {mode.aliases.length === 0 ? (
         <p style={{ fontSize: 12.5, color: 'var(--tx-muted)', margin: 0 }}>
@@ -966,7 +966,7 @@ export function EditModeDialog({
       }
     >
       {confirming ? (
-        <Banner
+        <Notice
           tone="warn"
           title={`Elimino «${mode.displayName}»?`}
           description={`Le sue regole cadono con lei e i suoi ${
@@ -974,7 +974,7 @@ export function EditModeDialog({
           } in «Non classificata»: restano nei totali, cambiano etichetta. Lo storico non si tocca — la modalità si risolve in lettura, quindi ricreandola con le stesse regole i grafici tornano come prima.`}
         />
       ) : null}
-      {error ? <Banner tone="err" title={error} /> : null}
+      {error ? <Notice tone="err" title={error} /> : null}
 
       <NameField
         id="modifica-modalita-nome"

@@ -159,6 +159,47 @@ export function paint(colour: string): { color: string; background?: string } {
 }
 
 /**
+ * Come si disegna un pezzo: lo stesso nell'editor dei duels e nelle lingue.
+ * `fallback` e' il colore del testo senza colore proprio.
+ *
+ * IL GRASSETTO NON PUO' SPOSTARE NIENTE, ed e' il motivo per cui non e'
+ * `font-weight`. Sotto c'e' una textarea che scrive con lo stesso carattere in
+ * tondo: se il grassetto fosse largo mezzo pixel in piu', da quel punto in poi
+ * le due righe divergerebbero e si leggerebbe doppio. `-webkit-text-stroke`
+ * ingrossa il tratto in fase di disegno e non tocca la misura, per definizione:
+ * qualunque cosa faccia il carattere, la colonna resta dov'era.
+ *
+ * (Misurato prima di scegliere: in questo motore anche il grassetto sintetico
+ * lascia la larghezza identica al millesimo. Ma «oggi si comporta bene» e «non
+ * puo' comportarsi male» sono due garanzie diverse, e qui la seconda costa
+ * uguale.)
+ *
+ * L'OFFUSCATO NON SI OFFUSCA: in gioco `<obfuscated>` fa ballare i caratteri,
+ * qui e' il testo che si sta scrivendo. Si segna con una sottolineatura
+ * tratteggiata, che dice «questo ballera'» senza toglierlo di mano.
+ */
+export function styleCss(style: Style | undefined, fallback: string) {
+  // Una proprieta' sola per sottolineato e barrato: scritte separate, la
+  // seconda cancellava la prima.
+  const decor = [
+    style?.underlined === true ? 'underline' : '',
+    style?.strikethrough === true ? 'line-through' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return {
+    ...(style?.colour === undefined ? { color: fallback } : paint(style.colour)),
+    ...(style?.bold === true ? { WebkitTextStroke: '0.25px' } : {}),
+    ...(style?.italic === true ? { fontStyle: 'italic' } : {}),
+    ...(style?.obfuscated === true
+      ? { textDecoration: `${decor} underline dotted`.trim(), textUnderlineOffset: 2 }
+      : decor === ''
+        ? {}
+        : { textDecoration: decor }),
+  };
+}
+
+/**
  * Un tag, o un codice legacy.
  *
  * LE VIRGOLETTE DENTRO IL TAG SONO IL PEZZO CHE CONTA:

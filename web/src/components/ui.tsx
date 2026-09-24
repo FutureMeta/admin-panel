@@ -143,41 +143,6 @@ export function Pill({
   );
 }
 
-/** Alias storico: nel resto del pannello il componente si chiama Badge. */
-export const Badge = Pill;
-
-export function UserStatusBadge({ status, banned }: { status: string; banned: boolean }) {
-  if (banned)
-    return (
-      <Pill tone="err" dot>
-        bannato
-      </Pill>
-    );
-  if (status === 'active')
-    return (
-      <Pill tone="ok" dot>
-        attivo
-      </Pill>
-    );
-  if (status === 'pending_onboarding')
-    return (
-      <Pill tone="warn" dot>
-        in attesa
-      </Pill>
-    );
-  return (
-    <Pill tone="neutral" dot>
-      disattivato
-    </Pill>
-  );
-}
-
-export function OutcomeBadge({ outcome }: { outcome: 'success' | 'failure' | 'denied' }) {
-  if (outcome === 'success') return <Pill tone="ok">ok</Pill>;
-  if (outcome === 'denied') return <Pill tone="err">negato</Pill>;
-  return <Pill tone="warn">fallito</Pill>;
-}
-
 // ---------------------------------------------------------------------------
 
 /** Avviso in linea, nella forma del prototipo: pallino, titolo, riga di dettaglio. */
@@ -203,9 +168,6 @@ export function Notice({
     </div>
   );
 }
-
-/** Alias storico. */
-export const Banner = Notice;
 
 // ---------------------------------------------------------------------------
 

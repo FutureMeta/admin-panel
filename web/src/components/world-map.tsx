@@ -152,6 +152,11 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
     return m;
   }, [rows, top]);
 
+  // I contorni UNA volta per geometria. Dentro il map del disegno si
+  // ricalcolavano a ogni passaggio del mouse e a ogni fotogramma di
+  // trascinamento: migliaia di coordinate per paese, sempre le stesse.
+  const paths = useMemo(() => shapes?.map(pathOf) ?? [], [shapes]);
+
   const pct = useCallback(
     (v: number) => (resolved > 0 ? `${((v / resolved) * 100).toFixed(1).replace('.', ',')}%` : '—'),
     [resolved],
@@ -313,13 +318,13 @@ export function WorldMap({ geo, label }: { geo: GeoData; label: string }) {
               aria-label="Mappa dei giocatori unici per paese"
             >
               <title>Giocatori unici per paese</title>
-              {shapes.map((s) => {
+              {shapes.map((s, i) => {
                 const hit = byNumeric.get(s.id);
                 const active = hit !== undefined && lit === hit.cc;
                 return (
                   <path
                     key={s.id || s.name}
-                    d={pathOf(s)}
+                    d={paths[i]}
                     fill={hit?.fill ?? 'var(--s-elevated)'}
                     stroke={active ? 'var(--tx-primary)' : 'var(--bd-subtle)'}
                     // Il tratto si assottiglia zoomando: a spessore costante,

@@ -29,7 +29,7 @@ import {
   SearchBox,
   TableStates,
 } from '../components/page.tsx';
-import { Avatar, Badge } from '../components/ui.tsx';
+import { Avatar, Pill } from '../components/ui.tsx';
 import { type AuditEntry, type AuditPage, api } from '../lib/api.ts';
 
 /**
@@ -291,9 +291,9 @@ function AuditRow({
               {entry.action}
             </span>
             {entry.outcome !== 'success' ? (
-              <Badge tone={entry.outcome === 'denied' ? 'err' : 'warn'}>
+              <Pill tone={entry.outcome === 'denied' ? 'err' : 'warn'}>
                 {entry.outcome === 'denied' ? 'negato' : 'fallito'}
-              </Badge>
+              </Pill>
             ) : null}
           </span>
         </td>

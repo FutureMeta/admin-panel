@@ -9,45 +9,59 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Outlet,
   RouterProvider,
   retainSearchParams,
   useNavigate,
   useRouterState,
 } from '@tanstack/react-router';
-import { StrictMode, useEffect, useState } from 'react';
+import { type ReactNode, StrictMode, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { type Command, CommandPalette, Sidebar, Topbar, visibleNav } from './components/shell.tsx';
 import { Svetlana } from './components/svetlana.tsx';
 import { Card, SkeletonRows } from './components/ui.tsx';
 import { ApiError, api, type Me } from './lib/api.ts';
 import { ratingsSearch } from './lib/duels.ts';
-import { canOpen } from './lib/modules.ts';
+import { canOpen, type ModuleKey } from './lib/modules.ts';
 import { hasPeriod, titleOf } from './lib/nav.ts';
 import { rangeSearch, useRange } from './lib/range.ts';
 import { pageFilters } from './lib/svetlana.ts';
 import './app.css';
-import { AcceptPage } from './routes/accept.tsx';
-import { AuditPage_ } from './routes/audit.tsx';
-import { DuelsConfigRoute as DuelsConfigPage } from './routes/duels-config.tsx';
-import { DuelsLiveRoute as DuelsLivePage } from './routes/duels-live.tsx';
-import { DuelsMapsRoute as DuelsMapsPage } from './routes/duels-maps.tsx';
-import { DuelsModesRoute as DuelsModesPage } from './routes/duels-modes.tsx';
-import { DuelsRatingsRoute as DuelsRatingsPage } from './routes/duels-ratings.tsx';
-import { DuelsTrendsRoute as DuelsTrendsPage } from './routes/duels-trends.tsx';
-import { InvitesPage } from './routes/invites.tsx';
-import { LangKeysPage } from './routes/lang-keys.tsx';
-import { LangLanguagesPage } from './routes/lang-languages.tsx';
-import { LangOverviewPage } from './routes/lang-overview.tsx';
-import { LangTranslatePage } from './routes/lang-translate.tsx';
 import { LoginPage } from './routes/login.tsx';
-import { ModeDetailPage } from './routes/mode-detail.tsx';
-import { ModeEntryPage } from './routes/mode-entry.tsx';
-import { OverviewPage } from './routes/overview.tsx';
-import { ForgotPasswordPage, ResetPasswordPage } from './routes/password.tsx';
-import { RolesPage } from './routes/roles.tsx';
 import { ForbiddenPage, NotFoundPage } from './routes/states.tsx';
-import { UsersPage } from './routes/users.tsx';
+
+// LE SCHERMATE SI SCARICANO QUANDO SI APRONO. Importate tutte in testa, il
+// login scaricava 650 kB di grafici, mappa ed editor prima di chiedere la
+// password. Il login e le pagine di stato restano qui: sono le prime che si
+// vedono, e le guardie sotto le usano. La CSP lascia passare i chunk con
+// `strict-dynamic` (vedi `src/http/index-html.ts`).
+const AcceptPage = lazyRouteComponent(() => import('./routes/accept.tsx'), 'AcceptPage');
+const AuditPage = lazyRouteComponent(() => import('./routes/audit.tsx'), 'AuditPage_');
+const DuelsConfigPage = lazyRouteComponent(() => import('./routes/duels-config.tsx'), 'DuelsConfigRoute');
+const DuelsLivePage = lazyRouteComponent(() => import('./routes/duels-live.tsx'), 'DuelsLiveRoute');
+const DuelsMapsPage = lazyRouteComponent(() => import('./routes/duels-maps.tsx'), 'DuelsMapsRoute');
+const DuelsModesPage = lazyRouteComponent(() => import('./routes/duels-modes.tsx'), 'DuelsModesRoute');
+const DuelsRatingsPage = lazyRouteComponent(() => import('./routes/duels-ratings.tsx'), 'DuelsRatingsRoute');
+const DuelsTrendsPage = lazyRouteComponent(() => import('./routes/duels-trends.tsx'), 'DuelsTrendsRoute');
+const ForgotPasswordPage = lazyRouteComponent(() => import('./routes/password.tsx'), 'ForgotPasswordPage');
+const InvitesPage = lazyRouteComponent(() => import('./routes/invites.tsx'), 'InvitesPage');
+const LangKeysPage = lazyRouteComponent(() => import('./routes/lang-keys.tsx'), 'LangKeysPage');
+const LangLanguagesPage = lazyRouteComponent(
+  () => import('./routes/lang-languages.tsx'),
+  'LangLanguagesPage',
+);
+const LangOverviewPage = lazyRouteComponent(() => import('./routes/lang-overview.tsx'), 'LangOverviewPage');
+const LangTranslatePage = lazyRouteComponent(
+  () => import('./routes/lang-translate.tsx'),
+  'LangTranslatePage',
+);
+const ModeDetailPage = lazyRouteComponent(() => import('./routes/mode-detail.tsx'), 'ModeDetailPage');
+const ModeEntryPage = lazyRouteComponent(() => import('./routes/mode-entry.tsx'), 'ModeEntryPage');
+const OverviewPage = lazyRouteComponent(() => import('./routes/overview.tsx'), 'OverviewPage');
+const ResetPasswordPage = lazyRouteComponent(() => import('./routes/password.tsx'), 'ResetPasswordPage');
+const RolesPage = lazyRouteComponent(() => import('./routes/roles.tsx'), 'RolesPage');
+const UsersPage = lazyRouteComponent(() => import('./routes/users.tsx'), 'UsersPage');
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -202,6 +216,24 @@ function HomePage() {
 }
 
 /**
+ * Una schermata dietro i suoi moduli: aspetta `me`, poi la pagina o il 403.
+ *
+ * Il permesso vero lo controlla il server a ogni richiesta; questo evita di
+ * disegnare una pagina che risponderebbe 403 a tutto. Erano quattordici
+ * funzioni uguali salvo una riga: la riga ora e' l'unica cosa che si scrive.
+ */
+function guarded(allow: (me: Me) => boolean, render: (me: Me) => ReactNode) {
+  return function Guarded() {
+    const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
+    if (!me.data) return <SkeletonRows rows={6} />;
+    if (!allow(me.data)) return <ForbiddenPage />;
+    return <Suspense fallback={<SkeletonRows rows={6} />}>{render(me.data)}</Suspense>;
+  };
+}
+
+const has = (module: ModuleKey) => (me: Me) => me.modules.includes(module);
+
+/**
  * "Utenti & Ruoli" è UNA schermata, come nel prototipo: la tabella, l'editor
  * della matrice e gli inviti pendenti sono tre sezioni della stessa pagina.
  *
@@ -209,121 +241,60 @@ function HomePage() {
  * `inviti` ma non `utenti` vede la sola lista degli inviti, e non una pagina
  * vuota con dei blocchi disabilitati.
  */
-function UsersRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  const data = me.data;
-  const sections = ['utenti', 'ruoli', 'inviti'] as const;
-  if (!sections.some((m) => data.modules.includes(m))) return <ForbiddenPage />;
-  return (
+const UsersRoute = guarded(
+  (me) => has('utenti')(me) || has('ruoli')(me) || has('inviti')(me),
+  (me) => (
     <>
-      {data.modules.includes('utenti') ? <UsersPage me={data} /> : null}
-      {data.modules.includes('ruoli') ? <RolesPage me={data} /> : null}
-      {data.modules.includes('inviti') ? <InvitesPage me={data} /> : null}
+      {has('utenti')(me) ? <UsersPage me={me} /> : null}
+      {has('ruoli')(me) ? <RolesPage me={me} /> : null}
+      {has('inviti')(me) ? <InvitesPage me={me} /> : null}
     </>
-  );
-}
+  ),
+);
 
-function OverviewRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
-  return <OverviewPage />;
-}
-
-function ModeDetailRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
-  return <ModeDetailPage me={me.data} />;
-}
-
-function ModeEntryRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('statistiche')) return <ForbiddenPage />;
-  return <ModeEntryPage me={me.data} />;
-}
-
-function DuelsTrendsRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('duels')) return <ForbiddenPage />;
-  return <DuelsTrendsPage />;
-}
-
-function DuelsRatingsRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('duels_feedback')) return <ForbiddenPage />;
-  return <DuelsRatingsPage />;
-}
-
-function DuelsModesRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'duels_modes')) return <ForbiddenPage />;
-  return <DuelsModesPage me={me.data} />;
-}
-
-function DuelsMapsRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'duels_maps')) return <ForbiddenPage />;
-  return <DuelsMapsPage me={me.data} />;
-}
-
-function DuelsLiveRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'duels_live')) return <ForbiddenPage />;
-  return <DuelsLivePage />;
-}
-
-function DuelsConfigRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'duels_config')) return <ForbiddenPage />;
-  return <DuelsConfigPage me={me.data} />;
-}
+const OverviewRoute = guarded(has('statistiche'), () => <OverviewPage />);
+const ModeDetailRoute = guarded(has('statistiche'), (me) => <ModeDetailPage me={me} />);
+const ModeEntryRoute = guarded(has('statistiche'), (me) => <ModeEntryPage me={me} />);
+const DuelsTrendsRoute = guarded(has('duels'), () => <DuelsTrendsPage />);
+const DuelsRatingsRoute = guarded(has('duels_feedback'), () => <DuelsRatingsPage />);
+const DuelsModesRoute = guarded(
+  (me) => canOpen(me, 'duels_modes'),
+  (me) => <DuelsModesPage me={me} />,
+);
+const DuelsMapsRoute = guarded(
+  (me) => canOpen(me, 'duels_maps'),
+  (me) => <DuelsMapsPage me={me} />,
+);
+const DuelsLiveRoute = guarded(
+  (me) => canOpen(me, 'duels_live'),
+  () => <DuelsLivePage />,
+);
+const DuelsConfigRoute = guarded(
+  (me) => canOpen(me, 'duels_config'),
+  (me) => <DuelsConfigPage me={me} />,
+);
 
 // Le schermate di «Lingue»: Bundle, chiavi e traduzione stanno su `lingue`,
 // l'Elenco su `lingue_elenco`. La traduzione vuole il 2 — a chi legge
 // soltanto non serve —, il resto apre col 1 e il livello decide dentro.
-function LangOverviewRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
-  return <LangOverviewPage me={me.data} />;
-}
+const LangOverviewRoute = guarded(
+  (me) => canOpen(me, 'lingue'),
+  (me) => <LangOverviewPage me={me} />,
+);
+const LangKeysRoute = guarded(
+  (me) => canOpen(me, 'lingue'),
+  (me) => <LangKeysPage me={me} />,
+);
+const LangTranslateRoute = guarded(
+  (me) => canOpen(me, 'lingue', 2),
+  (me) => <LangTranslatePage me={me} />,
+);
+const LangLanguagesRoute = guarded(
+  (me) => canOpen(me, 'lingue_elenco'),
+  (me) => <LangLanguagesPage me={me} />,
+);
 
-function LangKeysRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'lingue')) return <ForbiddenPage />;
-  return <LangKeysPage me={me.data} />;
-}
-
-function LangTranslateRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'lingue', 2)) return <ForbiddenPage />;
-  return <LangTranslatePage me={me.data} />;
-}
-
-function LangLanguagesRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!canOpen(me.data, 'lingue_elenco')) return <ForbiddenPage />;
-  return <LangLanguagesPage me={me.data} />;
-}
-
-function AuditRoute() {
-  const me = useQuery({ queryKey: ['me'], queryFn: () => api<Me>('/api/me') });
-  if (!me.data) return <SkeletonRows rows={6} />;
-  if (!me.data.modules.includes('audit')) return <ForbiddenPage />;
-  return <AuditPage_ />;
-}
+const AuditRoute = guarded(has('audit'), () => <AuditPage />);
 
 // ---------------------------------------------------------------------------
 

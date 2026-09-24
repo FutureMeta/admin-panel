@@ -40,9 +40,9 @@ import {
   titleOf,
 } from '../lib/duels-config.ts';
 import { type Edit, keyEdit } from '../lib/editor-keys.ts';
-import { paint } from '../lib/minimessage.ts';
+import { styleCss } from '../lib/minimessage.ts';
 import { canOpen } from '../lib/modules.ts';
-import { highlightYaml, type Token, type TokenKind } from '../lib/yaml-highlight.ts';
+import { highlightYaml, type TokenKind } from '../lib/yaml-highlight.ts';
 
 export function DuelsConfigRoute({ me }: { me: Me }) {
   const queryClient = useQueryClient();
@@ -767,49 +767,6 @@ const KIND: Record<TokenKind, string> = {
  * textarea. Sbagliarne una fa scivolare il colore rispetto al testo, e si vede
  * subito perche' si vede doppio.
  */
-/**
- * Come si disegna un pezzo.
- *
- * IL GRASSETTO NON PUO' SPOSTARE NIENTE, ed e' il motivo per cui non e'
- * `font-weight`. Sotto c'e' una textarea che scrive con lo stesso carattere in
- * tondo: se il grassetto fosse largo mezzo pixel in piu', da quel punto in poi
- * le due righe divergerebbero e si leggerebbe doppio. `-webkit-text-stroke`
- * ingrossa il tratto in fase di disegno e non tocca la misura, per definizione:
- * qualunque cosa faccia il carattere, la colonna resta dov'era.
- *
- * (Misurato prima di scegliere: in questo motore anche il grassetto sintetico
- * lascia la larghezza identica al millesimo. Ma «oggi si comporta bene» e «non
- * puo' comportarsi male» sono due garanzie diverse, e qui la seconda costa
- * uguale.)
- *
- * L'OFFUSCATO NON SI OFFUSCA: in gioco `<obfuscated>` fa ballare i caratteri,
- * qui e' il testo che si sta scrivendo. Si segna con una sottolineatura
- * tratteggiata, che dice «questo ballera'» senza toglierlo di mano.
- */
-function spanStyle(token: Token): React.CSSProperties {
-  const style = token.style;
-  const colour = style?.colour;
-  const decor = [
-    style?.underlined === true ? 'underline' : '',
-    style?.strikethrough === true ? 'line-through' : '',
-  ]
-    .filter(Boolean)
-    .join(' ');
-
-  return {
-    // Il tag si vede col suo colore; il testo con quello che il tag gli da'.
-    // Senza colore proprio resta quello del suo genere — chiave, numero,
-    // commento — cioe' esattamente cio' che si vedeva prima.
-    ...(colour === undefined ? { color: KIND[token.kind] } : paint(colour)),
-    ...(style?.bold === true ? { WebkitTextStroke: '0.25px' } : {}),
-    ...(style?.italic === true ? { fontStyle: 'italic' } : {}),
-    ...(decor === '' ? {} : { textDecoration: decor }),
-    ...(style?.obfuscated === true
-      ? { textDecoration: `${decor} underline dotted`.trim(), textUnderlineOffset: 2 }
-      : {}),
-  };
-}
-
 function Highlight({ text, tags }: { text: string; tags: boolean }) {
   const rows = useMemo(() => highlightYaml(text), [text]);
   return (
@@ -823,7 +780,7 @@ function Highlight({ text, tags }: { text: string; tags: boolean }) {
             // in gioco — e vederlo com'e' in gioco e' tutto il punto.
             !tags && token.kind === 'code' ? null : (
               // biome-ignore lint/suspicious/noArrayIndexKey: idem, il pezzo e' la sua posizione nella riga
-              <span key={at} style={spanStyle(token)}>
+              <span key={at} style={styleCss(token.style, KIND[token.kind])}>
                 {token.text}
               </span>
             ),
